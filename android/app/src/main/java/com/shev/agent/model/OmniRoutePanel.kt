@@ -171,7 +171,10 @@ fun OmniRoutePanel(viewModel: LocalModelViewModel) {
                                     status += ". Проверь, поддерживает ли шлюз маршрут auto."
                                 }
                             } catch (error: Exception) {
-                                status = error.message ?: "Не удалось подключиться."
+                                val details = error.message ?: "Не удалось подключиться."
+                                status = if (details.contains("401") || details.contains("403")) {
+                                    "Каталог моделей закрыт настройками входа. Введи ID модели вручную и проверь соединение пробным запросом."
+                                } else details
                             } finally {
                                 busy = false
                             }
