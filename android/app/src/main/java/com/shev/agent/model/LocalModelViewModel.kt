@@ -381,7 +381,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     currentMessage = message,
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint
-                ) + "\n\nСистемное ограничение: ты отвечаешь как SheV. У тебя нет прямого доступа к локальным инструментам и действиям телефона в этом удалённом режиме. Не утверждай, что выполнил локальное действие. Для выполнения используй только функции, явно предоставленные приложением; если их нет, объясни ограничение."
+                )
 
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
@@ -394,7 +394,10 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 )
                 val answer = OpenAiCompatibleClient(
                     OpenAiCompatibleConfig(baseUrl, modelId, token)
-                ).complete(promptWithContext)
+                ).complete(
+                    promptWithContext,
+                    systemInstruction = "Ты — SheV, личный помощник пользователя. Отвечай по-русски. Это удалённый режим: у тебя нет доступа к локальным инструментам, телефону, файлам или действиям приложения. Не утверждай, что выполнил действие. Если пользователь просит выполнить действие на устройстве, объясни, что удалённая модель не может его выполнить. Не раскрывай API-ключи и секреты."
+                )
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
                         id = UUID.randomUUID().toString(),
