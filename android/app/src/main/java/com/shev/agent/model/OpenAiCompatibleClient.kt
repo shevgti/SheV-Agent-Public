@@ -70,13 +70,19 @@ class OpenAiCompatibleClient(
         }
     }
 
-    suspend fun complete(userText: String): String = withContext(Dispatchers.IO) {
+    suspend fun complete(userText: String, systemInstruction: String? = null): String = withContext(Dispatchers.IO) {
         require(userText.isNotBlank() && userText.length <= MAX_INPUT_CHARS) {
             "Сообщение пустое или слишком длинное."
         }
         val body = JsonObject().apply {
             addProperty("model", config.modelId)
             add("messages", JsonArray().apply {
+                if (!systemInstruction.isNullOrBlank()) {
+                    add(JsonObject().apply {
+                        addProperty("role", "system")
+                        addProperty("content", systemInstruction.take(MAX_SYSTEM_INSTRUCTION_CHARS))
+                    })
+                }
                 add(JsonObject().apply {
                     addProperty("role", "user")
                     addProperty("content", userText)
@@ -149,5 +155,6 @@ class OpenAiCompatibleClient(
 
     private companion object {
         const val MAX_INPUT_CHARS = 32_000
+        const val MAX_SYSTEM_INSTRUCTION_CHARS = 8_000
     }
 }
