@@ -33,7 +33,7 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 fun OmniRoutePanel() {
-    var baseUrl by remember { mutableStateOf("http://127.0.0.1:20128/v1") }
+    var baseUrl by remember { mutableStateOf("https://your-omniroute-host/v1") }
     var modelId by remember { mutableStateOf("auto") }
     var token by remember { mutableStateOf("") }
     var prompt by remember { mutableStateOf("") }
@@ -68,7 +68,7 @@ fun OmniRoutePanel() {
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = { Text("Адрес OmniRoute") },
-                supportingText = { Text("На телефоне укажи HTTPS-адрес сервера. 127.0.0.1 подходит только если шлюз работает на самом телефоне.") }
+                supportingText = { Text("Укажи HTTPS-адрес компьютера или сервера с OmniRoute.") }
             )
             OutlinedTextField(
                 value = modelId,
