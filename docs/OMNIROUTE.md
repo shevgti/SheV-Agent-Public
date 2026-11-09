@@ -9,6 +9,17 @@ SheV Agent can connect to an independently hosted OmniRoute instance through its
 - Create a dedicated API key limited to inference/chat. Do not use a global administrator (`admin`) or MCP management key.
 - Keep the OmniRoute management dashboard and MCP administration interface private. Do not expose unauthenticated management endpoints to the internet.
 
+
+## Required gateway security settings
+
+OmniRoute's example environment defaults to `REQUIRE_API_KEY=false`. Before exposing an instance beyond loopback, enable `REQUIRE_API_KEY=true` (or the equivalent Dashboard → Feature Flags setting) so inference endpoints require a Bearer API key. The default Docker Compose profile binds published ports to `127.0.0.1`; do not change `APP_BIND_HOST` to `0.0.0.0` unless API-key enforcement is enabled or a trusted authenticated reverse proxy is in front.
+
+Create an ordinary inference API key in Dashboard → API Manager / API Keys with **no** `manage` or `admin` scope. Those scopes grant management capabilities and are not needed by SheV Agent. Do not paste a dashboard password, `oma_live_…` management token, or MCP token into the Android app.
+
+Note: OmniRoute documents that `GET /v1/models` follows its dashboard/login posture separately from the `REQUIRE_API_KEY` gate used for inference requests. If model discovery is unavailable under your server's login policy, enter the model ID manually and use the test-chat request to verify inference. Do not weaken dashboard authentication to make model discovery work.
+
+Keep the management dashboard and MCP endpoints private. Only publish the HTTPS endpoint required by the Android client, with strong authentication and current provider credentials. Review OmniRoute's official [Management Auth guide](https://github.com/cheaper-inference/OmniRoute/wiki/Management-Auth) and [Environment reference](https://github.com/cheaper-inference/OmniRoute/blob/release/v3.8.54/docs/reference/ENVIRONMENT.md) before exposing the server.
+
 ## Android setup
 
 1. Open the SheV Agent home screen and expand **OmniRoute · AI-шлюз**.
