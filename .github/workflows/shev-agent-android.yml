@@ -1,0 +1,135 @@
+name: SheV Agent Android
+
+on:
+  push:
+    paths:
+      - 'android/**'
+      - '.github/workflows/shev-agent-android.yml'
+      - 'docs/AGENTS.md'
+  pull_request:
+    paths:
+      - 'android/**'
+      - '.github/workflows/shev-agent-android.yml'
+      - 'docs/AGENTS.md'
+  workflow_dispatch:
+    inputs:
+      run_emulator:
+        description: 'Run the optional Android emulator smoke test'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: shev-agent-android-v2-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-unit-tests:
+    name: Unit tests and debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+      - name: Restore stable debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: shev-agent-debug-keystore-v1
+      - name: Install compile SDK and build tools
+        run: |
+          sdkmanager --install "platforms;android-37.0" "build-tools;37.0.0" "platform-tools"
+          if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
+            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+          fi
+      - name: Run unit tests
+        working-directory: android
+        env:
+          GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
+        run: gradle testDebugUnitTest --stacktrace
+      - name: Assemble debug APK
+        working-directory: android
+        env:
+          GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
+        run: gradle assembleDebug
+      - name: Prepare debug test package
+        working-directory: android
+        run: |
+          mkdir -p ../shev-agent-package
+          cp app/build/outputs/apk/debug/app-debug.apk ../shev-agent-package/
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          printf 'version=%s\ncommit=%s\nrun=%s\n' "$VERSION" "$GITHUB_SHA" "$GITHUB_RUN_ID" > ../shev-agent-package/build-info.txt
+          cd ../shev-agent-package
+          sha256sum app-debug.apk > app-debug.apk.sha256
+      - name: Upload debug test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: shev-agent-debug
+          path: shev-agent-package/*
+          if-no-files-found: error
+          retention-days: 7
+
+  android-16-emulator:
+    name: Optional Android 16 (API 36) instrumentation smoke test
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_emulator == true }}
+    needs: build-and-unit-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+      - name: Install compile SDK for emulator build
+        run: |
+          sdkmanager --install "platforms;android-37.0" "build-tools;37.0.0"
+          if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
+            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+          fi
+      - name: Run Android 16 emulator tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: |
+            cd android
+            gradle connectedDebugAndroidTest
+            mkdir -p ../shev-agent-ui-preview
+            adb pull /sdcard/Android/data/com.shev.agent/files/shev-agent-home.png ../shev-agent-ui-preview/shev-agent-home.png
+      - name: Upload actual Android emulator UI screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: shev-agent-ui-preview
+          path: shev-agent-ui-preview/shev-agent-home.png
+          if-no-files-found: error

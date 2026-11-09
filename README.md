@@ -1,5 +1,12 @@
-# SheV Agent
+# SheV Agent Public
 
-A local-first Android assistant project. Public build mirror; source is being migrated from a private development repository after review.
+Public mirror of the SheV Agent Android application. This repository contains reviewed application source and build workflow. The original development repository remains separate.
 
-This repository is under active preparation. Do not use release APKs until a verified release is published.
+## Build
+Open Actions and run **SheV Agent Android**. Successful builds upload a debug APK artifact for testing. Debug APKs are not production releases.
+
+## Hybrid architecture
+ChatGPT acts as supervisory intelligence; the Android application remains the local executor and permission authority. See `docs/HYBRID_ARCHITECTURE.md` and `docs/BRIDGE_PROTOCOL_V1.md`.
+
+## Safety
+Review `docs/SAFETY.md`. Never commit signing keys, API tokens, local.properties or user data.
