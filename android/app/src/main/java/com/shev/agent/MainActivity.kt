@@ -233,8 +233,8 @@ private fun HomeScreen(
             Text("SheV Agent", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
             Text("Твой личный ИИ-помощник", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        item { OmniRoutePanel(localModelViewModel) }
         item { LocalModelPanel(localModelViewModel) }
-        item { OmniRoutePanel() }
         items(visibleComponents, key = { it.id }) { component ->
             when (component.type) {
                 WorkspaceComponentType.TASKS -> Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -16,7 +16,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,7 +37,8 @@ import kotlinx.coroutines.withContext
  * Credentials are encrypted with a dedicated Android Keystore key before persistence and are never logged.
  */
 @Composable
-fun OmniRoutePanel() {
+fun OmniRoutePanel(viewModel: LocalModelViewModel) {
+    val agentState by viewModel.state.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
     val preferences = remember(context) {
         context.getSharedPreferences("shev_omniroute", android.content.Context.MODE_PRIVATE)
@@ -48,17 +51,25 @@ fun OmniRoutePanel() {
     var status by remember { mutableStateOf("Не подключено") }
     var busy by remember { mutableStateOf(false) }
     var models by remember { mutableStateOf(emptyList<String>()) }
+    var credentialsSaved by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(preferences) {
+        credentialsSaved = preferences.contains("encrypted_token")
         baseUrl = preferences.getString("base_url", baseUrl) ?: baseUrl
         modelId = preferences.getString("model_id", modelId) ?: modelId
         token = preferences.getString("encrypted_token", null)?.let { encrypted ->
             runCatching { OmniRouteSecretCipher.decrypt(encrypted) }.getOrDefault("")
         } ?: ""
+        credentialsSaved = credentialsSaved && token.isNotBlank()
         if (preferences.contains("encrypted_token") && token.isBlank()) {
             status = "Сохранённый ключ недоступен. Введи его заново."
         }
+    }
+
+    fun markSettingsDirty() {
+        credentialsSaved = false
+        if (agentState.useOmniRoute) viewModel.setOmniRoutePrimaryEnabled(false)
     }
 
     fun client(): OpenAiCompatibleClient = OpenAiCompatibleClient(
@@ -82,7 +93,7 @@ fun OmniRoutePanel() {
             )
             OutlinedTextField(
                 value = baseUrl,
-                onValueChange = { baseUrl = it },
+                onValueChange = { baseUrl = it; markSettingsDirty() },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = { Text("Адрес OmniRoute") },
@@ -90,7 +101,7 @@ fun OmniRoutePanel() {
             )
             OutlinedTextField(
                 value = modelId,
-                onValueChange = { modelId = it },
+                onValueChange = { modelId = it; markSettingsDirty() },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = { Text("Модель / маршрут") },
@@ -98,7 +109,7 @@ fun OmniRoutePanel() {
             )
             OutlinedTextField(
                 value = token,
-                onValueChange = { token = it },
+                onValueChange = { token = it; markSettingsDirty() },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = { Text("API-ключ OmniRoute") },
@@ -113,6 +124,7 @@ fun OmniRoutePanel() {
                                 .putString("model_id", modelId.trim())
                                 .putString("encrypted_token", OmniRouteSecretCipher.encrypt(token.trim()))
                                 .apply()
+                            credentialsSaved = true
                             status = "Настройки сохранены в зашифрованном виде."
                         }.onFailure { status = "Не удалось сохранить ключ в Android Keystore." }
                     },
@@ -122,9 +134,24 @@ fun OmniRoutePanel() {
                 TextButton(onClick = {
                     preferences.edit().clear().apply()
                     token = ""
+                    credentialsSaved = false
+                    viewModel.setOmniRoutePrimaryEnabled(false)
                     status = "Сохранённый ключ удалён."
                 }) { Text("Забыть ключ") }
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Использовать OmniRoute для основного чата", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Switch(
+                    checked = agentState.useOmniRoute,
+                    onCheckedChange = viewModel::setOmniRoutePrimaryEnabled,
+                    enabled = credentialsSaved && !busy
+                )
+            }
+            Text(
+                "При включении последние сообщения диалога и краткая память будут отправляться на выбранный удалённый AI-сервер. Ответ удалённой модели не получает прямой доступ к действиям телефона.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = {
