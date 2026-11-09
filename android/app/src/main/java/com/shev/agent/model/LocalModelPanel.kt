@@ -153,7 +153,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Диалог с SheV", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(
-                        "Личный помощник на твоём устройстве",
+                        if (state.useOmniRoute) "Удалённая модель через OmniRoute" else "Личный помощник на твоём устройстве",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
