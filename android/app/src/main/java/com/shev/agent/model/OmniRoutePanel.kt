@@ -36,7 +36,8 @@ import kotlinx.coroutines.withContext
  * Credentials are encrypted with a dedicated Android Keystore key before persistence and are never logged.
  */
 @Composable
-fun OmniRoutePanel() {
+fun OmniRoutePanel(viewModel: LocalModelViewModel) {
+    val agentState by viewModel.state.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
     val preferences = remember(context) {
         context.getSharedPreferences("shev_omniroute", android.content.Context.MODE_PRIVATE)
@@ -49,18 +50,17 @@ fun OmniRoutePanel() {
     var status by remember { mutableStateOf("Не подключено") }
     var busy by remember { mutableStateOf(false) }
     var models by remember { mutableStateOf(emptyList<String>()) }
-    var useForPrimaryChat by remember { mutableStateOf(false) }
     var credentialsSaved by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(preferences) {
         credentialsSaved = preferences.contains("encrypted_token")
-        useForPrimaryChat = preferences.getBoolean("use_for_primary_chat", false)
         baseUrl = preferences.getString("base_url", baseUrl) ?: baseUrl
         modelId = preferences.getString("model_id", modelId) ?: modelId
         token = preferences.getString("encrypted_token", null)?.let { encrypted ->
             runCatching { OmniRouteSecretCipher.decrypt(encrypted) }.getOrDefault("")
         } ?: ""
+        credentialsSaved = credentialsSaved && token.isNotBlank()
         if (preferences.contains("encrypted_token") && token.isBlank()) {
             status = "Сохранённый ключ недоступен. Введи его заново."
         }
@@ -129,18 +129,14 @@ fun OmniRoutePanel() {
                     preferences.edit().clear().apply()
                     token = ""
                     credentialsSaved = false
-                    useForPrimaryChat = false
                     status = "Сохранённый ключ удалён."
                 }) { Text("Забыть ключ") }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Использовать OmniRoute для основного чата", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                 Switch(
-                    checked = useForPrimaryChat,
-                    onCheckedChange = {
-                        useForPrimaryChat = it
-                        preferences.edit().putBoolean("use_for_primary_chat", it).apply()
-                    },
+                    checked = agentState.useOmniRoute,
+                    onCheckedChange = viewModel::setOmniRoutePrimaryEnabled,
                     enabled = credentialsSaved && !busy
                 )
             }
