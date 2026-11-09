@@ -1,5 +1,11 @@
 # SheV Agent changelog
 
+## 0.1.8 — OmniRoute primary chat
+- Added an explicit provider switch for the primary SheV conversation.
+- Main chat can run through OmniRoute without downloading the 2.58 GB local Gemma model.
+- Bounded encrypted chat history and rolling summary are sent only after explicit opt-in.
+- Remote responses cannot directly execute local Android tools.
+
 ## 0.1.7 — OmniRoute integration preview
 - Added a separate OmniRoute gateway panel to the home screen.
 - Added model discovery and selection from the gateway's OpenAI-compatible model catalog.
