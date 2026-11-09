@@ -67,6 +67,11 @@ fun OmniRoutePanel(viewModel: LocalModelViewModel) {
         }
     }
 
+    fun markSettingsDirty() {
+        credentialsSaved = false
+        if (agentState.useOmniRoute) viewModel.setOmniRoutePrimaryEnabled(false)
+    }
+
     fun client(): OpenAiCompatibleClient = OpenAiCompatibleClient(
         OpenAiCompatibleConfig(baseUrl.trim(), modelId.trim(), token.trim())
     )
@@ -88,7 +93,7 @@ fun OmniRoutePanel(viewModel: LocalModelViewModel) {
             )
             OutlinedTextField(
                 value = baseUrl,
-                onValueChange = { baseUrl = it },
+                onValueChange = { baseUrl = it; markSettingsDirty() },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = { Text("Адрес OmniRoute") },
@@ -96,7 +101,7 @@ fun OmniRoutePanel(viewModel: LocalModelViewModel) {
             )
             OutlinedTextField(
                 value = modelId,
-                onValueChange = { modelId = it },
+                onValueChange = { modelId = it; markSettingsDirty() },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = { Text("Модель / маршрут") },
@@ -104,7 +109,7 @@ fun OmniRoutePanel(viewModel: LocalModelViewModel) {
             )
             OutlinedTextField(
                 value = token,
-                onValueChange = { token = it },
+                onValueChange = { token = it; markSettingsDirty() },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = { Text("API-ключ OmniRoute") },
