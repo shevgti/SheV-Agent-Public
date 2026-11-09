@@ -28,6 +28,7 @@ Edit the .env file before starting:
 - Replace INITIAL_PASSWORD=CHANGEME with a long unique password.
 - Set API_KEY_SECRET to a random secret (the template documents openssl rand -hex 32).
 - Set REQUIRE_API_KEY=true.
+- Set AUTH_COOKIE_SECURE=true because Tailscale Serve terminates HTTPS in front of the local service.
 - Leave APP_BIND_HOST at its loopback default (127.0.0.1). Do not publish the service on all network interfaces.
 
 Start the base profile:
