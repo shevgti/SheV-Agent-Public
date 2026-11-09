@@ -161,19 +161,19 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                 Spacer(Modifier.weight(1f))
                 Surface(
                     shape = CircleShape,
-                    color = if (state.ready) Color(0xFFE0F5EA) else Color(0xFFEAF0FF)
+                    color = if (state.ready || state.useOmniRoute) Color(0xFFE0F5EA) else Color(0xFFEAF0FF)
                 ) {
                     Text(
-                        if (state.ready) "● Локально" else "● Модель",
+                        when { state.useOmniRoute -> "● OmniRoute"; state.ready -> "● Локально"; else -> "● Модель" },
                         modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (state.ready) Color(0xFF176B45) else Color(0xFF3657A5),
+                        color = if (state.ready || state.useOmniRoute) Color(0xFF176B45) else Color(0xFF3657A5),
                         fontWeight = FontWeight.SemiBold
                     )
                 }
             }
 
-            if (!state.ready) {
+            if (!state.ready && !state.useOmniRoute) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(22.dp),
