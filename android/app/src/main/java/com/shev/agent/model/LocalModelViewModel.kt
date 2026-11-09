@@ -239,14 +239,24 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
 
     fun send() {
         val message = mutableState.value.prompt.trim()
+        if (message.isEmpty() || mutableState.value.busy) return
+
+        val preferences = getApplication<Application>().getSharedPreferences(
+            "shev_omniroute",
+            Application.MODE_PRIVATE
+        )
+        if (preferences.getBoolean("use_for_primary_chat", false)) {
+            sendViaOmniRoute(message)
+            return
+        }
+
         val active = runtime
         if (active == null) {
             mutableState.update {
-                it.copy(error = "Локальный агент ещё не запущен. Нажми «Запустить локального агента».")
+                it.copy(error = "Локальный агент ещё не запущен. Нажми «Запустить локального агента» или включи OmniRoute для основного чата.")
             }
             return
         }
-        if (message.isEmpty() || mutableState.value.busy) return
         mutableState.update {
             it.copy(prompt = "", busy = true, error = null, messages = it.messages + "Вы: $message")
         }
@@ -316,6 +326,80 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 dao.updateConversationMessageStatus(userMessageId, ConversationContextBuilder.STATUS_FAILED)
                 mutableState.update {
                     it.copy(error = failure.message ?: failure.javaClass.simpleName + ": ошибка выполнения модели.")
+                }
+            } finally {
+                mutableState.update { it.copy(busy = false) }
+            }
+        }
+    }
+
+
+    /**
+     * Remote primary-chat path. Only the current user message and bounded encrypted
+     * conversation context are sent after the user explicitly enables this provider.
+     * Remote model output cannot directly execute local tools.
+     */
+    private fun sendViaOmniRoute(message: String) {
+        mutableState.update {
+            it.copy(prompt = "", busy = true, error = null, messages = it.messages + "Вы: $message")
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val userMessageId = UUID.randomUUID().toString()
+            try {
+                val preferences = getApplication<Application>().getSharedPreferences(
+                    "shev_omniroute",
+                    Application.MODE_PRIVATE
+                )
+                val baseUrl = preferences.getString("base_url", null)
+                    ?: throw IllegalStateException("Сначала настрой адрес OmniRoute.")
+                val modelId = preferences.getString("model_id", null)
+                    ?: throw IllegalStateException("Не выбрана модель OmniRoute.")
+                val encryptedToken = preferences.getString("encrypted_token", null)
+                    ?: throw IllegalStateException("Сначала сохрани API-ключ OmniRoute.")
+                val token = OmniRouteSecretCipher.decrypt(encryptedToken)
+                require(token.isNotBlank()) { "Сохранённый API-ключ пустой. Введи его заново." }
+
+                val history = dao.getRecentCompletedConversationMessages(CONTEXT_HISTORY_LIMIT).asReversed()
+                    .map { it.copy(content = LocalMessageCipher.decrypt(it.content)) }
+                val summaryRead = conversationStateRepository.readSummary()
+                val rollingSummary = (summaryRead as? ConversationSummaryRead.Ready)?.plaintext
+                val summaryCheckpoint = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
+                val promptWithContext = ConversationContextBuilder.build(
+                    chronologicalHistory = history,
+                    currentMessage = message,
+                    rollingSummary = rollingSummary,
+                    summaryThroughMessageId = summaryCheckpoint
+                ) + "\\n\\nСистемное ограничение: ты отвечаешь как SheV. У тебя нет прямого доступа к локальным инструментам и действиям телефона в этом удалённом режиме. Не утверждай, что выполнил локальное действие. Для выполнения используй только функции, явно предоставленные приложением; если их нет, объясни ограничение."
+
+                dao.appendConversationMessage(
+                    ConversationMessageEntity(
+                        id = userMessageId,
+                        role = ConversationContextBuilder.ROLE_USER,
+                        content = LocalMessageCipher.encrypt(message),
+                        status = ConversationContextBuilder.STATUS_PENDING,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+                val answer = OpenAiCompatibleClient(
+                    OpenAiCompatibleConfig(baseUrl, modelId, token)
+                ).complete(promptWithContext)
+                dao.appendConversationMessage(
+                    ConversationMessageEntity(
+                        id = UUID.randomUUID().toString(),
+                        role = ConversationContextBuilder.ROLE_ASSISTANT,
+                        content = LocalMessageCipher.encrypt(answer),
+                        status = ConversationContextBuilder.STATUS_COMPLETE,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+                dao.updateConversationMessageStatus(userMessageId, ConversationContextBuilder.STATUS_COMPLETE)
+                mutableState.update { it.copy(messages = it.messages + "SheV: $answer") }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                dao.updateConversationMessageStatus(userMessageId, ConversationContextBuilder.STATUS_FAILED)
+                mutableState.update {
+                    it.copy(error = failure.message ?: failure.javaClass.simpleName + ": ошибка удалённой модели.")
                 }
             } finally {
                 mutableState.update { it.copy(busy = false) }
