@@ -119,11 +119,15 @@ fun OmniRoutePanel(viewModel: LocalModelViewModel) {
                 OutlinedButton(
                     onClick = {
                         runCatching {
+                            val normalizedUrl = OpenAiCompatibleConfig(
+                                baseUrl.trim(), modelId.trim(), token.trim()
+                            ).validatedBaseUrl()
                             preferences.edit()
-                                .putString("base_url", baseUrl.trim())
+                                .putString("base_url", normalizedUrl)
                                 .putString("model_id", modelId.trim())
                                 .putString("encrypted_token", OmniRouteSecretCipher.encrypt(token.trim()))
                                 .apply()
+                            baseUrl = normalizedUrl
                             credentialsSaved = true
                             status = "Настройки сохранены в зашифрованном виде."
                         }.onFailure { status = "Не удалось сохранить ключ в Android Keystore." }
@@ -203,7 +207,7 @@ fun OmniRoutePanel(viewModel: LocalModelViewModel) {
                 Text("Доступные модели · нажми, чтобы выбрать:", style = MaterialTheme.typography.bodySmall)
                 models.take(8).forEach { id ->
                     AssistChip(
-                        onClick = { modelId = id },
+                        onClick = { modelId = id; markSettingsDirty() },
                         label = { Text(id, maxLines = 1) }
                     )
                 }
