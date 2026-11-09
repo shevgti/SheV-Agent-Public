@@ -23,7 +23,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import com.shev.agent.data.LocalMessageCipher
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -54,7 +53,7 @@ fun OmniRoutePanel() {
         baseUrl = preferences.getString("base_url", baseUrl) ?: baseUrl
         modelId = preferences.getString("model_id", modelId) ?: modelId
         token = preferences.getString("encrypted_token", null)?.let { encrypted ->
-            runCatching { LocalMessageCipher.decrypt(encrypted) }.getOrDefault("")
+            runCatching { OmniRouteSecretCipher.decrypt(encrypted) }.getOrDefault("")
         } ?: ""
         if (preferences.contains("encrypted_token") && token.isBlank()) {
             status = "Сохранённый ключ недоступен. Введи его заново."
@@ -111,7 +110,7 @@ fun OmniRoutePanel() {
                             preferences.edit()
                                 .putString("base_url", baseUrl.trim())
                                 .putString("model_id", modelId.trim())
-                                .putString("encrypted_token", LocalMessageCipher.encrypt(token.trim()))
+                                .putString("encrypted_token", OmniRouteSecretCipher.encrypt(token.trim()))
                                 .apply()
                             status = "Настройки сохранены в зашифрованном виде."
                         }.onFailure { status = "Не удалось сохранить ключ в Android Keystore." }
