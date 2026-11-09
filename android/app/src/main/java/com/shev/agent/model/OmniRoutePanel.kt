@@ -15,12 +15,15 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import com.shev.agent.data.LocalMessageCipher
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +36,10 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 fun OmniRoutePanel() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val preferences = remember(context) {
+        context.getSharedPreferences("shev_omniroute", android.content.Context.MODE_PRIVATE)
+    }
     var baseUrl by remember { mutableStateOf("https://your-omniroute-host/v1") }
     var modelId by remember { mutableStateOf("auto") }
     var token by remember { mutableStateOf("") }
@@ -42,6 +49,17 @@ fun OmniRoutePanel() {
     var busy by remember { mutableStateOf(false) }
     var models by remember { mutableStateOf(emptyList<String>()) }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(preferences) {
+        baseUrl = preferences.getString("base_url", baseUrl) ?: baseUrl
+        modelId = preferences.getString("model_id", modelId) ?: modelId
+        token = preferences.getString("encrypted_token", null)?.let { encrypted ->
+            runCatching { LocalMessageCipher.decrypt(encrypted) }.getOrDefault("")
+        } ?: ""
+        if (preferences.contains("encrypted_token") && token.isBlank()) {
+            status = "Сохранённый ключ недоступен. Введи его заново."
+        }
+    }
 
     fun client(): OpenAiCompatibleClient = OpenAiCompatibleClient(
         OpenAiCompatibleConfig(baseUrl.trim(), modelId.trim(), token.trim())
@@ -86,6 +104,27 @@ fun OmniRoutePanel() {
                 label = { Text("API-ключ OmniRoute") },
                 visualTransformation = PasswordVisualTransformation()
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        runCatching {
+                            preferences.edit()
+                                .putString("base_url", baseUrl.trim())
+                                .putString("model_id", modelId.trim())
+                                .putString("encrypted_token", LocalMessageCipher.encrypt(token.trim()))
+                                .apply()
+                            status = "Настройки сохранены в зашифрованном виде."
+                        }.onFailure { status = "Не удалось сохранить ключ в Android Keystore." }
+                    },
+                    enabled = token.isNotBlank(),
+                    modifier = Modifier.weight(1f)
+                ) { Text("Сохранить") }
+                TextButton(onClick = {
+                    preferences.edit().clear().apply()
+                    token = ""
+                    status = "Сохранённый ключ удалён."
+                }) { Text("Забыть ключ") }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = {
@@ -149,7 +188,7 @@ fun OmniRoutePanel() {
                 Text(answer)
             }
             Text(
-                "Ключ хранится только в памяти экрана и исчезает после закрытия приложения. Не используй административный ключ manage для обычного чата.",
+                "Ключ хранится в Android Keystore в зашифрованном виде после нажатия «Сохранить». Не используй административный ключ manage для обычного чата.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
