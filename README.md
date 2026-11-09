@@ -10,3 +10,5 @@ ChatGPT acts as supervisory intelligence; the Android application remains the lo
 
 ## Safety
 Review `docs/SAFETY.md`. Never commit signing keys, API tokens, local.properties or user data.
+
+The public mirror build workflow runs unit tests and assembles a debug APK on pushes to the Android source tree.
