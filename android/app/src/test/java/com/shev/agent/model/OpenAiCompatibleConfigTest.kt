@@ -13,8 +13,11 @@ class OpenAiCompatibleConfigTest {
         assertEquals("https://agent.example/v1", config("https://agent.example/v1/").validatedBaseUrl())
     }
 
-    @Test fun rejectsPlainHttpForRemoteEndpoints() {
+    @Test fun allowsHttpOnlyForLoopbackDevelopment() {
+        assertEquals("http://127.0.0.1:20128/v1", config("http://127.0.0.1:20128/v1").validatedBaseUrl())
+        assertEquals("http://localhost:20128/v1", config("http://localhost:20128").validatedBaseUrl())
         assertFalse(runCatching { config("http://192.168.1.20:1234/v1").validatedBaseUrl() }.isSuccess)
+        assertFalse(runCatching { config("http://gateway.example/v1").validatedBaseUrl() }.isSuccess)
     }
 
     @Test fun rejectsUserInfoQueryAndFragment() {
