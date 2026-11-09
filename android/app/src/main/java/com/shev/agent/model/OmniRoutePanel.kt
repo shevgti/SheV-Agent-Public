@@ -87,7 +87,7 @@ fun OmniRoutePanel(viewModel: LocalModelViewModel) {
         ) {
             Text("OmniRoute · AI-шлюз", style = MaterialTheme.typography.titleLarge)
             Text(
-                "Подключает SheV к моделям через единый OpenAI-совместимый API. OmniRoute должен быть запущен на компьютере или сервере.",
+                "Это отдельный шлюз моделей, не прямая связь с текущим чатом ChatGPT. Он должен быть запущен на компьютере или сервере.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
