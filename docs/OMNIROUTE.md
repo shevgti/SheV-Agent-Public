@@ -6,7 +6,7 @@ SheV Agent can connect to an independently hosted OmniRoute instance through its
 
 - Run OmniRoute on a computer or server that remains reachable while using the Android app.
 - Put the gateway behind HTTPS. The Android app rejects cleartext HTTP.
-- Create a dedicated API key limited to inference/chat. Do not use a global administrator or MCP `manage` key.
+- Create a dedicated API key limited to inference/chat. Do not use a global administrator (`admin`) or MCP management key.
 - Keep the OmniRoute management dashboard and MCP administration interface private. Do not expose unauthenticated management endpoints to the internet.
 
 ## Android setup
