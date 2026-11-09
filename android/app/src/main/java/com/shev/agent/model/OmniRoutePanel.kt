@@ -130,6 +130,7 @@ fun OmniRoutePanel(viewModel: LocalModelViewModel) {
                     preferences.edit().clear().apply()
                     token = ""
                     credentialsSaved = false
+                    viewModel.setOmniRoutePrimaryEnabled(false)
                     status = "Сохранённый ключ удалён."
                 }) { Text("Забыть ключ") }
             }
