@@ -37,6 +37,7 @@ import com.shev.agent.tools.ImprovementLabScreen
 import com.shev.agent.tools.ToolWorkshopScreen
 import com.shev.agent.model.LocalModelPanel
 import com.shev.agent.model.LocalModelViewModel
+import com.shev.agent.model.OmniRoutePanel
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -233,6 +234,7 @@ private fun HomeScreen(
             Text("Твой личный ИИ-помощник", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item { LocalModelPanel(localModelViewModel) }
+        item { OmniRoutePanel() }
         items(visibleComponents, key = { it.id }) { component ->
             when (component.type) {
                 WorkspaceComponentType.TASKS -> Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

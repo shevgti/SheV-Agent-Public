@@ -23,16 +23,16 @@ data class OpenAiCompatibleConfig(
         val uri = runCatching { URI(baseUrl.trim()) }
             .getOrElse { throw IllegalArgumentException("Некорректный адрес сервера.") }
         require(uri.scheme.equals("https", ignoreCase = true)) {
-            "Для удалённого подключения требуется HTTPS."
+            "Для подключения с телефона требуется HTTPS."
         }
         require(!uri.host.isNullOrBlank() && uri.userInfo == null && uri.query == null && uri.fragment == null) {
-            "Адрес должен содержать только HTTPS-хост и путь без логина, параметров и фрагмента."
+            "Адрес должен содержать только хост и путь без логина, параметров и фрагмента."
         }
         require(uri.port == -1 || uri.port in 1..65535) { "Некорректный порт сервера." }
         val path = uri.path.trimEnd('/')
         require(path.isEmpty() || path == "/v1") { "Путь сервера должен быть пустым или оканчиваться на /v1." }
         require(modelId.isNotBlank() && modelId.length <= MAX_MODEL_ID_LENGTH) { "Некорректный идентификатор модели." }
-        require(apiToken.isNotBlank() && apiToken.length <= MAX_TOKEN_LENGTH) { "Не задан API-токен LM Studio." }
+        require(apiToken.isNotBlank() && apiToken.length <= MAX_TOKEN_LENGTH) { "Не задан API-токен провайдера." }
         return "${uri.scheme}://${uri.rawAuthority}/v1"
     }
 
@@ -117,12 +117,12 @@ class OpenAiCompatibleClient(
                 // Do not include response body or headers: they may contain private server details.
                 throw IllegalStateException(
                     when (status) {
-                        401, 403 -> "LM Studio отклонил токен доступа (HTTP $status)."
-                        404 -> "Эндпоинт LM Studio не найден (HTTP 404). Проверь адрес /v1."
-                        429 -> "LM Studio временно ограничил запросы (HTTP 429)."
-                        in 500..599 -> "Ошибка сервера LM Studio (HTTP $status)."
+                        401, 403 -> "Провайдер отклонил токен доступа (HTTP $status)."
+                        404 -> "Эндпоинт не найден (HTTP 404). Проверь адрес /v1."
+                        429 -> "Провайдер временно ограничил запросы (HTTP 429)."
+                        in 500..599 -> "Ошибка сервера провайдера (HTTP $status)."
                         in 300..399 -> "Перенаправления сервера запрещены для защищённого запроса."
-                        else -> "Запрос к LM Studio отклонён (HTTP $status)."
+                        else -> "Запрос к провайдеру отклонён (HTTP $status)."
                     }
                 )
             }
@@ -135,7 +135,7 @@ class OpenAiCompatibleClient(
                     val count = stream.read(buffer)
                     if (count < 0) break
                     if (output.size() + count > maxResponseBytes) {
-                        throw IllegalStateException("Ответ LM Studio превышает допустимый размер.")
+                        throw IllegalStateException("Ответ провайдера превышает допустимый размер.")
                     }
                     output.write(buffer, 0, count)
                 }
