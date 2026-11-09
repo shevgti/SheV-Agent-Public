@@ -10,6 +10,8 @@ SheV Agent can connect to an independently hosted OmniRoute instance through its
 - Keep the OmniRoute management dashboard and MCP administration interface private. Do not expose unauthenticated management endpoints to the internet.
 
 
+For a no-public-port-forwarding setup using a computer + Android phone, follow [OMNIROUTE_TAILSCALE_SETUP.md](OMNIROUTE_TAILSCALE_SETUP.md).
+
 ## Required gateway security settings
 
 OmniRoute's example environment defaults to `REQUIRE_API_KEY=false`. Before exposing an instance beyond loopback, enable `REQUIRE_API_KEY=true` (or the equivalent Dashboard → Feature Flags setting) so inference endpoints require a Bearer API key. The default Docker Compose profile binds published ports to `127.0.0.1`; do not change `APP_BIND_HOST` to `0.0.0.0` unless API-key enforcement is enabled or a trusted authenticated reverse proxy is in front.
