@@ -130,7 +130,7 @@ fun OmniRoutePanel(viewModel: LocalModelViewModel) {
                             baseUrl = normalizedUrl
                             credentialsSaved = true
                             status = "Настройки сохранены в зашифрованном виде."
-                        }.onFailure { status = "Не удалось сохранить ключ в Android Keystore." }
+                        }.onFailure { status = it.message ?: "Не удалось сохранить настройки OmniRoute." }
                     },
                     enabled = token.isNotBlank(),
                     modifier = Modifier.weight(1f)
