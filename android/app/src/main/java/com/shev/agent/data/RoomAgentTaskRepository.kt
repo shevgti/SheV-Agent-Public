@@ -351,7 +351,7 @@ class RoomAgentTaskRepository(
                 evidenceRef = eventEvidenceRef
             )
         )
-        AgentTaskRepositoryResult.Applied(next)
+        return AgentTaskRepositoryResult.Applied(next)
     }
 
     private companion object {
