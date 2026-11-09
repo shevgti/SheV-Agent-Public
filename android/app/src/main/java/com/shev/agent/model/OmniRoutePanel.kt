@@ -22,7 +22,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -31,7 +30,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Optional OmniRoute/OpenAI-compatible gateway panel.
- * Credentials deliberately remain in Compose memory and are never persisted or logged.
+ * Credentials are encrypted with a dedicated Android Keystore key before persistence and are never logged.
  */
 @Composable
 fun OmniRoutePanel() {
