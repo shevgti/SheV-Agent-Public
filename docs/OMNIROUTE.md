@@ -1,6 +1,6 @@
 # OmniRoute connection in SheV Agent
 
-SheV Agent can connect to an independently hosted OmniRoute instance through its OpenAI-compatible API.
+SheV Agent can connect to an independently hosted OmniRoute instance through its OpenAI-compatible API. OmniRoute is a separate model gateway; it does not connect this app to the current ChatGPT conversation or make ChatGPT's supervisory intelligence available inside Android.
 
 ## Requirements
 
