@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -172,7 +173,13 @@ fun OmniRoutePanel() {
             if (busy) CircularProgressIndicator()
             Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             if (models.isNotEmpty()) {
-                Text("Доступные модели: ${models.take(12).joinToString()}", style = MaterialTheme.typography.bodySmall)
+                Text("Доступные модели · нажми, чтобы выбрать:", style = MaterialTheme.typography.bodySmall)
+                models.take(8).forEach { id ->
+                    AssistChip(
+                        onClick = { modelId = id },
+                        label = { Text(id, maxLines = 1) }
+                    )
+                }
             }
             OutlinedTextField(
                 value = prompt,
@@ -187,7 +194,7 @@ fun OmniRoutePanel() {
                 Text(answer)
             }
             Text(
-                "Ключ хранится в Android Keystore в зашифрованном виде после нажатия «Сохранить». Не используй административный ключ manage для обычного чата.",
+                "Ключ хранится в Android Keystore в зашифрованном виде после нажатия «Сохранить». Не используй ключ с правами admin или MCP-управления для обычного чата.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
