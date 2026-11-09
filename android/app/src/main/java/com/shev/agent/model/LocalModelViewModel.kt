@@ -44,6 +44,7 @@ data class LocalModelUiState(
     val error: String? = null,
     val busy: Boolean = false,
     val ready: Boolean = false,
+    val useOmniRoute: Boolean = false,
     val backendName: String? = null,
     val deviceSummary: String = "Проверяю характеристики устройства…",
     val prompt: String = "",
@@ -66,6 +67,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private var downloadJob: Job? = null
 
     init {
+        val gatewayPreferences = application.getSharedPreferences("shev_omniroute", Application.MODE_PRIVATE)
+        mutableState.update { it.copy(useOmniRoute = gatewayPreferences.getBoolean("use_for_primary_chat", false)) }
         viewModelScope.launch(Dispatchers.IO) {
             val deviceSummary = DeviceDiagnostics.summary(getApplication())
             val available = store.findVerifiedModel() != null
@@ -93,6 +96,15 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 }
             }
         }
+    }
+
+    fun setOmniRoutePrimaryEnabled(enabled: Boolean) {
+        getApplication<Application>()
+            .getSharedPreferences("shev_omniroute", Application.MODE_PRIVATE)
+            .edit()
+            .putBoolean("use_for_primary_chat", enabled)
+            .apply()
+        mutableState.update { it.copy(useOmniRoute = enabled) }
     }
 
     fun setPrompt(value: String) {
