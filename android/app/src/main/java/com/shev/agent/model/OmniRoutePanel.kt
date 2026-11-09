@@ -40,6 +40,7 @@ import kotlinx.coroutines.withContext
 fun OmniRoutePanel(viewModel: LocalModelViewModel) {
     val agentState by viewModel.state.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val preferences = remember(context) {
         context.getSharedPreferences("shev_omniroute", android.content.Context.MODE_PRIVATE)
     }
@@ -91,6 +92,9 @@ fun OmniRoutePanel(viewModel: LocalModelViewModel) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            TextButton(
+                onClick = { uriHandler.openUri("https://github.com/shevgti/SheV-Agent-Public/blob/main/docs/OMNIROUTE_TAILSCALE_SETUP.md") }
+            ) { Text("Инструкция по бесплатной настройке") }
             OutlinedTextField(
                 value = baseUrl,
                 onValueChange = { baseUrl = it; markSettingsDirty() },
