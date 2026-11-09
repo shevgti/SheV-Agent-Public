@@ -22,10 +22,8 @@ data class OpenAiCompatibleConfig(
         require(baseUrl.length <= MAX_BASE_URL_LENGTH) { "Адрес сервера слишком длинный." }
         val uri = runCatching { URI(baseUrl.trim()) }
             .getOrElse { throw IllegalArgumentException("Некорректный адрес сервера.") }
-        val scheme = uri.scheme?.lowercase()
-        val loopback = uri.host?.lowercase() in setOf("localhost", "127.0.0.1", "::1")
-        require(scheme == "https" || (scheme == "http" && loopback)) {
-            "Для удалённого подключения требуется HTTPS. HTTP разрешён только для localhost."
+        require(uri.scheme.equals("https", ignoreCase = true)) {
+            "Для подключения с телефона требуется HTTPS."
         }
         require(!uri.host.isNullOrBlank() && uri.userInfo == null && uri.query == null && uri.fragment == null) {
             "Адрес должен содержать только хост и путь без логина, параметров и фрагмента."
