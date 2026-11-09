@@ -61,10 +61,10 @@ class ConversationContextBuilderTest {
 
         val result = ConversationContextBuilder.build(history, "Текущий запрос")
 
-        assertFalse(result.contains("Запись-1"))
-        assertFalse(result.contains("Запись-4"))
-        assertTrue(result.contains("Запись-5"))
-        assertTrue(result.contains("Запись-16"))
+        assertFalse(result.contains("Пользователь: Запись-1\\n"))
+        assertFalse(result.contains("SheV: Запись-4\\n"))
+        assertTrue(result.contains("Пользователь: Запись-5"))
+        assertTrue(result.contains("SheV: Запись-16"))
         assertTrue(result.contains("Текущий запрос"))
     }
 
