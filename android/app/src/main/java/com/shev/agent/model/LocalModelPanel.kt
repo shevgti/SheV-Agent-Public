@@ -440,20 +440,18 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            if (updateInfo != null) {
+                Button(
+                    onClick = { showUpdateDialog = true },
+                    enabled = !downloadingUpdate,
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF16834A), contentColor = Color.White)
+                ) { Text("Обновить") }
+            }
             IconButton(onClick = { showSettings = true }) {
                 Text("⚙", style = MaterialTheme.typography.titleLarge)
             }
         }
 
-        if (updateInfo != null) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Button(
-                    onClick = { showUpdateDialog = true },
-                    enabled = !downloadingUpdate,
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF16834A), contentColor = Color.White)
-                ) { Text("● Обновить · ${updateInfo!!.versionName}") }
-            }
-        }
 
         if (!state.ready && !state.useOmniRoute) {
             Card(
