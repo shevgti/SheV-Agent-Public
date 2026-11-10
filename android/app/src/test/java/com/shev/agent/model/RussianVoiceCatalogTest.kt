@@ -19,6 +19,13 @@ class RussianVoiceCatalogTest {
         assertEquals(RussianVoiceGender.MALE, RussianVoiceCatalog.classify("Russian-Male-3"))
     }
 
+    @Test fun networkAndOfflineProfilesOfSameVoiceShareIdentity() {
+        assertEquals(
+            RussianVoiceCatalog.identityKey("ru-ru-x-ruf-network"),
+            RussianVoiceCatalog.identityKey("ru-ru-x-ruf-local")
+        )
+    }
+
     @Test fun doesNotGuessGenderFromUnknownIds() {
         assertEquals(RussianVoiceGender.UNKNOWN, RussianVoiceCatalog.classify("ru-RU-standard"))
         assertEquals(RussianVoiceGender.UNKNOWN, RussianVoiceCatalog.classify("voice-ru-001"))
