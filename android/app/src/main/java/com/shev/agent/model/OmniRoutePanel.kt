@@ -109,8 +109,8 @@ fun OmniRoutePanel(viewModel: LocalModelViewModel) {
                 onValueChange = { modelId = it; markSettingsDirty() },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                label = { Text("Модель / маршрут") },
-                supportingText = { Text("Можно указать ID модели или настроенный маршрут OmniRoute, например auto.") }
+                label = { Text("Модели по приоритету") },
+                supportingText = { Text("Можно указать несколько ID через запятую: сначала основная, затем резервные.") }
             )
             OutlinedTextField(
                 value = token,
