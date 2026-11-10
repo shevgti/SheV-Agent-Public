@@ -32,14 +32,16 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.1"
 
       - name: Run unit tests
         working-directory: android
-        run: ./gradlew --no-daemon testDebugUnitTest
+        run: gradle --no-daemon testDebugUnitTest
 
       - name: Assemble debug APK
         working-directory: android
-        run: ./gradlew --no-daemon assembleDebug
+        run: gradle --no-daemon assembleDebug
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
