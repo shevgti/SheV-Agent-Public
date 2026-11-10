@@ -1012,7 +1012,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val completion = withTimeout(180_000L) { completed.await() }
                 collector.cancel()
                 collector = null
-                val turn = completion.getAsJsonObject("turn")
+                val turn = completion.get("turn")?.takeIf { it.isJsonObject }?.asJsonObject
                 val status = turn?.get("status")?.asString.orEmpty()
                 if (status.isNotBlank() && status != "completed") {
                     throw IllegalStateException(turn.get("error")?.asString ?: "Codex завершил ход со статусом $status.")
