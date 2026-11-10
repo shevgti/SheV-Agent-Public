@@ -14,6 +14,7 @@ import com.shev.agent.tools.AgentToolExecutor
 import com.shev.agent.tools.AgentToolRegistry
 import com.shev.agent.tools.AgentToolRequest
 import com.shev.agent.tools.AgentToolResult
+import com.shev.agent.tools.LocalTimeTool
 import com.shev.agent.tools.SuspendingAgentTool
 import com.shev.agent.tools.ToolInputField
 import com.shev.agent.tools.ToolInputSchema
