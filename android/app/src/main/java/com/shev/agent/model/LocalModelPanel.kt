@@ -771,7 +771,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(if (approval.kind.contains("command")) "Codex хочет выполнить команду:" else "Codex хочет изменить файлы:")
                     Text(approval.detail.take(2400), style = MaterialTheme.typography.bodySmall)
-                    Text("Действие ограничено папкой рабочего пространства SheV Agent.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Проверь команду, рабочую папку и пути. Разрешение выдаётся только после твоего нажатия.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
             confirmButton = {
