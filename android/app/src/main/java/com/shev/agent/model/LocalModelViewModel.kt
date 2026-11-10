@@ -304,9 +304,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 .edit().putBoolean("use_for_primary_chat", false).apply()
             getApplication<Application>().getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
+            getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
         }
         mutableState.update {
             it.copy(
+                useCodex = if (enabled) false else it.useCodex,
                 useOmniRoute = enabled,
                 useOpenAI = if (enabled) false else it.useOpenAI,
                 useGemini = if (enabled) false else it.useGemini,
@@ -328,9 +331,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 .edit().putBoolean("use_for_primary_chat", false).apply()
             getApplication<Application>().getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
+            getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
         }
         mutableState.update {
             it.copy(
+                useCodex = if (enabled) false else it.useCodex,
                 useOpenAI = enabled,
                 useOmniRoute = if (enabled) false else it.useOmniRoute,
                 useGemini = if (enabled) false else it.useGemini,
@@ -343,7 +349,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         getApplication<Application>().getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
             .edit().putBoolean("use_for_primary_chat", enabled).apply()
         if (enabled) {
-            listOf("shev_gemini", "shev_openai", "shev_omniroute").forEach { name ->
+            listOf("shev_gemini", "shev_openai", "shev_omniroute", "shev_codex").forEach { name ->
                 getApplication<Application>().getSharedPreferences(name, Application.MODE_PRIVATE)
                     .edit().putBoolean("use_for_primary_chat", false).apply()
             }
@@ -351,6 +357,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         mutableState.update {
             it.copy(
                 useOpenRouter = enabled,
+                useCodex = if (enabled) false else it.useCodex,
                 useGemini = if (enabled) false else it.useGemini,
                 useOpenAI = if (enabled) false else it.useOpenAI,
                 useOmniRoute = if (enabled) false else it.useOmniRoute
@@ -368,15 +375,25 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 .edit().putBoolean("use_for_primary_chat", false).apply()
             getApplication<Application>().getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
+            getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
         }
-        mutableState.update { it.copy(useGemini = enabled, useOpenAI = if (enabled) false else it.useOpenAI, useOmniRoute = if (enabled) false else it.useOmniRoute, useOpenRouter = if (enabled) false else it.useOpenRouter) }
+        mutableState.update { it.copy(useCodex = if (enabled) false else it.useCodex, useGemini = enabled, useOpenAI = if (enabled) false else it.useOpenAI, useOmniRoute = if (enabled) false else it.useOmniRoute, useOpenRouter = if (enabled) false else it.useOpenRouter) }
     }
 
     /** Cancels the active answer so voice input can take priority. */
     fun cancelResponse() {
+        val client = codexClient
+        val threadId = codexActiveThreadId
+        val turnId = codexActiveTurnId
+        if (client != null && threadId != null && turnId != null) {
+            viewModelScope.launch(Dispatchers.IO) {
+                runCatching { client.interrupt(threadId, turnId) }
+            }
+        }
         responseJob?.cancel()
         responseJob = null
-        mutableState.update { it.copy(busy = false, error = null) }
+        mutableState.update { it.copy(busy = false, error = null, streamingMessage = null) }
     }
 
     fun setPrompt(value: String) {
@@ -409,12 +426,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
 
     /** Select the on-device Gemma backend and disable mutually exclusive cloud providers. */
     fun selectLocalModel() {
-        listOf("shev_gemini", "shev_openai", "shev_openrouter", "shev_omniroute").forEach { name ->
+        listOf("shev_gemini", "shev_openai", "shev_openrouter", "shev_omniroute", "shev_codex").forEach { name ->
             getApplication<Application>().getSharedPreferences(name, Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
         }
         mutableState.update {
-            it.copy(useGemini = false, useOpenAI = false, useOpenRouter = false, useOmniRoute = false)
+            it.copy(useCodex = false, useGemini = false, useOpenAI = false, useOpenRouter = false, useOmniRoute = false)
         }
         if (mutableState.value.verified) {
             launchAgent()
@@ -1267,9 +1284,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     override fun onCleared() {
         val active = runtime
         runtime = null
-        if (active != null) {
+        val codex = codexClient
+        codexClient = null
+        if (active != null || codex != null) {
             CoroutineScope(Dispatchers.IO).launch {
-                try { active.close() } catch (_: Throwable) { /* best-effort native cleanup */ }
+                try { active?.close() } catch (_: Throwable) { /* best-effort native cleanup */ }
+                try { codex?.close() } catch (_: Throwable) { /* best-effort process cleanup */ }
             }
         }
         super.onCleared()
