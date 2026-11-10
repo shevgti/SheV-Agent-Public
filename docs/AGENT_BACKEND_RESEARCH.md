@@ -75,3 +75,28 @@ The Android app remains the source of truth for its own capabilities and permiss
 - Do not claim that GitHub hosting, a public repository, or a free model catalog provides free inference.
 - Never store OAuth credentials in source control, GitHub Actions logs, Android preferences in plaintext, or an unauthenticated remote endpoint.
 - Never silently downgrade an action requiring approval.
+
+## Newly verified Android-native route: official Codex in Termux
+
+The Termux community fork is now marked end-of-life because Codex has become an official Termux package:
+- Official Termux package recipe: https://github.com/termux/termux-packages/tree/master/packages/codex
+- Community fork migration notice: https://github.com/DioNanos/codex-termux
+- The current Termux package recipe builds the upstream OpenAI Codex source for Android ARM64; it is not a pirated binary or a third-party model proxy.
+- Installation from the Termux package repository is documented as `pkg install codex`; then `codex login` can start the supported ChatGPT sign-in flow. Actual model access still depends on account entitlement/rate limits. Codex CLI README currently recommends Plus, Pro, Business, Edu or Enterprise for plan login; do not assume Free can use the CLI just because the first-party Codex product has limited Free availability.
+- The community package `@mmmbuto/codex-cli-termux` is EOL; do not base a new integration on it. The separate `codex-vl` fork offers extra `/remote-control` commands but is experimental and community-maintained; do not bundle it into SheV.
+
+This creates a useful fallback to a cloud VM: run Codex locally on the user's Android ARM64 phone inside Termux. It is likely the lowest-infrastructure prototype, but it still needs an Android-to-Termux bridge and battery/background reliability testing.
+
+### Android bridge feasibility
+- Codex App Server supports stdio JSONL as its default transport. Its WebSocket transport is currently described as experimental/unsupported in official docs; never expose an unauthenticated listener on the LAN.
+- Prototype a local Termux-side Node.js bridge that spawns `codex app-server --listen stdio://`, exposes only a loopback HTTP/WebSocket endpoint with a random per-install bearer token, and translates SheV's thread/turn/event/approval operations to the app-server JSON-RPC protocol.
+- SheV Android app should connect only to loopback, store the random token in Android Keystore, and verify the bridge process is alive. If Termux is stopped by Android battery management, show reconnect status and retain Gemma fallback.
+- Alternative app-to-Termux invocation via Android RUN_COMMAND permission must be opt-in and explicitly documented. Never attempt to read Termux's private files or OAuth token from the SheV app.
+- First test manually in Termux before implementing Android UI. The user must install Termux from a trusted official source and run the official package installation/login once; ChatGPT credentials remain inside Codex's own credential store.
+
+### Updated implementation priority
+1. Test official Termux Codex install/login on the user's Poco device (no API key).
+2. Start app-server over stdio and validate thread/start, turn/start, streamed events, cancel, and approval request/response.
+3. Write the minimal local Node bridge and test reconnect/auth.
+4. Add SheV Android connector to that bridge.
+5. Consider OpenHands Agent Canvas only if multi-agent orchestration becomes necessary; it is too heavy for the initial phone-only setup.
