@@ -13,10 +13,10 @@ class OpenAiResponsesClientContractTest {
             add("properties", JsonObject().apply {
                 add("query", JsonObject().apply {
                     addProperty("type", "string")
-                    addProperty("enum", "now")
+                    add("enum", com.google.gson.JsonArray().apply { add("now") })
                 })
             })
-            addProperty("required", "query")
+            add("required", com.google.gson.JsonArray().apply { add("query") })
             addProperty("additionalProperties", false)
         }
         val json = OpenAiFunctionTool(
