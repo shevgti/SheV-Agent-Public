@@ -161,6 +161,25 @@ fun OmniRoutePanel(viewModel: LocalModelViewModel) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            var agentToolsEnabled by remember { mutableStateOf(preferences.getBoolean("enable_agent_tools", false)) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Разрешить инструменты SheV", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "Модель сможет запросить только безопасные локальные инструменты: время, список возможностей и черновик поручения. Запросы проверяет локальный исполнитель.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = agentToolsEnabled,
+                    onCheckedChange = { enabled ->
+                        agentToolsEnabled = enabled
+                        preferences.edit().putBoolean("enable_agent_tools", enabled).apply()
+                    },
+                    enabled = credentialsSaved && !busy
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = {
