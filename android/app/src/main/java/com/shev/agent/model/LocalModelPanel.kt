@@ -91,6 +91,18 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     val currentVoiceMode by rememberUpdatedState(voiceConversation)
     val chatListState = rememberLazyListState()
 
+    val femaleVoices = remember(availableVoices) {
+        availableVoices.filter { RussianVoiceCatalog.classify(it.name) == RussianVoiceGender.FEMALE }
+            .distinctBy { RussianVoiceCatalog.identityKey(it.name) }.take(5)
+    }
+    val maleVoices = remember(availableVoices) {
+        availableVoices.filter { RussianVoiceCatalog.classify(it.name) == RussianVoiceGender.MALE }
+            .distinctBy { RussianVoiceCatalog.identityKey(it.name) }.take(5)
+    }
+    val unclassifiedVoices = remember(availableVoices) {
+        availableVoices.filter { RussianVoiceCatalog.classify(it.name) == RussianVoiceGender.UNKNOWN }
+    }
+
     LaunchedEffect(Unit) {
         UpdateCheckWorker.schedule(context)
         checkingUpdate = true
@@ -351,26 +363,70 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     if (showVoicePicker) {
         AlertDialog(
             onDismissRequest = { showVoicePicker = false },
-            title = { Text("Голос SheV") },
+            title = { Text("Голоса SheV · 5 женских и 5 мужских") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     if (availableVoices.isEmpty()) {
-                        Text("Русские голоса не найдены. Установи дополнительные голоса в настройках синтеза речи Android.")
+                        Text("Русские голоса не найдены. Установи русские голосовые пакеты в настройках синтеза речи Android.")
                     } else {
-                        availableVoices.forEach { voice ->
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(voice.name, style = MaterialTheme.typography.bodyMedium)
-                                    Text(if (voice.isNetworkConnectionRequired) "Требуется интернет" else "Работает офлайн", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                TextButton(onClick = {
+                        Text("ЖЕНСКИЕ · ${femaleVoices.size}/5", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        if (femaleVoices.isEmpty()) {
+                            Text("Служба синтеза речи не предоставила голоса с распознаваемой женской меткой.")
+                        }
+                        femaleVoices.forEachIndexed { index, voice ->
+                            VoiceChoiceRow(
+                                label = "Женский голос ${index + 1}",
+                                voice = voice,
+                                selected = selectedVoiceName == voice.name,
+                                onPreview = {
+                                    speech.voice = voice
+                                    speech.speak("Привет! Я SheV. Давай поговорим.", TextToSpeech.QUEUE_FLUSH, null, "shev-voice-preview")
+                                },
+                                onSelect = {
                                     speech.voice = voice
                                     selectedVoiceName = voice.name
                                     context.getSharedPreferences("shev_voice", android.content.Context.MODE_PRIVATE)
                                         .edit().putString("tts_voice", voice.name).apply()
+                                }
+                            )
+                        }
+                        Text("МУЖСКИЕ · ${maleVoices.size}/5", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        if (maleVoices.isEmpty()) {
+                            Text("Служба синтеза речи не предоставила голоса с распознаваемой мужской меткой.")
+                        }
+                        maleVoices.forEachIndexed { index, voice ->
+                            VoiceChoiceRow(
+                                label = "Мужской голос ${index + 1}",
+                                voice = voice,
+                                selected = selectedVoiceName == voice.name,
+                                onPreview = {
+                                    speech.voice = voice
                                     speech.speak("Привет! Я SheV. Давай поговорим.", TextToSpeech.QUEUE_FLUSH, null, "shev-voice-preview")
-                                }) { Text(if (selectedVoiceName == voice.name) "Выбран" else "Слушать") }
-                            }
+                                },
+                                onSelect = {
+                                    speech.voice = voice
+                                    selectedVoiceName = voice.name
+                                    context.getSharedPreferences("shev_voice", android.content.Context.MODE_PRIVATE)
+                                        .edit().putString("tts_voice", voice.name).apply()
+                                }
+                            )
+                        }
+                        if (femaleVoices.size < 5 || maleVoices.size < 5) {
+                            Text(
+                                "Сейчас служба Android отдала не все 10 вариантов. Для недостающих голосов открой настройки голосовых данных и установи дополнительные русские голоса. Приложение не будет выдавать один и тот же голос за разные.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (unclassifiedVoices.isNotEmpty()) {
+                            Text(
+                                "Ещё ${unclassifiedVoices.size} голосов без метки пола не включены в подборку, чтобы не подписывать их неправильно.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
@@ -584,5 +640,31 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                 shape = CircleShape
             ) { Text("➤") }
         }
+    }
+}
+
+
+@androidx.compose.runtime.Composable
+private fun VoiceChoiceRow(
+    label: String,
+    voice: Voice,
+    selected: Boolean,
+    onPreview: () -> Unit,
+    onSelect: () -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+            Text(
+                if (voice.isNetworkConnectionRequired) "Требуется интернет" else "Работает офлайн",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        TextButton(onClick = onPreview) { Text("Слушать") }
+        TextButton(onClick = onSelect) { Text(if (selected) "Выбран" else "Выбрать") }
     }
 }
