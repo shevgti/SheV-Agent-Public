@@ -50,9 +50,15 @@ jobs:
         run: |
           VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           CODE=$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts)
-          test "v$VERSION" = "$GITHUB_REF_NAME"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            RELEASE_TAG="${{ inputs.release_tag }}"
+          else
+            RELEASE_TAG="$GITHUB_REF_NAME"
+          fi
+          test "v$VERSION" = "$RELEASE_TAG"
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "APP_VERSION_CODE=$CODE" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
 
       - name: Run unit tests
         working-directory: android
@@ -74,7 +80,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: SheV Agent ${{ env.APP_VERSION }}
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
           body: |
             SheV Agent Android update ${{ env.APP_VERSION }}.
 
