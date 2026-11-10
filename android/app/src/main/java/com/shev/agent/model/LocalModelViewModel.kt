@@ -50,6 +50,7 @@ data class LocalModelUiState(
     val useOmniRoute: Boolean = false,
     val useOpenAI: Boolean = false,
     val useGemini: Boolean = false,
+    val useOpenRouter: Boolean = false,
     val backendName: String? = null,
     val deviceSummary: String = "Проверяю характеристики устройства…",
     val prompt: String = "",
@@ -75,10 +76,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val gatewayPreferences = application.getSharedPreferences("shev_omniroute", Application.MODE_PRIVATE)
         val openAiPreferences = application.getSharedPreferences("shev_openai", Application.MODE_PRIVATE)
         val geminiPreferences = application.getSharedPreferences("shev_gemini", Application.MODE_PRIVATE)
-        val useGemini = geminiPreferences.getBoolean("use_for_primary_chat", false)
-        val useOpenAI = !useGemini && openAiPreferences.getBoolean("use_for_primary_chat", false)
-        val useOmniRoute = !useGemini && !useOpenAI && gatewayPreferences.getBoolean("use_for_primary_chat", false)
-        mutableState.update { it.copy(useOmniRoute = useOmniRoute, useOpenAI = useOpenAI, useGemini = useGemini) }
+        val openRouterPreferences = application.getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
+        val useOpenRouter = openRouterPreferences.getBoolean("use_for_primary_chat", false)
+        val useGemini = !useOpenRouter && geminiPreferences.getBoolean("use_for_primary_chat", false)
+        val useOpenAI = !useOpenRouter && !useGemini && openAiPreferences.getBoolean("use_for_primary_chat", false)
+        val useOmniRoute = !useOpenRouter && !useGemini && !useOpenAI && gatewayPreferences.getBoolean("use_for_primary_chat", false)
+        mutableState.update { it.copy(useOmniRoute = useOmniRoute, useOpenAI = useOpenAI, useGemini = useGemini, useOpenRouter = useOpenRouter) }
         viewModelScope.launch(Dispatchers.IO) {
             val deviceSummary = DeviceDiagnostics.summary(getApplication())
             val available = store.findVerifiedModel() != null
@@ -146,6 +149,25 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 useOpenAI = enabled,
                 useOmniRoute = if (enabled) false else it.useOmniRoute,
                 useGemini = if (enabled) false else it.useGemini
+            )
+        }
+    }
+
+    fun setOpenRouterPrimaryEnabled(enabled: Boolean) {
+        getApplication<Application>().getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
+            .edit().putBoolean("use_for_primary_chat", enabled).apply()
+        if (enabled) {
+            listOf("shev_gemini", "shev_openai", "shev_omniroute").forEach { name ->
+                getApplication<Application>().getSharedPreferences(name, Application.MODE_PRIVATE)
+                    .edit().putBoolean("use_for_primary_chat", false).apply()
+            }
+        }
+        mutableState.update {
+            it.copy(
+                useOpenRouter = enabled,
+                useGemini = if (enabled) false else it.useGemini,
+                useOpenAI = if (enabled) false else it.useOpenAI,
+                useOmniRoute = if (enabled) false else it.useOmniRoute
             )
         }
     }
@@ -390,6 +412,10 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             return
         }
 
+        if (mutableState.value.useOpenRouter) {
+            sendViaOpenRouter(message)
+            return
+        }
         if (mutableState.value.useGemini) {
             sendViaGemini(message)
             return
@@ -559,6 +585,79 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 dao.updateConversationMessageStatus(userMessageId, ConversationContextBuilder.STATUS_FAILED)
                 mutableState.update {
                     it.copy(error = failure.message ?: failure.javaClass.simpleName + ": ошибка удалённой модели.")
+                }
+            } finally {
+                mutableState.update { it.copy(busy = false) }
+            }
+        }
+    }
+
+    /** Direct OpenRouter API route using the OpenAI-compatible chat completions endpoint. */
+    private fun sendViaOpenRouter(message: String) {
+        mutableState.update {
+            it.copy(prompt = "", busy = true, error = null, messages = it.messages + "Вы: $message")
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val userMessageId = UUID.randomUUID().toString()
+            try {
+                val preferences = getApplication<Application>().getSharedPreferences(
+                    "shev_openrouter",
+                    Application.MODE_PRIVATE
+                )
+                val modelId = preferences.getString("model_id", "openrouter-2.5-flash") ?: "openrouter-2.5-flash"
+                val encryptedToken = preferences.getString("encrypted_token", null)
+                    ?: throw IllegalStateException("Сначала сохрани API-ключ OpenRouter в настройках.")
+                val token = OpenRouterSecretCipher.decrypt(encryptedToken)
+                require(token.isNotBlank()) { "Сохранённый ключ OpenRouter пустой. Введи его заново." }
+
+                val history = dao.getRecentCompletedConversationMessages(CONTEXT_HISTORY_LIMIT).asReversed()
+                    .map { it.copy(content = LocalMessageCipher.decrypt(it.content)) }
+                val summaryRead = conversationStateRepository.readSummary()
+                val rollingSummary = (summaryRead as? ConversationSummaryRead.Ready)?.plaintext
+                val summaryCheckpoint = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
+                val promptWithContext = ConversationContextBuilder.build(
+                    chronologicalHistory = history,
+                    currentMessage = message,
+                    rollingSummary = rollingSummary,
+                    summaryThroughMessageId = summaryCheckpoint
+                )
+                dao.appendConversationMessage(
+                    ConversationMessageEntity(
+                        id = userMessageId,
+                        role = ConversationContextBuilder.ROLE_USER,
+                        content = LocalMessageCipher.encrypt(message),
+                        status = ConversationContextBuilder.STATUS_PENDING,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+                val answer = OpenAiCompatibleClient(
+                    OpenAiCompatibleConfig(
+                        "https://openrouter.ai/api/v1",
+                        modelId,
+                        token,
+                        "OpenRouter"
+                    )
+                ).complete(
+                    promptWithContext,
+                    systemInstruction = "Ты — SheV, личный AI-помощник пользователя. Всегда отвечай по-русски. Это удалённый режим: у тебя нет прямого доступа к телефону, локальным файлам или действиям приложения. Не утверждай, что выполнил действие. Не раскрывай API-ключи и секреты."
+                )
+                dao.appendConversationMessage(
+                    ConversationMessageEntity(
+                        id = UUID.randomUUID().toString(),
+                        role = ConversationContextBuilder.ROLE_ASSISTANT,
+                        content = LocalMessageCipher.encrypt(answer),
+                        status = ConversationContextBuilder.STATUS_COMPLETE,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+                dao.updateConversationMessageStatus(userMessageId, ConversationContextBuilder.STATUS_COMPLETE)
+                mutableState.update { it.copy(messages = it.messages + "SheV: $answer") }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                dao.updateConversationMessageStatus(userMessageId, ConversationContextBuilder.STATUS_FAILED)
+                mutableState.update {
+                    it.copy(error = failure.message ?: failure.javaClass.simpleName + ": ошибка OpenRouter API.")
                 }
             } finally {
                 mutableState.update { it.copy(busy = false) }
