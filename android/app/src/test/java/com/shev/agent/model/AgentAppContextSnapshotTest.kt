@@ -15,7 +15,8 @@ class AgentAppContextSnapshotTest {
             versionCode = 17,
             localModelVerified = true,
             runtimeReady = true,
-            activeBackend = "LiteRT-LM",
+            selectedPrimaryBackend = "Локальная модель",
+            localRuntimeBackend = "GPU",
             deviceSummary = "Устройство: тестовое",
             omniRouteEnabled = false,
             omniRouteConfigured = true,
@@ -37,6 +38,8 @@ class AgentAppContextSnapshotTest {
         val json = Gson().toJson(snapshot)
         assertTrue(json.contains("\"appName\":\"SheV Agent\""))
         assertTrue(json.contains("\"runtimeReady\":true"))
+        assertTrue(json.contains("\"selectedPrimaryBackend\":\"Локальная модель\""))
+        assertTrue(json.contains("\"localRuntimeBackend\":\"GPU\""))
         assertTrue(json.contains("\"deviceSummary\":\"Устройство: тестовое\""))
         assertTrue(json.contains("agent.current_local_time"))
         assertTrue(json.contains("android.permission.RECORD_AUDIO"))
