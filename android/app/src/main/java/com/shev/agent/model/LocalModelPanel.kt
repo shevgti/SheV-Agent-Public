@@ -7,6 +7,7 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.speech.tts.Voice
 import android.speech.tts.UtteranceProgressListener
 import android.os.Handler
 import android.os.Build
@@ -71,6 +72,9 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var listening by remember { mutableStateOf(false) }
     var voiceConversation by remember { mutableStateOf(false) }
     var voiceStatus by remember { mutableStateOf("Нажми на микрофон, чтобы начать голосовой диалог") }
+    var availableVoices by remember { mutableStateOf<List<Voice>>(emptyList()) }
+    var selectedVoiceName by remember { mutableStateOf(context.getSharedPreferences("shev_voice", android.content.Context.MODE_PRIVATE).getString("tts_voice", null)) }
+    var showVoicePicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<AppUpdate?>(null) }
     var updateMessage by remember { mutableStateOf<String?>(null) }
@@ -143,6 +147,9 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Нет разрешения на микрофон."
                     else -> "Голосовой ввод остановлен (код $error)."
                 }
+                if (currentVoiceMode && error in setOf(SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT, SpeechRecognizer.ERROR_RECOGNIZER_BUSY)) {
+                    Handler(Looper.getMainLooper()).postDelayed({ if (currentVoiceMode) beginListening() }, 900L)
+                }
             }
             override fun onResults(results: android.os.Bundle?) {
                 listening = false
@@ -187,6 +194,16 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     DisposableEffect(recognizer, speech) {
         speech.language = Locale("ru", "RU")
         speech.setSpeechRate(1.0f)
+        val russianVoices = speech.voices.orEmpty()
+            .filter { it.locale.language.equals("ru", ignoreCase = true) }
+            .sortedBy { it.name.lowercase(Locale.ROOT) }
+        availableVoices = russianVoices
+        val savedVoice = selectedVoiceName?.let { name -> russianVoices.firstOrNull { it.name == name } }
+        if (savedVoice != null) speech.voice = savedVoice
+        else if (russianVoices.isNotEmpty()) {
+            speech.voice = russianVoices.first()
+            selectedVoiceName = russianVoices.first().name
+        }
         speech.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) = Unit
             override fun onError(utteranceId: String?) {
@@ -227,6 +244,10 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OmniRoutePanel(viewModel)
+                    TextButton(onClick = { showVoicePicker = true }) {
+                        Text("Голос озвучивания · ${selectedVoiceName ?: "системный"}")
+                    }
+                    Text("Выбери один из русских голосов, установленных в службе синтеза речи Android.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("Версия приложения: ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
                     TextButton(
                         enabled = !checkingUpdate && !downloadingUpdate,
@@ -262,6 +283,38 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             },
             confirmButton = { TextButton(onClick = { showSettings = false }) { Text("Закрыть") }
             }
+        )
+    }
+
+
+    if (showVoicePicker) {
+        AlertDialog(
+            onDismissRequest = { showVoicePicker = false },
+            title = { Text("Голос SheV") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (availableVoices.isEmpty()) {
+                        Text("Русские голоса не найдены. Установи дополнительные голоса в настройках синтеза речи Android.")
+                    } else {
+                        availableVoices.forEach { voice ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(voice.name, style = MaterialTheme.typography.bodyMedium)
+                                    Text(if (voice.isNetworkConnectionRequired) "Требуется интернет" else "Работает офлайн", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                TextButton(onClick = {
+                                    speech.voice = voice
+                                    selectedVoiceName = voice.name
+                                    context.getSharedPreferences("shev_voice", android.content.Context.MODE_PRIVATE)
+                                        .edit().putString("tts_voice", voice.name).apply()
+                                    speech.speak("Привет! Я SheV. Давай поговорим.", TextToSpeech.QUEUE_FLUSH, null, "shev-voice-preview")
+                                }) { Text(if (selectedVoiceName == voice.name) "Выбран" else "Слушать") }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showVoicePicker = false }) { Text("Готово") } }
         )
     }
 
