@@ -56,3 +56,12 @@ gradle connectedDebugAndroidTest
 - SpeechRecognizer is configured for ru-RU and requests offline recognition preference; actual offline support depends on the speech provider installed on the phone.
 - This is a source update only. The new Compose screen has not yet been compiled, tested on an emulator or installed on a physical phone.
 - UI reference notes: AnythingLLM Mobile, PocketPal AI and Open WebUI are recorded in docs/UX-SHELL-2026-11-07.md.
+
+
+## Local-only primary AI mode — 2026-11-10
+- The primary chat is locked to on-device Gemma 4 E2B IT. Existing OmniRoute, OpenAI, Gemini and OpenRouter primary-provider flags are cleared at startup and are not used by the send path.
+- The settings screen no longer asks the user to configure cloud AI keys. It explains that the primary chat is local-only.
+- If a verified Gemma model is already installed, the app attempts to initialize the local runtime automatically on launch.
+- After a model download or verified import, the app attempts to initialize the runtime automatically.
+- This does not remove the first-run model requirement: Gemma weights are approximately 2.58 GB and must be downloaded or imported. Internet is needed for the initial download; inference is on-device afterward.
+- CI and real-device inference must pass before this is called a working release. Local model performance depends on available RAM, thermal state and device backend.
