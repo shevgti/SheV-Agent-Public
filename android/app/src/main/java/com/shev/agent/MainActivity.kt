@@ -1,6 +1,11 @@
 package com.shev.agent
 
 import android.os.Bundle
+import android.os.Build
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.ViewModelProvider
@@ -20,6 +25,11 @@ import com.shev.agent.model.LocalModelViewModel
  * kept out of the first screen; they are not part of the initial chat experience.
  */
 class MainActivity : ComponentActivity() {
+    private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        getSharedPreferences("shev_agent_permissions", MODE_PRIVATE).edit()
+            .putBoolean("initial_prompt_completed", true).apply()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Keep database initialization so the encrypted conversation history remains available.
@@ -47,5 +57,25 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        requestEssentialPermissionsOnFirstLaunch()
+    }
+
+    // Android runtime permissions are requested on first launch, not during APK installation.
+    // Only ask for microphone (voice chat) and notifications (update/status alerts).
+    private fun requestEssentialPermissionsOnFirstLaunch() {
+        val prefs = getSharedPreferences("shev_agent_permissions", MODE_PRIVATE)
+        if (prefs.getBoolean("initial_prompt_completed", false)) return
+        val required = mutableListOf(Manifest.permission.RECORD_AUDIO)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            required += Manifest.permission.POST_NOTIFICATIONS
+        }
+        val missing = required.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) {
+            prefs.edit().putBoolean("initial_prompt_completed", true).apply()
+            return
+        }
+        window.decorView.post { permissionLauncher.launch(missing.toTypedArray()) }
     }
 }
