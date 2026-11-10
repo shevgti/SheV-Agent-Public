@@ -96,6 +96,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var showSettings by remember { mutableStateOf(false) }
     val agentTeamPrefs = remember(context) { context.getSharedPreferences("shev_agent_team", android.content.Context.MODE_PRIVATE) }
     var enabledAgentRoles by remember { mutableStateOf(agentTeamPrefs.getStringSet("enabled_roles", null)?.toSet() ?: setOf("shev_researcher", "shev_planner", "shev_engineer", "shev_reviewer")) }
+    var enabledAgentSkills by remember { mutableStateOf(agentTeamPrefs.getStringSet("enabled_skills", null)?.toSet() ?: SheVAgentModelFactory.DEFAULT_SKILLS) }
     var showGatewaySettings by remember { mutableStateOf(false) }
     var showOpenAISettings by remember { mutableStateOf(false) }
     var showGeminiSettings by remember { mutableStateOf(false) }
@@ -350,6 +351,34 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                                 }
                             }
                             Text("Активно: ${enabledAgentRoles.size} из 4", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Навыки SheV", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Навыки добавляют рабочие инструкции агенту, не загружают отдельные модели и не требуют API.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            listOf(
+                                "research" to ("Исследование" to "Факты, источники и проверка сведений"),
+                                "coding" to ("Разработка" to "Android, Kotlin, архитектура и тесты"),
+                                "planning" to ("Планирование" to "Этапы, зависимости и критерии готовности"),
+                                "quality" to ("Контроль качества" to "Безопасность, ошибки и регрессии")
+                            ).forEach { (id, info) ->
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(info.first, fontWeight = FontWeight.Medium)
+                                        Text(info.second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Checkbox(
+                                        checked = id in enabledAgentSkills,
+                                        onCheckedChange = { checked ->
+                                            val updated = if (checked) enabledAgentSkills + id else enabledAgentSkills - id
+                                            enabledAgentSkills = updated
+                                            agentTeamPrefs.edit().putStringSet("enabled_skills", updated).apply()
+                                        }
+                                    )
+                                }
+                            }
+                            Text("Включено: ${enabledAgentSkills.size} из 4", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
