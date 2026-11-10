@@ -133,7 +133,7 @@ internal class CodexAppServerClient(
         withTimeout(timeoutMillis) {
             events.first { event ->
                 event.get("method")?.asString == "account/login/completed" &&
-                    event.getAsJsonObject("params")?.get("loginId")?.asString == loginId
+                    event.getAsJsonObject("params")?.get("loginId")?.asString?.let { it == loginId } != false
             }.getAsJsonObject("params")
         }
 
