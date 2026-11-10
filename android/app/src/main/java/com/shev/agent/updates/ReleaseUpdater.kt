@@ -110,33 +110,54 @@ object ReleaseUpdater {
     }
 
     private fun download(url: String, destination: File) {
-        val connection = openTrustedConnection(url, 60_000)
-        try {
-            check(connection.responseCode in 200..299) {
-                "Ошибка скачивания APK: HTTP ${connection.responseCode}"
-            }
-            val length = connection.contentLengthLong
-            require(length < 0L || length <= MAX_APK_BYTES) { "APK превышает допустимый размер." }
-            var copied = 0L
-            connection.inputStream.use { input ->
-                destination.outputStream().use { output ->
-                    val buffer = ByteArray(64 * 1024)
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        copied += count
-                        require(copied <= MAX_APK_BYTES) { "APK превышает допустимый размер." }
-                        output.write(buffer, 0, count)
+        var lastFailure: Throwable? = null
+        repeat(DOWNLOAD_ATTEMPTS) { attempt ->
+            try {
+                destination.delete()
+                val connection = openTrustedConnection(url, DOWNLOAD_READ_TIMEOUT_MS)
+                try {
+                    check(connection.responseCode in 200..299) {
+                        "Ошибка скачивания APK: HTTP ${connection.responseCode}"
                     }
-                    output.flush()
+                    val length = connection.contentLengthLong
+                    require(length < 0L || length <= MAX_APK_BYTES) {
+                        "APK превышает допустимый размер."
+                    }
+                    var copied = 0L
+                    connection.inputStream.use { input ->
+                        destination.outputStream().use { output ->
+                            val buffer = ByteArray(128 * 1024)
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                copied += count
+                                require(copied <= MAX_APK_BYTES) {
+                                    "APK превышает допустимый размер."
+                                }
+                                output.write(buffer, 0, count)
+                            }
+                            output.flush()
+                        }
+                    }
+                    require(copied > 0L && (length < 0L || copied == length)) {
+                        "Загрузка APK прервалась: получено ${copied} из ${length} байт."
+                    }
+                    return
+                } finally {
+                    connection.disconnect()
+                }
+            } catch (failure: Throwable) {
+                destination.delete()
+                lastFailure = failure
+                if (attempt + 1 < DOWNLOAD_ATTEMPTS) {
+                    Thread.sleep(RETRY_DELAY_MS * (attempt + 1))
                 }
             }
-        } catch (failure: Throwable) {
-            destination.delete()
-            throw failure
-        } finally {
-            connection.disconnect()
         }
+        throw IllegalStateException(
+            "Не удалось скачать обновление после $DOWNLOAD_ATTEMPTS попыток. Проверь VPN/сеть и повтори загрузку.",
+            lastFailure
+        )
     }
 
     /** Manually follows a small number of redirects and validates every hop before connecting. */
@@ -187,6 +208,9 @@ object ReleaseUpdater {
     }
 
     private const val MAX_REDIRECTS = 5
+    private const val DOWNLOAD_ATTEMPTS = 3
+    private const val DOWNLOAD_READ_TIMEOUT_MS = 180_000
+    private const val RETRY_DELAY_MS = 1_500L
     private const val MAX_APK_BYTES = 200L * 1024L * 1024L
     private const val MAX_CHECKSUM_CHARS = 1024
     private val REDIRECT_STATUS_CODES = setOf(301, 302, 303, 307, 308)
