@@ -108,11 +108,36 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     val recognizer = remember(context) {
         if (SpeechRecognizer.isRecognitionAvailable(context)) SpeechRecognizer.createSpeechRecognizer(context) else null
     }
-    val speech = remember(context) { TextToSpeech(context) { status ->
-        if (status == TextToSpeech.SUCCESS) {
-            // The voice is selected explicitly so Russian is preferred when installed on the device.
+    val speech = remember(context) {
+        lateinit var engine: TextToSpeech
+        engine = TextToSpeech(context) { status ->
+            Handler(Looper.getMainLooper()).post {
+                if (status == TextToSpeech.SUCCESS) {
+                    engine.language = Locale("ru", "RU")
+                    val russianVoices = engine.voices.orEmpty()
+                        .filter { it.locale.language.equals("ru", ignoreCase = true) }
+                        .sortedBy { it.name.lowercase(Locale.ROOT) }
+                    availableVoices = russianVoices
+                    val savedVoice = selectedVoiceName?.let { name ->
+                        russianVoices.firstOrNull { it.name == name }
+                    }
+                    if (savedVoice != null) {
+                        engine.voice = savedVoice
+                    } else if (russianVoices.isNotEmpty()) {
+                        engine.voice = russianVoices.first()
+                        selectedVoiceName = russianVoices.first().name
+                    }
+                    if (russianVoices.isEmpty()) {
+                        voiceStatus = "Русские голоса не найдены. Проверь службу синтеза речи Android."
+                    }
+                } else {
+                    availableVoices = emptyList()
+                    voiceStatus = "Не удалось запустить синтез речи Android (код $status)."
+                }
+            }
         }
-    } }
+        engine
+    }
 
     fun speechIntent() = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -196,18 +221,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     }
 
     DisposableEffect(recognizer, speech) {
-        speech.language = Locale("ru", "RU")
         speech.setSpeechRate(1.0f)
-        val russianVoices = speech.voices.orEmpty()
-            .filter { it.locale.language.equals("ru", ignoreCase = true) }
-            .sortedBy { it.name.lowercase(Locale.ROOT) }
-        availableVoices = russianVoices
-        val savedVoice = selectedVoiceName?.let { name -> russianVoices.firstOrNull { it.name == name } }
-        if (savedVoice != null) speech.voice = savedVoice
-        else if (russianVoices.isNotEmpty()) {
-            speech.voice = russianVoices.first()
-            selectedVoiceName = russianVoices.first().name
-        }
         speech.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) = Unit
             override fun onError(utteranceId: String?) {
