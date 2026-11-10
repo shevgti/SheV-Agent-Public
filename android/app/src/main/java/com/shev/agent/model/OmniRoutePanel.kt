@@ -166,6 +166,25 @@ fun OmniRoutePanel(viewModel: LocalModelViewModel) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Разрешить инструменты SheV", style = MaterialTheme.typography.bodyMedium)
                     Text(
+                        "Модель сможет запросить локальные инструменты: время, список возможностей и черновик поручения. Если шлюз не поддерживает Responses API, чат автоматически продолжит работу без инструментов.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = agentToolsEnabled,
+                    onCheckedChange = { enabled ->
+                        agentToolsEnabled = enabled
+                        preferences.edit().putBoolean("enable_agent_tools", enabled).apply()
+                    },
+                    enabled = credentialsSaved && !busy
+                )
+            }
+            var agentToolsEnabled by remember { mutableStateOf(preferences.getBoolean("enable_agent_tools", false)) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Разрешить инструменты SheV", style = MaterialTheme.typography.bodyMedium)
+                    Text(
                         "Модель сможет запросить только безопасные локальные инструменты: время, список возможностей и черновик поручения. Запросы проверяет локальный исполнитель.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
