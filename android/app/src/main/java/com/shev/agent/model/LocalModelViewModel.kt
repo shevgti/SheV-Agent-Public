@@ -144,7 +144,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         try {
             val details = withContext(Dispatchers.IO) {
                 val client = ensureCodexClient()
-                var account = client.accountRead(false).getAsJsonObject("account")
+                var account = client.accountRead(false).get("account")
+                    ?.takeIf { it.isJsonObject }?.asJsonObject
                 if (account?.get("type")?.asString != "chatgpt") {
                     val login = client.beginChatGptLogin()
                     val loginId = login.get("loginId")?.asString
@@ -156,7 +157,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     if (completed.get("success")?.asBoolean != true) {
                         throw IllegalStateException(completed.get("error")?.asString ?: "Вход через ChatGPT не завершён.")
                     }
-                    account = client.accountRead(true).getAsJsonObject("account")
+                    account = client.accountRead(true).get("account")
+                        ?.takeIf { it.isJsonObject }?.asJsonObject
                 }
                 val accountDetails = account
                     ?: throw IllegalStateException("Codex не вернул данные аккаунта ChatGPT.")
@@ -165,7 +167,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 val email = accountDetails.get("email")?.asString.orEmpty()
                 val planType = accountDetails.get("planType")?.asString.orEmpty()
-                val models = client.listModels().getAsJsonArray("data")
+                val models = client.listModels().get("data")
+                    ?.takeIf { it.isJsonArray }?.asJsonArray
                 val selectedModel = models?.mapNotNull { item ->
                     item.takeIf { it.isJsonObject }?.asJsonObject
                 }?.firstOrNull { it.get("isDefault")?.asBoolean == true }
@@ -886,7 +889,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             try {
                 val preferences = getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
                 val client = ensureCodexClient()
-                val account = client.accountRead(false).getAsJsonObject("account")
+                val account = client.accountRead(false).get("account")
+                    ?.takeIf { it.isJsonObject }?.asJsonObject
                 require(account?.get("type")?.asString == "chatgpt") {
                     "Сначала подключи ChatGPT в настройках Codex."
                 }
