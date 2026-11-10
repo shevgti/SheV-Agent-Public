@@ -127,12 +127,26 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     LaunchedEffect(Unit) {
         UpdateCheckWorker.schedule(context)
         checkingUpdate = true
+        var lastError: Exception? = null
         try {
-            updateInfo = AppUpdater.check(BuildConfig.VERSION_CODE)
-            if (updateInfo != null) showUpdateDialog = true
-            updateMessage = if (updateInfo == null) "Установлена последняя версия" else null
-        } catch (error: Exception) {
-            updateMessage = "Не удалось проверить обновления: ${error.message ?: "ошибка сети"}"
+            // GitHub may briefly be unreachable while the app is opening (mobile data/VPN wake-up).
+            // Retry automatically so the user does not need to enter Settings and press Check.
+            repeat(3) { attempt ->
+                try {
+                    val found = AppUpdater.check(BuildConfig.VERSION_CODE)
+                    updateInfo = found
+                    if (found != null) showUpdateDialog = true
+                    updateMessage = if (found == null) "Установлена последняя версия" else null
+                    lastError = null
+                    return@repeat
+                } catch (error: Exception) {
+                    lastError = error
+                    if (attempt < 2) kotlinx.coroutines.delay(3000L * (attempt + 1))
+                }
+            }
+            if (updateInfo == null && lastError != null) {
+                updateMessage = "Не удалось проверить обновления: ${lastError?.message ?: "ошибка сети"}"
+            }
         } finally {
             checkingUpdate = false
         }
