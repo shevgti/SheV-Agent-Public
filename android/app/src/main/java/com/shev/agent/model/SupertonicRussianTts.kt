@@ -177,7 +177,7 @@ class SupertonicRussianTts(private val context: Context) {
         }
     }
 
-    private fun playAudio(samples: FloatArray, sampleRate: Int) {
+    private suspend fun playAudio(samples: FloatArray, sampleRate: Int) {
         check(samples.isNotEmpty()) { "Модель не сгенерировала аудио." }
         val pcm = ShortArray(samples.size) { index ->
             (samples[index].coerceIn(-1f, 1f) * Short.MAX_VALUE).toInt().toShort()
@@ -205,10 +205,16 @@ class SupertonicRussianTts(private val context: Context) {
             .setTransferMode(AudioTrack.MODE_STATIC)
             .build()
         try {
-            val written = track.write(pcm, 0, pcm.size, AudioTrack.WRITE_BLOCKING)
-            check(written == pcm.size) { "Не удалось подготовить аудиопоток." }
+            var offset = 0
+            while (offset < pcm.size) {
+                currentCoroutineContext().ensureActive()
+                val written = track.write(pcm, offset, pcm.size - offset, AudioTrack.WRITE_BLOCKING)
+                check(written > 0) { "Не удалось подготовить аудиопоток." }
+                offset += written
+            }
             track.play()
             while (track.playState == AudioTrack.PLAYSTATE_PLAYING && track.playbackHeadPosition < pcm.size) {
+                currentCoroutineContext().ensureActive()
                 Thread.sleep(20)
             }
         } finally {
