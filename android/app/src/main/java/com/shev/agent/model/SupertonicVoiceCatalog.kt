@@ -12,6 +12,7 @@ data class SupertonicSpeechStyle(
 )
 
 object SupertonicVoiceCatalog {
+    val expressionTags = setOf("<laugh>", "<breath>", "<surprise>", "<sigh>", "<scream>", "<throatclear>", "<sad>", "<angry>", "<cough>", "<yawn>")
     // Supertonic-3 voice-style assets are F1-F5 for sid 0-4 and M1-M5 for sid 5-9.
     val speakers = (0 until 10).map { id ->
         if (id < 5) {
