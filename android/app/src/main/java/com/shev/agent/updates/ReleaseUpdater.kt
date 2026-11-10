@@ -14,9 +14,9 @@ import java.security.MessageDigest
 data class ReleaseInfo(val version: String, val apkUrl: String, val checksumUrl: String)
 
 object ReleaseUpdater {
-    const val RELEASE_REPOSITORY = "shevgti/SheV-Agent-Releases"
-    private const val APK_ASSET = "shev-agent-release.apk"
-    private const val CHECKSUM_ASSET = "shev-agent-release.apk.sha256"
+    const val RELEASE_REPOSITORY = "shevgti/SheV-Agent-Public"
+    private const val APK_ASSET = "app-debug.apk"
+    private const val CHECKSUM_ASSET = "app-debug.apk.sha256"
 
     suspend fun check(currentVersion: String): ReleaseInfo? = withContext(Dispatchers.IO) {
         val connection = (URL("https://api.github.com/repos/$RELEASE_REPOSITORY/releases/latest")
