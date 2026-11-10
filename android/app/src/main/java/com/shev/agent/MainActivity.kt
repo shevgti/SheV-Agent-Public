@@ -26,17 +26,28 @@ import com.shev.agent.update.UpdateCheckWorker
  * kept out of the first screen; they are not part of the initial chat experience.
  */
 class MainActivity : ComponentActivity() {
-    private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        getSharedPreferences("shev_agent_permissions", MODE_PRIVATE).edit()
-            .putBoolean("initial_prompt_completed", true).apply()
-        UpdateCheckWorker.schedule(applicationContext)
-    }
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            getSharedPreferences(PERMISSIONS_PREFS, MODE_PRIVATE).edit()
+                .putBoolean(KEY_NOTIFICATION_PROMPTED, true).apply()
+            requestMicrophonePermissionIfNeeded()
+            UpdateCheckWorker.schedule(applicationContext)
+        }
+
+    private val microphonePermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            getSharedPreferences(PERMISSIONS_PREFS, MODE_PRIVATE).edit()
+                .putBoolean(KEY_MICROPHONE_PROMPTED, true).apply()
+            UpdateCheckWorker.schedule(applicationContext)
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(16, 19, 24)
         window.navigationBarColor = android.graphics.Color.rgb(16, 19, 24)
         window.decorView.systemUiVisibility = 0
+        // Create the high-importance update channel before requesting notification permission.
+        UpdateCheckWorker.ensureNotificationChannel(applicationContext)
         // Keep database initialization so the encrypted conversation history remains available.
         SheVAgentDatabaseProvider.get(applicationContext)
         val chatViewModel = ViewModelProvider(this)[LocalModelViewModel::class.java]
@@ -62,27 +73,54 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        requestEssentialPermissionsOnFirstLaunch()
+        requestFirstLaunchPermissions()
         // Run one update check immediately and keep the 15-minute periodic check scheduled.
         UpdateCheckWorker.schedule(applicationContext)
     }
 
-    // Android runtime permissions are requested on first launch, not during APK installation.
-    // Only ask for microphone (voice chat) and notifications (update/status alerts).
-    private fun requestEssentialPermissionsOnFirstLaunch() {
-        val prefs = getSharedPreferences("shev_agent_permissions", MODE_PRIVATE)
-        if (prefs.getBoolean("initial_prompt_completed", false)) return
-        val required = mutableListOf(Manifest.permission.RECORD_AUDIO)
+    /**
+     * Ask for update notifications first on the first app launch after install.
+     * Android owns the system dialog and the user makes the final choice.
+     */
+    private fun requestFirstLaunchPermissions() {
+        val prefs = getSharedPreferences(PERMISSIONS_PREFS, MODE_PRIVATE)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            required += Manifest.permission.POST_NOTIFICATIONS
+            val granted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted && !prefs.getBoolean(KEY_NOTIFICATION_PROMPTED, false)) {
+                window.decorView.post {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+                return
+            }
+            if (granted) prefs.edit().putBoolean(KEY_NOTIFICATION_PROMPTED, true).apply()
+        } else {
+            // Android 12 and below do not have the POST_NOTIFICATIONS runtime permission.
+            prefs.edit().putBoolean(KEY_NOTIFICATION_PROMPTED, true).apply()
         }
-        val missing = required.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (missing.isEmpty()) {
-            prefs.edit().putBoolean("initial_prompt_completed", true).apply()
+        requestMicrophonePermissionIfNeeded()
+    }
+
+    private fun requestMicrophonePermissionIfNeeded() {
+        val prefs = getSharedPreferences(PERMISSIONS_PREFS, MODE_PRIVATE)
+        val granted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            prefs.edit().putBoolean(KEY_MICROPHONE_PROMPTED, true).apply()
             return
         }
-        window.decorView.post { permissionLauncher.launch(missing.toTypedArray()) }
+        if (!prefs.getBoolean(KEY_MICROPHONE_PROMPTED, false)) {
+            window.decorView.post {
+                microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+    }
+
+    private companion object {
+        const val PERMISSIONS_PREFS = "shev_agent_permissions"
+        const val KEY_NOTIFICATION_PROMPTED = "notification_prompt_completed"
+        const val KEY_MICROPHONE_PROMPTED = "microphone_prompt_completed"
     }
 }
