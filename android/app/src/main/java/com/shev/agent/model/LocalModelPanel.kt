@@ -77,6 +77,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     var listening by remember { mutableStateOf(false) }
+    var assistantSpeaking by remember { mutableStateOf(false) }
     var voiceConversation by remember { mutableStateOf(false) }
     var voiceStatus by remember { mutableStateOf("Нажми на микрофон, чтобы начать голосовой диалог") }
     var availableVoices by remember { mutableStateOf<List<Voice>>(emptyList()) }
@@ -209,11 +210,22 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             voiceStatus = "Нужно разрешение на микрофон."
             return
         }
-        voiceStatus = "Слушаю тебя…"
+        if (listening) return
+        voiceStatus = if (assistantSpeaking) "Слушаю тебя, можно перебить ответ…" else "Слушаю тебя…"
         listening = true
         engine.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: android.os.Bundle?) { listening = true }
-            override fun onBeginningOfSpeech() { listening = true; voiceStatus = "Слушаю тебя…" }
+            override fun onBeginningOfSpeech() {
+                listening = true
+                if (currentVoiceMode && assistantSpeaking) {
+                    speech.stop()
+                    neuralTts.stopPlayback()
+                    assistantSpeaking = false
+                    voiceStatus = "Ты перебил ответ. Слушаю тебя…"
+                } else {
+                    voiceStatus = "Слушаю тебя…"
+                }
+            }
             override fun onRmsChanged(rmsdB: Float) = Unit
             override fun onBufferReceived(buffer: ByteArray?) = Unit
             override fun onEndOfSpeech() { listening = false; voiceStatus = "Распознаю…" }
@@ -278,7 +290,8 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             }
             override fun onDone(utteranceId: String?) {
                 Handler(Looper.getMainLooper()).post {
-                    if (currentVoiceMode) beginListening()
+                    assistantSpeaking = false
+                    if (currentVoiceMode && !listening) beginListening()
                 }
             }
         })
@@ -307,22 +320,28 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                 speech.stop()
                 if (neuralTtsInstalled) {
                     neuralTtsPlaying = true
+                    assistantSpeaking = true
+                    if (currentVoiceMode) beginListening()
                     try {
                         neuralTts.speak(
                             answer,
                             selectedNeuralSpeaker,
                             SupertonicVoiceCatalog.styles.firstOrNull { it.id == selectedNeuralEmotion }?.expressionTag
                         )
-                        voiceStatus = "Ответ завершён"
-                        if (currentVoiceMode) beginListening()
+                        if (assistantSpeaking) voiceStatus = "Ответ завершён"
+                        assistantSpeaking = false
+                        if (currentVoiceMode && !listening) beginListening()
                     } catch (error: Exception) {
                         // Do not start a second engine after a neural playback failure:
                         // it may already have emitted part of the answer.
                         voiceStatus = "Ошибка нейроголоса: ${error.message ?: "не удалось воспроизвести ответ"}."
                     } finally {
+                        assistantSpeaking = false
                         neuralTtsPlaying = false
                     }
                 } else {
+                    assistantSpeaking = true
+                    if (currentVoiceMode) beginListening()
                     speech.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "shev-answer-$messageIndex")
                 }
             }
