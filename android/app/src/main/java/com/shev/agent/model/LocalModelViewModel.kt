@@ -74,15 +74,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private var responseJob: Job? = null
 
     init {
-        val gatewayPreferences = application.getSharedPreferences("shev_omniroute", Application.MODE_PRIVATE)
-        val openAiPreferences = application.getSharedPreferences("shev_openai", Application.MODE_PRIVATE)
-        val geminiPreferences = application.getSharedPreferences("shev_gemini", Application.MODE_PRIVATE)
-        val openRouterPreferences = application.getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
-        val useOpenRouter = openRouterPreferences.getBoolean("use_for_primary_chat", false)
-        val useGemini = !useOpenRouter && geminiPreferences.getBoolean("use_for_primary_chat", false)
-        val useOpenAI = !useOpenRouter && !useGemini && openAiPreferences.getBoolean("use_for_primary_chat", false)
-        val useOmniRoute = !useOpenRouter && !useGemini && !useOpenAI && gatewayPreferences.getBoolean("use_for_primary_chat", false)
-        mutableState.update { it.copy(useOmniRoute = useOmniRoute, useOpenAI = useOpenAI, useGemini = useGemini, useOpenRouter = useOpenRouter) }
+        // Strict local-first mode: disable all previously configured cloud providers.
+        // The primary chat never sends prompts to Gemini, OpenAI, OpenRouter or OmniRoute.
+        listOf("shev_omniroute", "shev_openai", "shev_gemini", "shev_openrouter").forEach { name ->
+            application.getSharedPreferences(name, Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val deviceSummary = DeviceDiagnostics.summary(getApplication())
             val available = store.findVerifiedModel() != null
@@ -98,6 +95,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         messages = history.map(::formatMessage)
                     )
                 }
+                // If a verified model is already installed, start it automatically on app launch.
+                if (available) launchAgent()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -213,6 +212,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     mutableState.update { it.copy(progress = update.fraction ?: 0f) }
                 }
                 mutableState.update { it.copy(verified = true, progress = null) }
+                // A completed, SHA-256-verified download is ready for local inference.
+                launchAgent()
             } catch (cancelled: CancellationException) {
                 mutableState.update { it.copy(progress = null) }
                 throw cancelled
@@ -270,6 +271,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     mutableState.update { it.copy(progress = update.fraction) }
                 }
                 mutableState.update { it.copy(verified = true, busy = false, progress = null) }
+                launchAgent()
             } catch (cancelled: CancellationException) {
                 mutableState.update { it.copy(busy = false, progress = null) }
                 throw cancelled
@@ -451,37 +453,16 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val message = mutableState.value.prompt.trim()
         if (message.isEmpty() || mutableState.value.busy) return
 
-        val preferences = getApplication<Application>().getSharedPreferences(
-            "shev_omniroute",
-            Application.MODE_PRIVATE
-        )
-        // Device-local facts must not depend on model quality or a remote provider.
+        // Device-local facts do not depend on model quality or a remote provider.
         if (LocalTimeIntentRouter.isCurrentTimeRequest(message)) {
             sendLocalTimeReply(message)
-            return
-        }
-
-        if (mutableState.value.useOpenRouter) {
-            sendViaOpenRouter(message)
-            return
-        }
-        if (mutableState.value.useGemini) {
-            sendViaGemini(message)
-            return
-        }
-        if (mutableState.value.useOpenAI) {
-            sendViaOpenAI(message)
-            return
-        }
-        if (preferences.getBoolean("use_for_primary_chat", false)) {
-            sendViaOmniRoute(message)
             return
         }
 
         val active = runtime
         if (active == null) {
             mutableState.update {
-                it.copy(error = "Локальный агент ещё не запущен. Нажми «Запустить локального агента» или включи OmniRoute для основного чата.")
+                it.copy(error = "Локальный ИИ ещё не запущен. Сначала установи Gemma, затем запусти SheV.")
             }
             return
         }
