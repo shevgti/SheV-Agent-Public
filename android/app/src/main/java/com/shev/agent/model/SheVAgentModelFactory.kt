@@ -55,8 +55,9 @@ object SheVAgentModelFactory {
             name = modelFile.name
         )
 
-    fun createAgent(model: LiteRtLmModel, tools: SheVAgentAdkTools): LlmAgent {
-        val team = specialists.map { specialist ->
+    fun createAgent(model: LiteRtLmModel, tools: SheVAgentAdkTools, enabledSpecialists: Set<String> = specialists.map { it.name }.toSet()): LlmAgent {
+        val activeSpecialists = specialists.filter { it.name in enabledSpecialists }
+        val team = activeSpecialists.map { specialist ->
             LlmAgent(
                 name = specialist.name,
                 model = model,
@@ -76,6 +77,8 @@ object SheVAgentModelFactory {
                 Отвечай на русском языке, ясно и по делу. У тебя есть специалисты:
                 исследователь (shev_researcher), планировщик (shev_planner),
                 инженер-разработчик (shev_engineer) и контролёр качества (shev_reviewer).
+                Доступные в этой сессии специалисты: ${activeSpecialists.joinToString { it.name }}.
+                Не делегируй отключённым специалистам и не пытайся вызвать отсутствующую роль.
                 Делегируй им подходящие части сложных задач через передачу управления агенту.
                 Не запускай всех специалистов для простого вопроса: выбирай только нужных.
                 Для сложного плана попроси планировщика; для программирования — инженера;
