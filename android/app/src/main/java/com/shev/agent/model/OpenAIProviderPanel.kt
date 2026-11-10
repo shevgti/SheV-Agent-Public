@@ -172,9 +172,15 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
                     status = "Проверяю API-ключ и модель…"
                     scope.launch {
                         try {
-                            val models = withContext(Dispatchers.IO) { client().listModels().map { it.id } }
-                            status = if (modelId in models) "OpenAI подключён. Модель $modelId доступна." else
-                                "Ключ принят. Модель $modelId не найдена в списке доступных; проверь её ID и доступ."
+                            // Test the actual chat endpoint rather than GET /models.
+                            // Restricted project keys may be allowed to create responses but not list models.
+                            val testAnswer = withContext(Dispatchers.IO) {
+                                client().complete(
+                                    "Ответь одним словом: подключение работает?",
+                                    "Ты проверяешь соединение. Ответь кратко по-русски."
+                                )
+                            }
+                            status = "Подключение OpenAI работает. Модель $modelId ответила: ${testAnswer.take(120)}"
                         } catch (error: Exception) {
                             status = error.message ?: "Не удалось проверить OpenAI API."
                         } finally { busy = false }
