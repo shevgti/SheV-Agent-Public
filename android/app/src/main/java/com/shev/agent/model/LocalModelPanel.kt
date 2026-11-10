@@ -9,6 +9,7 @@ import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.os.Handler
+import android.os.Build
 import android.os.Looper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -177,6 +178,12 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
         uri?.let(viewModel::importModel)
     }
 
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        updateMessage = if (granted) "Уведомления об обновлениях включены" else "Разрешение на уведомления не выдано"
+    }
+
     DisposableEffect(recognizer, speech) {
         speech.language = Locale("ru", "RU")
         speech.setSpeechRate(1.0f)
@@ -239,6 +246,17 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                             }
                         }
                     ) { Text(if (checkingUpdate) "Проверяю…" else "Проверить обновления") }
+                    TextButton(
+                        onClick = {
+                            if (Build.VERSION.SDK_INT >= 33 &&
+                                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                            ) {
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                updateMessage = "Уведомления об обновлениях уже разрешены"
+                            }
+                        }
+                    ) { Text("Включить уведомления об обновлениях") }
                     updateMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
             },
