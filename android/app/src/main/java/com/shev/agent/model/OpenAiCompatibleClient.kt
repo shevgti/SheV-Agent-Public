@@ -120,17 +120,42 @@ class OpenAiCompatibleClient(
             coroutineContext.ensureActive()
             val status = connection.responseCode
             if (status !in 200..299) {
-                // Do not include response body or headers: they may contain private server details.
-                throw IllegalStateException(
-                    when (status) {
-                        401, 403 -> "Провайдер отклонил токен доступа (HTTP $status)."
-                        404 -> "Эндпоинт не найден (HTTP 404). Проверь адрес /v1."
-                        429 -> "Провайдер временно ограничил запросы (HTTP 429)."
-                        in 500..599 -> "Ошибка сервера провайдера (HTTP $status)."
-                        in 300..399 -> "Перенаправления сервера запрещены для защищённого запроса."
-                        else -> "Запрос к провайдеру отклонён (HTTP $status)."
-                    }
-                )
+                // Read only a small, structured error summary for on-device diagnosis.
+                // Never log response bodies or include request headers/API tokens.
+                val errorBody = runCatching {
+                    connection.errorStream?.use { stream ->
+                        val bytes = ByteArrayOutputStream()
+                        val buffer = ByteArray(1024)
+                        while (bytes.size() < 8_192) {
+                            val count = stream.read(buffer, 0, minOf(buffer.size, 8_192 - bytes.size()))
+                            if (count < 0) break
+                            bytes.write(buffer, 0, count)
+                        }
+                        bytes.toString(Charsets.UTF_8.name())
+                    }.orEmpty()
+                }.getOrDefault("")
+                val parsedError = runCatching {
+                    JsonParser.parseString(errorBody).asJsonObject.getAsJsonObject("error")
+                }.getOrNull()
+                val providerCode = parsedError?.get("code")?.takeIf { it.isJsonPrimitive }?.asString
+                val providerType = parsedError?.get("type")?.takeIf { it.isJsonPrimitive }?.asString
+                val providerMessage = parsedError?.get("message")?.takeIf { it.isJsonPrimitive }?.asString
+                    ?.replace(config.apiToken, "[скрыто]")
+                    ?.replace(Regex("sk-[A-Za-z0-9_-]{12,}"), "[скрытый ключ]")
+                    ?.replace(Regex("\\s+"), " ")
+                    ?.take(240)
+                val detail = listOfNotNull(providerCode, providerType, providerMessage)
+                    .filter { it.isNotBlank() }.distinct().joinToString(" · ")
+                val base = when (status) {
+                    401 -> "OpenAI не принял авторизацию (HTTP 401)."
+                    403 -> "OpenAI запретил запрос (HTTP 403)."
+                    404 -> "Эндпоинт не найден (HTTP 404). Проверь адрес /v1."
+                    429 -> "OpenAI ограничил запросы или квоту (HTTP 429)."
+                    in 500..599 -> "Ошибка сервера провайдера (HTTP $status)."
+                    in 300..399 -> "Перенаправления сервера запрещены для защищённого запроса."
+                    else -> "Запрос к провайдеру отклонён (HTTP $status)."
+                }
+                throw IllegalStateException(if (detail.isBlank()) base else "$base $detail")
             }
             val input = connection.inputStream
             val bytes = input.use { stream ->
