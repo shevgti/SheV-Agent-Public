@@ -171,7 +171,7 @@ class OpenAiLocalToolBridge(private val taskRepository: RoomAgentTaskRepository)
             addProperty("type", "string")
             addProperty("description", description)
             addProperty("maxLength", maxLength)
-            enum?.let { values -> add("enum", com.google.gson.JsonArray().apply { values.forEach(::add) }) }
+            enum?.let { values -> add("enum", com.google.gson.JsonArray().apply { values.forEach { add(it) } }) }
         }
 
     private companion object {
