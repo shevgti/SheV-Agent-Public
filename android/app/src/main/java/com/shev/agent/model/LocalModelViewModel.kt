@@ -16,6 +16,7 @@ import com.shev.agent.data.RoomAgentTaskRepository
 import com.shev.agent.data.LocalMessageCipher
 import com.shev.agent.data.SheVAgentDatabaseProvider
 import com.shev.agent.tools.AgentTool
+import com.shev.agent.tools.LocalTimeTool
 import com.shev.agent.tools.SuspendingAgentTool
 import com.shev.agent.tools.AgentToolDescriptor
 import com.shev.agent.tools.AgentToolExecutionContext
