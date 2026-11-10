@@ -77,11 +77,22 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
                     status = "Открываю безопасный вход ChatGPT…"
                     scope.launch {
                         try {
-                            val session = ChatGptPlanOAuth(context, preferences).authorize()
+                            val oauth = ChatGptPlanOAuth(context, preferences)
+                            val session = oauth.authorize()
                             connected = true
                             accountLabel = session.email
+                            val availableModels = runCatching { oauth.availableModels() }.getOrDefault(emptyList())
+                            val selectedModel = availableModels.firstOrNull { it.id == modelId } ?: availableModels.firstOrNull()
+                            if (selectedModel != null) {
+                                modelId = selectedModel.id
+                                preferences.edit().putString("model_id", selectedModel.id).apply()
+                            }
                             viewModel.setOpenAIPrimaryEnabled(true)
-                            status = "ChatGPT подключён. SheV использует доступ твоего аккаунта без API-ключа."
+                            status = if (selectedModel != null) {
+                                "ChatGPT подключён. Доступная модель: ${selectedModel.displayName}. Первый запрос дополнительно проверит право использования."
+                            } else {
+                                "ChatGPT подключён. Список моделей пока недоступен; проверка права использования произойдёт при первом запросе."
+                            }
                         } catch (error: Exception) {
                             status = error.message ?: "Не удалось подключить ChatGPT."
                         } finally {
