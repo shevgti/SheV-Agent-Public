@@ -27,6 +27,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -333,16 +334,61 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     }
 
     if (showSettings) {
-        AlertDialog(
-            modifier = Modifier.fillMaxSize(),
-            properties = DialogProperties(usePlatformDefaultWidth = false),
+        androidx.compose.ui.window.Dialog(
             onDismissRequest = { showSettings = false },
-            title = { Text("Настройки подключения") },
-            text = {
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background
+            ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth().fillMaxHeight().verticalScroll(rememberScrollState()),
+                    modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Настройки", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = { showSettings = false }) { Text("Закрыть") }
+                    }
+                    Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Приложение", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Установленная версия: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", style = MaterialTheme.typography.bodyMedium)
+                            if (updateInfo != null) {
+                                Text("Доступна версия: ${updateInfo!!.versionName}", color = Color(0xFF16834A), fontWeight = FontWeight.SemiBold)
+                                Button(onClick = { showUpdateDialog = true }, enabled = !downloadingUpdate, modifier = Modifier.fillMaxWidth()) { Text("Скачать и установить") }
+                            } else {
+                                Text("Обновление: ${if (checkingUpdate) "проверяю…" else "последняя версия или нет опубликованного релиза"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            OutlinedButton(
+                                enabled = !checkingUpdate && !downloadingUpdate,
+                                onClick = {
+                                    scope.launch {
+                                        checkingUpdate = true
+                                        updateMessage = null
+                                        try {
+                                            updateInfo = AppUpdater.check(BuildConfig.VERSION_CODE)
+                                            if (updateInfo != null) showUpdateDialog = true
+                                            updateMessage = if (updateInfo == null) "Новых обновлений нет" else "Доступна версия ${updateInfo!!.versionName}"
+                                        } catch (error: Exception) {
+                                            updateMessage = "Не удалось проверить: ${error.message ?: "ошибка сети"}"
+                                        } finally { checkingUpdate = false }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text(if (checkingUpdate) "Проверяю обновления…" else "Проверить обновления") }
+                        }
+                    }
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Выбор основного AI", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -443,35 +489,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                             Text("Включено: ${enabledAgentSkills.size} из 4", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                     }
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Приложение", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Установленная версия: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", style = MaterialTheme.typography.bodyMedium)
-                            if (updateInfo != null) {
-                                Text("Доступна версия: ${updateInfo!!.versionName}", color = Color(0xFF16834A), fontWeight = FontWeight.SemiBold)
-                                Button(onClick = { showUpdateDialog = true }, enabled = !downloadingUpdate, modifier = Modifier.fillMaxWidth()) { Text("Скачать и установить") }
-                            } else {
-                                Text("Обновление: ${if (checkingUpdate) "проверяю…" else "последняя версия или нет опубликованного релиза"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            OutlinedButton(
-                                enabled = !checkingUpdate && !downloadingUpdate,
-                                onClick = {
-                                    scope.launch {
-                                        checkingUpdate = true
-                                        updateMessage = null
-                                        try {
-                                            updateInfo = AppUpdater.check(BuildConfig.VERSION_CODE)
-                                            if (updateInfo != null) showUpdateDialog = true
-                                            updateMessage = if (updateInfo == null) "Новых обновлений нет" else "Доступна версия ${updateInfo!!.versionName}"
-                                        } catch (error: Exception) {
-                                            updateMessage = "Не удалось проверить: ${error.message ?: "ошибка сети"}"
-                                        } finally { checkingUpdate = false }
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text(if (checkingUpdate) "Проверяю обновления…" else "Проверить обновления") }
-                        }
-                    }
+
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Настоящие нейроголоса · Supertonic 3", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -723,10 +741,13 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     ) { Text("Включить уведомления об обновлениях") }
                     updateMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
-            },
-            confirmButton = { TextButton(onClick = { showSettings = false }) { Text("Закрыть") }
+                    Button(
+                        onClick = { showSettings = false },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp)
+                    ) { Text("Назад") }
+                }
             }
-        )
+        }
     }
 
 
