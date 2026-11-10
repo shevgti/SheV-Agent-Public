@@ -166,7 +166,7 @@ fun OmniRoutePanel(viewModel: LocalModelViewModel) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Разрешить инструменты SheV", style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        "Модель сможет запросить только безопасные локальные инструменты: время, список возможностей и черновик поручения. Запросы проверяет локальный исполнитель.",
+                        "Модель сможет запросить локальные инструменты: время, список возможностей и черновик поручения. Если шлюз не поддерживает Responses API, чат автоматически продолжит работу без инструментов.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
