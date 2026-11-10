@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -47,6 +48,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -54,6 +56,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
+import com.shev.agent.BuildConfig
+import com.shev.agent.update.AppUpdate
+import com.shev.agent.update.AppUpdater
+import com.shev.agent.update.UpdateCheckWorker
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 @Composable
@@ -64,8 +71,30 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var voiceConversation by remember { mutableStateOf(false) }
     var voiceStatus by remember { mutableStateOf("Нажми на микрофон, чтобы начать голосовой диалог") }
     var showSettings by remember { mutableStateOf(false) }
+    var updateInfo by remember { mutableStateOf<AppUpdate?>(null) }
+    var updateMessage by remember { mutableStateOf<String?>(null) }
+    var checkingUpdate by remember { mutableStateOf(false) }
+    var downloadingUpdate by remember { mutableStateOf(false) }
+    var updateDownloaded by remember { mutableStateOf(0L) }
+    var updateTotal by remember { mutableStateOf(0L) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val currentVoiceMode by rememberUpdatedState(voiceConversation)
     val chatListState = rememberLazyListState()
+
+    LaunchedEffect(Unit) {
+        UpdateCheckWorker.schedule(context)
+        checkingUpdate = true
+        try {
+            updateInfo = AppUpdater.check(BuildConfig.VERSION_CODE)
+            if (updateInfo != null) showUpdateDialog = true
+            updateMessage = if (updateInfo == null) "Установлена последняя версия" else null
+        } catch (error: Exception) {
+            updateMessage = "Не удалось проверить обновления: ${error.message ?: "ошибка сети"}"
+        } finally {
+            checkingUpdate = false
+        }
+    }
 
     val recognizer = remember(context) {
         if (SpeechRecognizer.isRecognitionAvailable(context)) SpeechRecognizer.createSpeechRecognizer(context) else null
@@ -191,6 +220,26 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OmniRoutePanel(viewModel)
+                    Text("Версия приложения: ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
+                    TextButton(
+                        enabled = !checkingUpdate && !downloadingUpdate,
+                        onClick = {
+                            scope.launch {
+                                checkingUpdate = true
+                                updateMessage = null
+                                try {
+                                    updateInfo = AppUpdater.check(BuildConfig.VERSION_CODE)
+                                    if (updateInfo != null) showUpdateDialog = true
+                                    updateMessage = if (updateInfo == null) "Установлена последняя версия" else null
+                                } catch (error: Exception) {
+                                    updateMessage = "Ошибка проверки: ${error.message ?: "нет соединения"}"
+                                } finally {
+                                    checkingUpdate = false
+                                }
+                            }
+                        }
+                    ) { Text(if (checkingUpdate) "Проверяю…" else "Проверить обновления") }
+                    updateMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
             },
             confirmButton = { TextButton(onClick = { showSettings = false }) { Text("Закрыть") }
@@ -198,12 +247,64 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
         )
     }
 
+    if (showUpdateDialog && updateInfo != null) {
+        val update = updateInfo!!
+        AlertDialog(
+            onDismissRequest = { if (!downloadingUpdate) showUpdateDialog = false },
+            title = { Text("Доступно обновление ${update.versionName}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(update.notes.lineSequence().firstOrNull { it.isNotBlank() } ?: "Новая версия SheV Agent готова.")
+                    Text("Текущая версия: ${BuildConfig.VERSION_NAME}")
+                    if (downloadingUpdate) {
+                        if (updateTotal > 0L) {
+                            LinearProgressIndicator(
+                                progress = { (updateDownloaded.toFloat() / updateTotal.toFloat()).coerceIn(0f, 1f) },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Text("Загружено ${(updateDownloaded * 100L / updateTotal).toInt()}%")
+                        } else {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                    updateMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = !downloadingUpdate,
+                    onClick = {
+                        scope.launch {
+                            downloadingUpdate = true
+                            updateMessage = null
+                            try {
+                                val started = AppUpdater.downloadAndInstall(context, update) { done, total ->
+                                    updateDownloaded = done
+                                    updateTotal = total
+                                }
+                                if (started) showUpdateDialog = false
+                                else updateMessage = "Разреши SheV Agent устанавливать приложения в настройках Android и повтори."
+                            } catch (error: Exception) {
+                                updateMessage = "Ошибка обновления: ${error.message ?: "не удалось скачать APK"}"
+                            } finally {
+                                downloadingUpdate = false
+                            }
+                        }
+                    }
+                ) { Text(if (downloadingUpdate) "Загрузка…" else "Скачать и установить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUpdateDialog = false }, enabled = !downloadingUpdate) { Text("Позже") }
+            }
+        )
+    }
+
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        modifier = Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
@@ -223,6 +324,12 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             }
             IconButton(onClick = { showSettings = true }) {
                 Text("⚙", style = MaterialTheme.typography.titleLarge)
+            }
+        }
+
+        updateInfo?.let { available ->
+            TextButton(onClick = { showUpdateDialog = true }, enabled = !downloadingUpdate) {
+                Text("Доступно обновление SheV · ${available.versionName}")
             }
         }
 
