@@ -61,6 +61,15 @@ internal class CodexAppServerClient(
         val codexHome = java.io.File(appContext.noBackupFilesDir, "codex-home").apply { mkdirs() }
         val workspace = java.io.File(appContext.noBackupFilesDir, "codex-workspace").apply { mkdirs() }
         val cache = appContext.cacheDir.apply { mkdirs() }
+        val configFile = java.io.File(codexHome, "config.toml")
+        if (!configFile.exists()) {
+            configFile.writeText(
+                "approval_policy = \"on-request\"\\n" +
+                    "sandbox_mode = \"workspace-write\"\\n" +
+                    "model_reasoning_effort = \"medium\"\\n",
+                StandardCharsets.UTF_8
+            )
+        }
         val builder = ProcessBuilder(
             binary.absolutePath,
             "--listen", "stdio://",
@@ -142,7 +151,6 @@ internal class CodexAppServerClient(
             JsonObject().apply {
                 addProperty("model", model)
                 addProperty("cwd", workspace.absolutePath)
-                addProperty("approvalPolicy", "on-request")
                 addProperty("sandbox", "workspace-write")
                 addProperty("serviceName", "shev_agent")
                 addProperty(
@@ -175,14 +183,6 @@ internal class CodexAppServerClient(
                     addProperty("type", "text")
                     addProperty("text", text)
                 })
-            })
-            addProperty("approvalPolicy", "on-request")
-            add("sandboxPolicy", JsonObject().apply {
-                addProperty("type", "workspaceWrite")
-                add("writableRoots", com.google.gson.JsonArray().apply {
-                    add(java.io.File(appContext.noBackupFilesDir, "codex-workspace").absolutePath)
-                })
-                addProperty("networkAccess", false)
             })
             addProperty("effort", "medium")
             addProperty("summary", "concise")
