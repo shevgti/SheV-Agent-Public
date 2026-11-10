@@ -19,7 +19,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = configuredVersionCode
-        versionName = "0.3.0"
+        versionName = "0.3.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val githubClientId = providers.gradleProperty("GITHUB_CLIENT_ID")
             .orElse(providers.environmentVariable("GITHUB_CLIENT_ID"))
