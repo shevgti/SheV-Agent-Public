@@ -16,6 +16,7 @@ import com.shev.agent.data.RoomAgentTaskRepository
 import com.shev.agent.data.LocalMessageCipher
 import com.shev.agent.data.SheVAgentDatabaseProvider
 import com.shev.agent.tools.AgentTool
+import com.shev.agent.tools.LocalTimeTool
 import com.shev.agent.tools.SuspendingAgentTool
 import com.shev.agent.tools.AgentToolDescriptor
 import com.shev.agent.tools.AgentToolExecutionContext
@@ -174,6 +175,23 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     )
                     register(
                         AgentToolDescriptor(
+                            id = SheVAgentAdkTools.CURRENT_TIME_TOOL_ID,
+                            title = "Текущее местное время",
+                            description = "Возвращает фактические дату, время и часовой пояс устройства",
+                            capabilities = setOf(AgentCapability.ANALYZE_DATA),
+                            inputSchema = ToolInputSchema(
+                                listOf(ToolInputField(
+                                    "query",
+                                    ToolInputType.STRING,
+                                    required = true,
+                                    maxLength = 8,
+                                    allowedValues = setOf("now")
+                                ))
+                            )
+                        )
+                    )
+                    register(
+                        AgentToolDescriptor(
                             id = SheVAgentAdkTools.CREATE_TASK_DRAFT_ID,
                             title = "Создать черновик поручения",
                             description = "Сохраняет локальное поручение в ожидании подтверждения; ничего не выполняет",
@@ -220,11 +238,17 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         }
                     }
                 }
+                val currentTimeHandler = AgentTool { _ ->
+                    AgentToolResult(true, LocalTimeTool().readCurrentTime())
+                }
                 val executor = AgentToolExecutor(
                     registry,
-                    mapOf(SheVAgentAdkTools.TOOL_ID to AgentTool {
-                        AgentToolResult(true, registry.list().joinToString { it.id })
-                    }),
+                    mapOf(
+                        SheVAgentAdkTools.TOOL_ID to AgentTool {
+                            AgentToolResult(true, registry.list().joinToString { it.id })
+                        },
+                        SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to currentTimeHandler
+                    ),
                     suspendingHandlers = mapOf(
                         SheVAgentAdkTools.CREATE_TASK_DRAFT_ID to taskDraftHandler
                     )
@@ -249,6 +273,55 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    private fun sendLocalTimeReply(message: String) {
+        val answer = LocalTimeTool().readCurrentTime()
+        mutableState.update {
+            it.copy(prompt = "", busy = true, error = null, messages = it.messages + "Вы: $message")
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val userMessageId = UUID.randomUUID().toString()
+            try {
+                dao.appendConversationMessage(
+                    ConversationMessageEntity(
+                        id = userMessageId,
+                        role = ConversationContextBuilder.ROLE_USER,
+                        content = LocalMessageCipher.encrypt(message),
+                        status = ConversationContextBuilder.STATUS_PENDING,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+                dao.appendConversationMessage(
+                    ConversationMessageEntity(
+                        id = UUID.randomUUID().toString(),
+                        role = ConversationContextBuilder.ROLE_ASSISTANT,
+                        content = LocalMessageCipher.encrypt(answer),
+                        status = ConversationContextBuilder.STATUS_COMPLETE,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+                dao.updateConversationMessageStatus(
+                    userMessageId,
+                    ConversationContextBuilder.STATUS_COMPLETE
+                )
+                mutableState.update { it.copy(messages = it.messages + "SheV: $answer") }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                runCatching {
+                    dao.updateConversationMessageStatus(
+                        userMessageId,
+                        ConversationContextBuilder.STATUS_FAILED
+                    )
+                }
+                mutableState.update {
+                    it.copy(error = failure.message ?: "Не удалось получить местное время устройства.")
+                }
+            } finally {
+                mutableState.update { it.copy(busy = false) }
+            }
+        }
+    }
+
     fun send() {
         val message = mutableState.value.prompt.trim()
         if (message.isEmpty() || mutableState.value.busy) return
@@ -257,6 +330,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             "shev_omniroute",
             Application.MODE_PRIVATE
         )
+        // Device-local facts must not depend on model quality or a remote provider.
+        if (LocalTimeIntentRouter.isCurrentTimeRequest(message)) {
+            sendLocalTimeReply(message)
+            return
+        }
+
         if (preferences.getBoolean("use_for_primary_chat", false)) {
             sendViaOmniRoute(message)
             return
