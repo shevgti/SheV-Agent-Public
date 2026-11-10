@@ -344,6 +344,50 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Выбор основного AI", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text("Выбери, кто будет отвечать в основном чате. Активным может быть один основной провайдер.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Google Gemini · облачная модель", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text(if (state.useGemini) "Сейчас выбран Gemini" else "Для работы нужен ключ Google AI Studio.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            OutlinedButton(onClick = { showGeminiSettings = !showGeminiSettings }, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (showGeminiSettings) "Скрыть настройки Gemini" else "Настроить / выбрать Gemini")
+                            }
+                            if (showGeminiSettings) GeminiProviderPanel(viewModel)
+                            androidx.compose.material3.HorizontalDivider()
+                            Text("Gemma · локально на телефоне", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                when {
+                                    state.useGemini || state.useOpenAI || state.useOpenRouter || state.useOmniRoute -> "Сейчас выбран облачный провайдер"
+                                    state.ready -> "Gemma запущена и выбрана для локальной работы"
+                                    state.verified -> "Модель загружена и проверена"
+                                    else -> "Модель ещё не загружена · размер около 2,58 ГБ"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (state.progress != null) {
+                                LinearProgressIndicator(progress = { state.progress ?: 0f }, modifier = Modifier.fillMaxWidth())
+                                Text("Загрузка: ${((state.progress ?: 0f) * 100).toInt()}%")
+                                TextButton(onClick = viewModel::cancelDownload) { Text("Отменить загрузку") }
+                            } else if (!state.verified) {
+                                Button(onClick = viewModel::download, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
+                                    Text(if (state.busy) "Подготовка…" else "Скачать Gemma · 2,58 ГБ")
+                                }
+                                OutlinedButton(onClick = { importLauncher.launch(arrayOf("*/*")) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
+                                    Text("Выбрать файл Gemma")
+                                }
+                            } else {
+                                Button(onClick = viewModel::selectLocalModel, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
+                                    Text(if (state.ready && !state.useGemini && !state.useOpenAI && !state.useOpenRouter && !state.useOmniRoute) "Gemma выбрана" else "Выбрать Gemma")
+                                }
+                                OutlinedButton(onClick = viewModel::deleteModel, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
+                                    Text("Удалить Gemma с телефона")
+                                }
+                            }
+                            Text(state.deviceSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("Команда локальных AI-агентов", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text("Все роли работают на одной загруженной модели. Изменения применятся после перезапуска локальной модели.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -626,16 +670,6 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                                 Text(if (showOpenRouterSettings) "Скрыть настройки OpenRouter" else "Настроить бесплатный OpenRouter")
                             }
                             if (showOpenRouterSettings) OpenRouterProviderPanel(viewModel)
-                        }
-                    }
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Бесплатный AI · Google Gemini", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Начнём с бесплатного лимита Gemini 2.5 Flash. Нужен отдельный ключ Google AI Studio; действуют ограничения бесплатного тарифа.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            OutlinedButton(onClick = { showGeminiSettings = !showGeminiSettings }, modifier = Modifier.fillMaxWidth()) {
-                                Text(if (showGeminiSettings) "Скрыть настройки Gemini" else "Настроить бесплатный Gemini")
-                            }
-                            if (showGeminiSettings) GeminiProviderPanel(viewModel)
                         }
                     }
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
