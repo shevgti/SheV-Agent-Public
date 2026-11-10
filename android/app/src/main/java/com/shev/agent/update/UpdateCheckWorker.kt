@@ -22,7 +22,6 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.shev.agent.BuildConfig
 import com.shev.agent.MainActivity
-import com.shev.agent.R
 import java.util.concurrent.TimeUnit
 
 internal class UpdateCheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
@@ -48,7 +47,7 @@ internal class UpdateCheckWorker(context: Context, params: WorkerParameters) : C
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle("Доступно обновление SheV Agent")
             .setContentText("Новая версия ${update.versionName}. Нажми, чтобы открыть чат и установить её.")
             .setStyle(NotificationCompat.BigTextStyle().bigText("Новая версия SheV Agent ${update.versionName} доступна. Открой приложение, чтобы скачать и установить обновление."))
