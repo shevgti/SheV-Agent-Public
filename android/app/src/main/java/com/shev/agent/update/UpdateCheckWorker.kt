@@ -25,8 +25,9 @@ import com.shev.agent.MainActivity
 import java.util.concurrent.TimeUnit
 
 internal class UpdateCheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result = try {
-        val update = AppUpdater.check(BuildConfig.VERSION_CODE) ?: return Result.success()
+    override suspend fun doWork(): Result {
+        return try {
+            val update = AppUpdater.check(BuildConfig.VERSION_CODE) ?: return Result.success()
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return Result.success()
@@ -57,9 +58,10 @@ internal class UpdateCheckWorker(context: Context, params: WorkerParameters) : C
             .build()
         NotificationManagerCompat.from(applicationContext).notify(NOTIFICATION_ID, notification)
         prefs.edit().putInt(KEY_NOTIFIED, update.versionCode).apply()
-        Result.success()
-    } catch (_: Exception) {
-        Result.retry()
+            Result.success()
+        } catch (_: Exception) {
+            Result.retry()
+        }
     }
 
     companion object {
