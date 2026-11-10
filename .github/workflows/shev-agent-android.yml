@@ -94,7 +94,7 @@ jobs:
 
   android-16-emulator:
     name: Optional Android 16 (API 36) instrumentation smoke test
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_emulator == true }}
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) }}
     needs: build-and-unit-tests
     runs-on: ubuntu-latest
     timeout-minutes: 25
