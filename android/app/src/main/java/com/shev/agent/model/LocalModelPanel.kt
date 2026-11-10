@@ -93,6 +93,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var showGatewaySettings by remember { mutableStateOf(false) }
     var showOpenAISettings by remember { mutableStateOf(false) }
     var showGeminiSettings by remember { mutableStateOf(false) }
+    var showOpenRouterSettings by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<AppUpdate?>(null) }
     var updateMessage by remember { mutableStateOf<String?>(null) }
     var checkingUpdate by remember { mutableStateOf(false) }
@@ -478,6 +479,16 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     }
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Бесплатные AI-модели · OpenRouter", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Единый доступ к бесплатным моделям разных разработчиков. По умолчанию используется автоматический бесплатный маршрутизатор.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            OutlinedButton(onClick = { showOpenRouterSettings = !showOpenRouterSettings }, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (showOpenRouterSettings) "Скрыть настройки OpenRouter" else "Настроить бесплатный OpenRouter")
+                            }
+                            if (showOpenRouterSettings) OpenRouterProviderPanel(viewModel)
+                        }
+                    }
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Бесплатный AI · Google Gemini", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text("Начнём с бесплатного лимита Gemini 2.5 Flash. Нужен отдельный ключ Google AI Studio; действуют ограничения бесплатного тарифа.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             OutlinedButton(onClick = { showGeminiSettings = !showGeminiSettings }, modifier = Modifier.fillMaxWidth()) {
@@ -687,6 +698,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                         voiceConversation && state.busy -> "Готовлю ответ"
                         voiceConversation -> "Голосовой диалог включён"
                         state.useOpenAI -> "ChatGPT · OpenAI"
+                        state.useOpenRouter -> "Бесплатные модели · OpenRouter"
                         state.useOmniRoute -> "Удалённый AI · OmniRoute"
                         state.ready -> "Личный помощник"
                         else -> "Твой AI-помощник"
@@ -708,7 +720,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
         }
 
 
-        if (!state.ready && !state.useOmniRoute && !state.useOpenAI) {
+        if (!state.ready && !state.useOmniRoute && !state.useOpenAI && !state.useGemini && !state.useOpenRouter) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(22.dp),
