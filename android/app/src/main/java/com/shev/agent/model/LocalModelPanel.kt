@@ -66,6 +66,7 @@ import com.shev.agent.update.AppUpdate
 import com.shev.agent.update.AppUpdater
 import com.shev.agent.update.UpdateCheckWorker
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import java.util.Locale
 
 @Composable
@@ -87,6 +88,8 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var selectedNeuralSpeaker by remember { mutableStateOf(voicePrefs.getInt("neural_speaker_id", 0).coerceIn(0, 9)) }
     var selectedNeuralEmotion by remember { mutableStateOf(voicePrefs.getString("neural_emotion_id", "natural") ?: "natural") }
     var neuralTtsPlaying by remember { mutableStateOf(false) }
+    var previewSpeakerId by remember { mutableStateOf<Int?>(null) }
+    var previewJob by remember { mutableStateOf<Job?>(null) }
     var lastSpokenMessageIndex by remember { mutableStateOf(-1) }
     var showVoicePicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
@@ -264,6 +267,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             recognizer?.destroy()
             speech.stop()
             speech.shutdown()
+            previewJob?.cancel()
             neuralTts.release()
         }
     }
@@ -347,13 +351,6 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                         }
                     }
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Голос", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            TextButton(onClick = { showVoicePicker = true }) { Text("Выбрать голос · ${selectedVoiceName ?: "системный"}") }
-                            Text("Русские голоса, доступные в службе синтеза речи Android.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Настоящие нейроголоса · Supertonic 3", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text(
@@ -400,36 +397,106 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                                 }
                             } else {
                                 Text("Пакет установлен · 5 женских + 5 мужских голосов доступны офлайн", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
-                                for (speakerId in 0 until SupertonicRussianTts.SPEAKER_COUNT) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                        Text(
-                                            SupertonicVoiceCatalog.speakers[speakerId].title,
-                                            modifier = Modifier.weight(1f),
-                                            fontWeight = if (selectedNeuralSpeaker == speakerId) FontWeight.SemiBold else FontWeight.Normal
-                                        )
+                                Text("ЖЕНСКИЕ", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                                for (speakerId in 0..4) {
+                                    val speaker = SupertonicVoiceCatalog.speakers[speakerId]
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().heightIn(min = 36.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(speaker.title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = if (selectedNeuralSpeaker == speakerId) FontWeight.Bold else FontWeight.Normal)
+                                        if (selectedNeuralSpeaker == speakerId) Text("✓", color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 6.dp))
                                         TextButton(
-                                            enabled = !neuralTtsPlaying,
                                             onClick = {
-                                                selectedNeuralSpeaker = speakerId
-                                                voicePrefs.edit().putInt("neural_speaker_id", speakerId).apply()
-                                                scope.launch {
+                                                if (previewSpeakerId == speakerId) {
+                                                    previewJob?.cancel()
+                                                    previewJob = null
+                                                    previewSpeakerId = null
+                                                    neuralTtsPlaying = false
+                                                    neuralTtsStatus = "Прослушивание остановлено."
+                                                } else {
+                                                    previewJob?.cancel()
+                                                    previewSpeakerId = speakerId
+                                                    selectedNeuralSpeaker = speakerId
+                                                    voicePrefs.edit().putInt("neural_speaker_id", speakerId).apply()
                                                     neuralTtsPlaying = true
-                                                    neuralTtsStatus = "Генерирую и воспроизвожу: ${SupertonicVoiceCatalog.speakers[speakerId].title}…"
-                                                    try {
-                                                        neuralTts.speak(
-                                                            "Привет! Я ${SupertonicVoiceCatalog.speakers[speakerId].title} приложения SheV. Давай поговорим. Я могу помогать тебе каждый день.",
-                                                            speakerId,
-                                                            SupertonicVoiceCatalog.styles.firstOrNull { it.id == selectedNeuralEmotion }?.expressionTag
-                                                        )
-                                                        neuralTtsStatus = "Прослушивание завершено. Выбрано: ${SupertonicVoiceCatalog.speakers[speakerId].title}."
-                                                    } catch (error: Exception) {
-                                                        neuralTtsStatus = error.message ?: "Не удалось воспроизвести нейроголос."
-                                                    } finally {
-                                                        neuralTtsPlaying = false
+                                                    neuralTtsStatus = "Генерирую: ${speaker.title}…"
+                                                    previewJob = scope.launch {
+                                                        try {
+                                                            neuralTts.speak("Привет! Я ${speaker.title} приложения SheV. Давай поговорим.", speakerId)
+                                                            neuralTtsStatus = "Прослушивание завершено."
+                                                        } catch (error: kotlinx.coroutines.CancellationException) {
+                                                            neuralTtsStatus = "Прослушивание остановлено."
+                                                            throw error
+                                                        } catch (error: Exception) {
+                                                            neuralTtsStatus = error.message ?: "Не удалось воспроизвести голос."
+                                                        } finally {
+                                                            if (previewSpeakerId == speakerId) {
+                                                                previewSpeakerId = null
+                                                                previewJob = null
+                                                                neuralTtsPlaying = false
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
-                                        ) { Text(if (selectedNeuralSpeaker == speakerId) "Выбран · Слушать" else "Слушать") }
+                                        ) { Text(if (previewSpeakerId == speakerId) "Стоп" else "▶") }
+                                        TextButton(onClick = {
+                                            selectedNeuralSpeaker = speakerId
+                                            voicePrefs.edit().putInt("neural_speaker_id", speakerId).apply()
+                                        }) { Text(if (selectedNeuralSpeaker == speakerId) "Выбран" else "Выбрать") }
+                                    }
+                                }
+                                Text("МУЖСКИЕ", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                                for (speakerId in 5..9) {
+                                    val speaker = SupertonicVoiceCatalog.speakers[speakerId]
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().heightIn(min = 36.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(speaker.title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = if (selectedNeuralSpeaker == speakerId) FontWeight.Bold else FontWeight.Normal)
+                                        if (selectedNeuralSpeaker == speakerId) Text("✓", color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 6.dp))
+                                        TextButton(
+                                            onClick = {
+                                                if (previewSpeakerId == speakerId) {
+                                                    previewJob?.cancel()
+                                                    previewJob = null
+                                                    previewSpeakerId = null
+                                                    neuralTtsPlaying = false
+                                                    neuralTtsStatus = "Прослушивание остановлено."
+                                                } else {
+                                                    previewJob?.cancel()
+                                                    previewSpeakerId = speakerId
+                                                    selectedNeuralSpeaker = speakerId
+                                                    voicePrefs.edit().putInt("neural_speaker_id", speakerId).apply()
+                                                    neuralTtsPlaying = true
+                                                    neuralTtsStatus = "Генерирую: ${speaker.title}…"
+                                                    previewJob = scope.launch {
+                                                        try {
+                                                            neuralTts.speak("Привет! Я ${speaker.title} приложения SheV. Давай поговорим.", speakerId)
+                                                            neuralTtsStatus = "Прослушивание завершено."
+                                                        } catch (error: kotlinx.coroutines.CancellationException) {
+                                                            neuralTtsStatus = "Прослушивание остановлено."
+                                                            throw error
+                                                        } catch (error: Exception) {
+                                                            neuralTtsStatus = error.message ?: "Не удалось воспроизвести голос."
+                                                        } finally {
+                                                            if (previewSpeakerId == speakerId) {
+                                                                previewSpeakerId = null
+                                                                previewJob = null
+                                                                neuralTtsPlaying = false
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        ) { Text(if (previewSpeakerId == speakerId) "Стоп" else "▶") }
+                                        TextButton(onClick = {
+                                            selectedNeuralSpeaker = speakerId
+                                            voicePrefs.edit().putInt("neural_speaker_id", speakerId).apply()
+                                        }) { Text(if (selectedNeuralSpeaker == speakerId) "Выбран" else "Выбрать") }
                                     }
                                 }
                                 Text("ЭМОЦИИ И МАНЕРА РЕЧИ", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
@@ -554,81 +621,6 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
         )
     }
 
-
-    if (showVoicePicker) {
-        AlertDialog(
-            onDismissRequest = { showVoicePicker = false },
-            title = { Text("Голоса SheV · 5 женских и 5 мужских") },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    if (availableVoices.isEmpty()) {
-                        Text("Русские голоса не найдены. Установи русские голосовые пакеты в настройках синтеза речи Android.")
-                    } else {
-                        Text("ЖЕНСКИЕ · ${femaleVoices.size}/5", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        if (femaleVoices.isEmpty()) {
-                            Text("Служба синтеза речи не предоставила голоса с распознаваемой женской меткой.")
-                        }
-                        femaleVoices.forEachIndexed { index, voice ->
-                            VoiceChoiceRow(
-                                label = "Женский голос ${index + 1}",
-                                voice = voice,
-                                selected = selectedVoiceName == voice.name,
-                                onPreview = {
-                                    speech.voice = voice
-                                    speech.speak("Привет! Я SheV. Давай поговорим.", TextToSpeech.QUEUE_FLUSH, null, "shev-voice-preview")
-                                },
-                                onSelect = {
-                                    speech.voice = voice
-                                    selectedVoiceName = voice.name
-                                    context.getSharedPreferences("shev_voice", android.content.Context.MODE_PRIVATE)
-                                        .edit().putString("tts_voice", voice.name).apply()
-                                }
-                            )
-                        }
-                        Text("МУЖСКИЕ · ${maleVoices.size}/5", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        if (maleVoices.isEmpty()) {
-                            Text("Служба синтеза речи не предоставила голоса с распознаваемой мужской меткой.")
-                        }
-                        maleVoices.forEachIndexed { index, voice ->
-                            VoiceChoiceRow(
-                                label = "Мужской голос ${index + 1}",
-                                voice = voice,
-                                selected = selectedVoiceName == voice.name,
-                                onPreview = {
-                                    speech.voice = voice
-                                    speech.speak("Привет! Я SheV. Давай поговорим.", TextToSpeech.QUEUE_FLUSH, null, "shev-voice-preview")
-                                },
-                                onSelect = {
-                                    speech.voice = voice
-                                    selectedVoiceName = voice.name
-                                    context.getSharedPreferences("shev_voice", android.content.Context.MODE_PRIVATE)
-                                        .edit().putString("tts_voice", voice.name).apply()
-                                }
-                            )
-                        }
-                        if (femaleVoices.size < 5 || maleVoices.size < 5) {
-                            Text(
-                                "Сейчас служба Android отдала не все 10 вариантов. Для недостающих голосов открой настройки голосовых данных и установи дополнительные русские голоса. Приложение не будет выдавать один и тот же голос за разные.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        if (unclassifiedVoices.isNotEmpty()) {
-                            Text(
-                                "Ещё ${unclassifiedVoices.size} голосов без метки пола не включены в подборку, чтобы не подписывать их неправильно.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showVoicePicker = false }) { Text("Готово") } }
-        )
-    }
 
     if (showUpdateDialog && updateInfo != null) {
         val update = updateInfo!!
