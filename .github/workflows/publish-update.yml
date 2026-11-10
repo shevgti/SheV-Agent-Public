@@ -1,0 +1,101 @@
+name: Publish SheV Agent update
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag must match app version, for example v0.2.0"
+        required: true
+        default: "v0.2.0"
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish installable APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.7.0"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ""
+
+      - name: Restore stable Android debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: shev-agent-debug-keystore-v1
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install "platforms;android-37.0" "build-tools;37.0.0" "platform-tools"
+          if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
+            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+          fi
+
+      - name: Verify release tag matches app version
+        working-directory: android
+        run: |
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          CODE=$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts)
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            RELEASE_TAG="${{ inputs.release_tag }}"
+          else
+            RELEASE_TAG="$GITHUB_REF_NAME"
+          fi
+          test "v$VERSION" = "$RELEASE_TAG"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "APP_VERSION_CODE=$CODE" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+
+      - name: Run unit tests
+        working-directory: android
+        run: gradle testDebugUnitTest --stacktrace
+
+      - name: Assemble APK
+        working-directory: android
+        run: gradle assembleDebug
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release-package
+          cp android/app/build/outputs/apk/debug/app-debug.apk release-package/app-debug.apk
+          cd release-package
+          sha256sum app-debug.apk > app-debug.apk.sha256
+          printf 'version=%s\nversionCode=%s\ncommit=%s\n' "$APP_VERSION" "$APP_VERSION_CODE" "$GITHUB_SHA" > build-info.txt
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: SheV Agent ${{ env.APP_VERSION }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          body: |
+            SheV Agent Android update ${{ env.APP_VERSION }}.
+
+            versionCode: ${{ env.APP_VERSION_CODE }}
+
+            Install the attached app-debug.apk from the app's built-in update screen.
+          files: |
+            release-package/app-debug.apk
+            release-package/app-debug.apk.sha256
+            release-package/build-info.txt
+          fail_on_unmatched_files: true
