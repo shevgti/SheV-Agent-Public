@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import com.shev.agent.data.SheVAgentDatabaseProvider
 import com.shev.agent.model.LocalModelPanel
 import com.shev.agent.model.LocalModelViewModel
+import com.shev.agent.update.UpdateCheckWorker
 
 /**
  * SheV Agent starts directly in the conversation.
@@ -28,6 +29,7 @@ class MainActivity : ComponentActivity() {
     private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         getSharedPreferences("shev_agent_permissions", MODE_PRIVATE).edit()
             .putBoolean("initial_prompt_completed", true).apply()
+        UpdateCheckWorker.schedule(applicationContext)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,6 +63,8 @@ class MainActivity : ComponentActivity() {
             }
         }
         requestEssentialPermissionsOnFirstLaunch()
+        // Run one update check immediately and keep the 15-minute periodic check scheduled.
+        UpdateCheckWorker.schedule(applicationContext)
     }
 
     // Android runtime permissions are requested on first launch, not during APK installation.
