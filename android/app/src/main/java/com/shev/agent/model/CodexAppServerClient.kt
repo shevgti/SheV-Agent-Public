@@ -40,7 +40,7 @@ internal class CodexAppServerClient(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val requestIds = AtomicLong(1L)
     private val pending = ConcurrentHashMap<Long, CompletableDeferred<JsonObject>>()
-    private val mutableEvents = MutableSharedFlow<JsonObject>(replay = 16, extraBufferCapacity = 128)
+    private val mutableEvents = MutableSharedFlow<JsonObject>(replay = 128, extraBufferCapacity = 256)
     val events: SharedFlow<JsonObject> = mutableEvents.asSharedFlow()
 
     private var process: Process? = null
@@ -145,6 +145,13 @@ internal class CodexAppServerClient(
                 addProperty("approvalPolicy", "on-request")
                 addProperty("sandbox", "workspace-write")
                 addProperty("serviceName", "shev_agent")
+                addProperty(
+                    "developerInstructions",
+                    "Ты — SheV, персональный AI-агент пользователя. Всегда отвечай по-русски. " +
+                        "Работай в папке рабочего пространства приложения. Не заявляй, что действие выполнено, " +
+                        "если оно не завершилось успешно. Перед командами и изменениями файлов запрашивай подтверждение. " +
+                        "Не пытайся обходить ограничения Android или получать доступ к данным вне разрешённой папки."
+                )
             }
         )
         return result.getAsJsonObject("thread")?.get("id")?.asString
