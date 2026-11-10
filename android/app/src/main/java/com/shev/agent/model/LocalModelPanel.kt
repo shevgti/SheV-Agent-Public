@@ -77,6 +77,15 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var voiceStatus by remember { mutableStateOf("Нажми на микрофон, чтобы начать голосовой диалог") }
     var availableVoices by remember { mutableStateOf<List<Voice>>(emptyList()) }
     var selectedVoiceName by remember { mutableStateOf(context.getSharedPreferences("shev_voice", android.content.Context.MODE_PRIVATE).getString("tts_voice", null)) }
+    val neuralTts = remember(context) { SupertonicRussianTts(context) }
+    val voicePrefs = remember(context) { context.getSharedPreferences("shev_voice", android.content.Context.MODE_PRIVATE) }
+    var neuralTtsInstalled by remember { mutableStateOf(neuralTts.isInstalled()) }
+    var neuralTtsDownloading by remember { mutableStateOf(false) }
+    var neuralTtsDownloaded by remember { mutableStateOf(0L) }
+    var neuralTtsTotal by remember { mutableStateOf(0L) }
+    var neuralTtsStatus by remember { mutableStateOf("Дополнительный офлайн-пакет · 10 дикторов") }
+    var selectedNeuralSpeaker by remember { mutableStateOf(voicePrefs.getInt("neural_speaker_id", 0).coerceIn(0, 9)) }
+    var neuralTtsPlaying by remember { mutableStateOf(false) }
     var showVoicePicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showGatewaySettings by remember { mutableStateOf(false) }
@@ -251,6 +260,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             recognizer?.destroy()
             speech.stop()
             speech.shutdown()
+            neuralTts.release()
         }
     }
 
