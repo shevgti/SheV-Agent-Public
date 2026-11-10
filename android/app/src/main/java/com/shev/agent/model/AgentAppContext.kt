@@ -32,6 +32,7 @@ data class AgentAppContextSnapshot(
     val localModelVerified: Boolean,
     val runtimeReady: Boolean,
     val activeBackend: String,
+    val deviceSummary: String,
     val omniRouteEnabled: Boolean,
     val omniRouteConfigured: Boolean,
     val omniRouteModel: String?,
@@ -76,7 +77,12 @@ object AgentAppContextReader {
             versionCode = BuildConfig.VERSION_CODE,
             localModelVerified = localModelVerified,
             runtimeReady = runtimeReady,
-            activeBackend = backendName ?: if (runtimeReady) "неизвестный backend" else "не запущен",
+            activeBackend = if (omniRouteEnabled && omniRouteConfigured) {
+                "OmniRoute"
+            } else {
+                backendName ?: if (runtimeReady) "неизвестный backend" else "не запущен"
+            },
+            deviceSummary = DeviceDiagnostics.summary(app),
             omniRouteEnabled = omniRouteEnabled,
             omniRouteConfigured = omniRouteConfigured,
             omniRouteModel = preferences.getString("model_id", null)?.takeIf { omniRouteConfigured },
