@@ -50,6 +50,7 @@ internal class ChatGptPlanOAuth(
         val hostId = preferences.getString(KEY_HOST_ID, null) ?: "urn:uuid:${UUID.randomUUID()}".also {
             preferences.edit().putString(KEY_HOST_ID, it).commit()
         }
+        val existingSession = load()
 
         ServerSocket().use { server ->
             server.reuseAddress = false
@@ -62,8 +63,17 @@ internal class ChatGptPlanOAuth(
                 .appendPath("api")
                 .appendPath("accounts")
                 .appendPath("authorize")
-                .appendQueryParameter("client_id", DYNAMIC_CLIENT_ID)
-                .appendQueryParameter("agent_name_hint", APP_NAME)
+                .appendQueryParameter("client_id", existingSession?.clientId ?: DYNAMIC_CLIENT_ID)
+                .apply {
+                    if (existingSession == null) {
+                        appendQueryParameter("agent_name_hint", APP_NAME)
+                    } else {
+                        appendQueryParameter("id_token_hint", existingSession.idToken)
+                        if (existingSession.email.isNotBlank()) {
+                            appendQueryParameter("login_hint", existingSession.email)
+                        }
+                    }
+                }
                 .appendQueryParameter("ext_agent_host_id", hostId)
                 .appendQueryParameter("response_type", "code")
                 .appendQueryParameter("redirect_uri", redirectUri)
@@ -105,8 +115,15 @@ internal class ChatGptPlanOAuth(
                     }
                     val code = callbackUri.getQueryParameter("code")
                         ?: throw IllegalStateException("OpenAI не вернул код авторизации.")
-                    val issuedClientId = callbackUri.getQueryParameter("client_id")
-                        ?: throw IllegalStateException("OpenAI не вернул зарегистрированный client_id.")
+                    val returnedClientId = callbackUri.getQueryParameter("client_id")
+                    val issuedClientId = if (existingSession != null) {
+                        require(returnedClientId == null || returnedClientId == existingSession.clientId) {
+                            "OpenAI вернул идентификатор другого клиента."
+                        }
+                        existingSession.clientId
+                    } else {
+                        returnedClientId ?: throw IllegalStateException("OpenAI не вернул зарегистрированный client_id.")
+                    }
                     require(issuedClientId.startsWith("oaiapp_") && issuedClientId.length <= 256) {
                         "OpenAI вернул некорректный идентификатор клиента."
                     }
