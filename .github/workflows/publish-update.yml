@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag must match app version, for example v0.2.0"
+        required: true
+        default: "v0.2.0"
 permissions:
   contents: write
 
