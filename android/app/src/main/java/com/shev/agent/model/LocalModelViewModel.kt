@@ -144,7 +144,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         try {
             val details = withContext(Dispatchers.IO) {
                 val client = ensureCodexClient()
-                var account = client.accountRead(false).get("account")
+                var account = client.accountRead(true).get("account")
                     ?.takeIf { it.isJsonObject }?.asJsonObject
                 if (account?.get("type")?.asString != "chatgpt") {
                     val login = client.beginChatGptLogin()
@@ -889,7 +889,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             try {
                 val preferences = getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
                 val client = ensureCodexClient()
-                val account = client.accountRead(false).get("account")
+                val account = client.accountRead(true).get("account")
                     ?.takeIf { it.isJsonObject }?.asJsonObject
                 require(account?.get("type")?.asString == "chatgpt") {
                     "Сначала подключи ChatGPT в настройках Codex."
