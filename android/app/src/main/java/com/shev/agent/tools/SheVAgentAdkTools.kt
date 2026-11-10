@@ -38,6 +38,29 @@ class SheVAgentAdkTools(
         }
     }
 
+    @Tool(
+        name = "get_shev_app_context",
+        description = "Returns factual live status of the SheV Agent app, model runtime, registered tools, capability grants and Android permissions. Use when asked what you can do, which permissions are available, or why an action is unavailable."
+    )
+    fun getSheVAppContext(
+        @Param("Передай status, чтобы получить актуальное состояние приложения SheV Agent.") query: String
+    ): Map<String, String> {
+        val execution = executor.execute(
+            AgentToolRequest(
+                toolId = APP_CONTEXT_TOOL_ID,
+                capability = AgentCapability.ANALYZE_DATA,
+                input = Gson().toJson(mapOf("query" to query))
+            ),
+            executionContext
+        )
+        val result = execution.result
+        return if (execution.status == AgentToolExecutionStatus.COMPLETED && result?.success == true) {
+            mapOf("status" to "ok", "app_context_json" to result.output)
+        } else {
+            mapOf("status" to "unavailable", "reason" to execution.status.name)
+        }
+    }
+
     /**
      * Creates a local task draft only. It does not approve the task or run any action.
      */
@@ -93,6 +116,7 @@ class SheVAgentAdkTools(
 
     companion object {
         const val TOOL_ID = "agent.inspect_tools"
+        const val APP_CONTEXT_TOOL_ID = "agent.app_context"
         const val CURRENT_TIME_TOOL_ID = "agent.current_local_time"
         const val CREATE_TASK_DRAFT_ID = "agent.create_task_draft"
     }
