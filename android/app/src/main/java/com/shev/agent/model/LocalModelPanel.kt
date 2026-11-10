@@ -85,7 +85,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var neuralTtsDownloading by remember { mutableStateOf(false) }
     var neuralTtsDownloaded by remember { mutableStateOf(0L) }
     var neuralTtsTotal by remember { mutableStateOf(0L) }
-    var neuralTtsStatus by remember { mutableStateOf("Дополнительный офлайн-пакет · 10 дикторов") }
+    var neuralTtsStatus by remember { mutableStateOf("Дополнительный офлайн-пакет · 6 отобранных дикторов") }
     var selectedNeuralSpeaker by remember { mutableStateOf(voicePrefs.getInt("neural_speaker_id", 0).coerceIn(0, 9)) }
     var selectedNeuralEmotion by remember { mutableStateOf(voicePrefs.getString("neural_emotion_id", "natural") ?: "natural") }
     var neuralTtsPlaying by remember { mutableStateOf(false) }
@@ -114,7 +114,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
 
     val femaleVoices = remember(availableVoices) {
         availableVoices.filter { RussianVoiceCatalog.classify(it.name) == RussianVoiceGender.FEMALE }
-            .distinctBy { RussianVoiceCatalog.identityKey(it.name) }.take(5)
+            .distinctBy { RussianVoiceCatalog.identityKey(it.name) }.take(3)
     }
     val maleVoices = remember(availableVoices) {
         availableVoices.filter { RussianVoiceCatalog.classify(it.name) == RussianVoiceGender.MALE }
@@ -470,9 +470,9 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                                     }
                                 }
                             } else {
-                                Text("Пакет установлен · 5 женских + 5 мужских голосов доступны офлайн", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                                Text("Пакет установлен · 3 женских + 3 мужских голоса доступны офлайн", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
                                 Text("ЖЕНСКИЕ", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                                for (speakerId in 0..4) {
+                                for (speakerId in 0..2) {
                                     val speaker = SupertonicVoiceCatalog.speakers[speakerId]
                                     Row(
                                         modifier = Modifier.fillMaxWidth().heightIn(min = 36.dp),
@@ -516,14 +516,10 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                                                 }
                                             }
                                         ) { Text(if (previewSpeakerId == speakerId) "Стоп" else "▶") }
-                                        TextButton(onClick = {
-                                            selectedNeuralSpeaker = speakerId
-                                            voicePrefs.edit().putInt("neural_speaker_id", speakerId).apply()
-                                        }) { Text(if (selectedNeuralSpeaker == speakerId) "Выбран" else "Выбрать") }
-                                    }
+                                                                            }
                                 }
                                 Text("МУЖСКИЕ", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                                for (speakerId in 5..9) {
+                                for (speakerId in 5..7) {
                                     val speaker = SupertonicVoiceCatalog.speakers[speakerId]
                                     Row(
                                         modifier = Modifier.fillMaxWidth().heightIn(min = 36.dp),
