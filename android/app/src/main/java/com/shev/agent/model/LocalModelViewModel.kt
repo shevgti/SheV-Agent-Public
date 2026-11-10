@@ -108,7 +108,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             .edit()
             .putBoolean("use_for_primary_chat", enabled)
             .apply()
-        mutableState.update { it.copy(useOmniRoute = enabled) }
+        if (enabled) {
+            getApplication<Application>()
+                .getSharedPreferences("shev_openai", Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
+        }
+        mutableState.update { it.copy(useOmniRoute = enabled, useOpenAI = if (enabled) false else it.useOpenAI) }
     }
 
     fun setOpenAIPrimaryEnabled(enabled: Boolean) {
