@@ -5,9 +5,12 @@ on:
   push:
     branches:
       - "feat/codex-app-server-android-native"
-  pull_request:
     paths:
       - ".github/workflows/codex-android-runtime.yml"
+
+concurrency:
+  group: codex-android-build-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
