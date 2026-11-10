@@ -83,13 +83,35 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            TextButton(onClick = {
-                runCatching {
-                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
-                        android.net.Uri.parse("https://platform.openai.com/api-keys"))
-                    context.startActivity(intent)
-                }.onFailure { status = "Не удалось открыть страницу ключей." }
-            }) { Text("Открыть страницу API-ключей OpenAI") }
+            Button(
+                onClick = {
+                    runCatching {
+                        val intent = android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("https://platform.openai.com/api-keys")
+                        )
+                        context.startActivity(intent)
+                        status = "Открой создание секретного ключа. Скопируй его и вернись сюда."
+                    }.onFailure { status = "Не удалось открыть страницу ключей OpenAI." }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("1 · Получить API-ключ OpenAI") }
+            OutlinedButton(
+                onClick = {
+                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                        as android.content.ClipboardManager
+                    val copied = clipboard.primaryClip?.takeIf { it.itemCount > 0 }
+                        ?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+                    if (copied.startsWith("sk-") && copied.length > 20) {
+                        apiKey = copied.trim()
+                        markDirty()
+                        status = "Ключ вставлен. Нажми «Сохранить ключ»."
+                    } else {
+                        status = "В буфере не найден API-ключ OpenAI. Скопируй секретный ключ на странице OpenAI."
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("2 · Вставить скопированный ключ") }
             OutlinedTextField(
                 value = modelId,
                 onValueChange = { modelId = it; markDirty() },
