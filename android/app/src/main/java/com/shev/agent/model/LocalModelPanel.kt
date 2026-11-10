@@ -76,7 +76,12 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var voiceConversation by remember { mutableStateOf(false) }
     var voiceStatus by remember { mutableStateOf("Нажми на микрофон, чтобы начать голосовой диалог") }
     var availableVoices by remember { mutableStateOf<List<Voice>>(emptyList()) }
-    var selectedVoiceName by remember { mutableStateOf(context.getSharedPreferences("shev_voice", android.content.Context.MODE_PRIVATE).getString("tts_voice", null)) }
+    val voicePrefs = remember { context.getSharedPreferences("shev_voice", android.content.Context.MODE_PRIVATE) }
+    var selectedVoiceName by remember { mutableStateOf(voicePrefs.getString("tts_voice", null)) }
+    var selectedProfileId by remember { mutableStateOf(voicePrefs.getString("voice_profile", "female_warm") ?: "female_warm") }
+    var selectedEmotionId by remember { mutableStateOf(voicePrefs.getString("voice_emotion", "natural") ?: "natural") }
+    val selectedProfile = SheVVoiceProfiles.profiles.firstOrNull { it.id == selectedProfileId } ?: SheVVoiceProfiles.profiles.first()
+    val selectedEmotion = SheVVoiceProfiles.emotions.firstOrNull { it.id == selectedEmotionId } ?: SheVVoiceProfiles.emotions.first()
     var showVoicePicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showGatewaySettings by remember { mutableStateOf(false) }
@@ -90,18 +95,6 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     val scope = rememberCoroutineScope()
     val currentVoiceMode by rememberUpdatedState(voiceConversation)
     val chatListState = rememberLazyListState()
-
-    val femaleVoices = remember(availableVoices) {
-        availableVoices.filter { RussianVoiceCatalog.classify(it.name) == RussianVoiceGender.FEMALE }
-            .distinctBy { RussianVoiceCatalog.identityKey(it.name) }.take(5)
-    }
-    val maleVoices = remember(availableVoices) {
-        availableVoices.filter { RussianVoiceCatalog.classify(it.name) == RussianVoiceGender.MALE }
-            .distinctBy { RussianVoiceCatalog.identityKey(it.name) }.take(5)
-    }
-    val unclassifiedVoices = remember(availableVoices) {
-        availableVoices.filter { RussianVoiceCatalog.classify(it.name) == RussianVoiceGender.UNKNOWN }
-    }
 
     LaunchedEffect(Unit) {
         UpdateCheckWorker.schedule(context)
@@ -259,6 +252,8 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             val answer = last.substringAfter(":").trim()
             if (answer.isNotBlank()) {
                 voiceStatus = "SheV отвечает…"
+                speech.setPitch((selectedProfile.pitch * selectedEmotion.pitchMultiplier).coerceIn(0.5f, 2.0f))
+                speech.setSpeechRate((selectedProfile.rate * selectedEmotion.rateMultiplier).coerceIn(0.5f, 2.0f))
                 speech.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "shev-answer-${state.messages.size}")
             }
         }
@@ -308,8 +303,8 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Голос", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            TextButton(onClick = { showVoicePicker = true }) { Text("Выбрать голос · ${selectedVoiceName ?: "системный"}") }
-                            Text("Русские голоса, доступные в службе синтеза речи Android.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            TextButton(onClick = { showVoicePicker = true }) { Text("Голос SheV · ${selectedProfile.title}") }
+                            Text("Манера: ${selectedEmotion.title}. Выбор профиля и эмоции.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -363,72 +358,72 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     if (showVoicePicker) {
         AlertDialog(
             onDismissRequest = { showVoicePicker = false },
-            title = { Text("Голоса SheV · 5 женских и 5 мужских") },
+            title = { Text("Голоса SheV · 10 профилей") },
             text = {
                 Column(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    if (availableVoices.isEmpty()) {
-                        Text("Русские голоса не найдены. Установи русские голосовые пакеты в настройках синтеза речи Android.")
-                    } else {
-                        Text("ЖЕНСКИЕ · ${femaleVoices.size}/5", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        if (femaleVoices.isEmpty()) {
-                            Text("Служба синтеза речи не предоставила голоса с распознаваемой женской меткой.")
-                        }
-                        femaleVoices.forEachIndexed { index, voice ->
-                            VoiceChoiceRow(
-                                label = "Женский голос ${index + 1}",
-                                voice = voice,
-                                selected = selectedVoiceName == voice.name,
-                                onPreview = {
-                                    speech.voice = voice
-                                    speech.speak("Привет! Я SheV. Давай поговорим.", TextToSpeech.QUEUE_FLUSH, null, "shev-voice-preview")
-                                },
-                                onSelect = {
-                                    speech.voice = voice
-                                    selectedVoiceName = voice.name
-                                    context.getSharedPreferences("shev_voice", android.content.Context.MODE_PRIVATE)
-                                        .edit().putString("tts_voice", voice.name).apply()
-                                }
-                            )
-                        }
-                        Text("МУЖСКИЕ · ${maleVoices.size}/5", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        if (maleVoices.isEmpty()) {
-                            Text("Служба синтеза речи не предоставила голоса с распознаваемой мужской меткой.")
-                        }
-                        maleVoices.forEachIndexed { index, voice ->
-                            VoiceChoiceRow(
-                                label = "Мужской голос ${index + 1}",
-                                voice = voice,
-                                selected = selectedVoiceName == voice.name,
-                                onPreview = {
-                                    speech.voice = voice
-                                    speech.speak("Привет! Я SheV. Давай поговорим.", TextToSpeech.QUEUE_FLUSH, null, "shev-voice-preview")
-                                },
-                                onSelect = {
-                                    speech.voice = voice
-                                    selectedVoiceName = voice.name
-                                    context.getSharedPreferences("shev_voice", android.content.Context.MODE_PRIVATE)
-                                        .edit().putString("tts_voice", voice.name).apply()
-                                }
-                            )
-                        }
-                        if (femaleVoices.size < 5 || maleVoices.size < 5) {
-                            Text(
-                                "Сейчас служба Android отдала не все 10 вариантов. Для недостающих голосов открой настройки голосовых данных и установи дополнительные русские голоса. Приложение не будет выдавать один и тот же голос за разные.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        if (unclassifiedVoices.isNotEmpty()) {
-                            Text(
-                                "Ещё ${unclassifiedVoices.size} голосов без метки пола не включены в подборку, чтобы не подписывать их неправильно.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    Text("ЖЕНСКИЕ · 5 профилей", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    SheVVoiceProfiles.profiles.filter { it.gender == SheVVoiceGender.FEMALE }.forEach { profile ->
+                        VoiceProfileRow(
+                            profile = profile,
+                            selected = selectedProfileId == profile.id,
+                            onPreview = {
+                                availableVoices.firstOrNull { it.name == selectedVoiceName }?.let { speech.voice = it }
+                                speech.setPitch((profile.pitch * selectedEmotion.pitchMultiplier).coerceIn(0.5f, 2.0f))
+                                speech.setSpeechRate((profile.rate * selectedEmotion.rateMultiplier).coerceIn(0.5f, 2.0f))
+                                speech.speak("Привет! Я SheV. Давай поговорим. Я могу говорить по-разному.", TextToSpeech.QUEUE_FLUSH, null, "shev-profile-preview")
+                            },
+                            onSelect = {
+                                selectedProfileId = profile.id
+                                voicePrefs.edit().putString("voice_profile", profile.id).apply()
+                            }
+                        )
+                    }
+                    Text("МУЖСКИЕ · 5 профилей", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    SheVVoiceProfiles.profiles.filter { it.gender == SheVVoiceGender.MALE }.forEach { profile ->
+                        VoiceProfileRow(
+                            profile = profile,
+                            selected = selectedProfileId == profile.id,
+                            onPreview = {
+                                availableVoices.firstOrNull { it.name == selectedVoiceName }?.let { speech.voice = it }
+                                speech.setPitch((profile.pitch * selectedEmotion.pitchMultiplier).coerceIn(0.5f, 2.0f))
+                                speech.setSpeechRate((profile.rate * selectedEmotion.rateMultiplier).coerceIn(0.5f, 2.0f))
+                                speech.speak("Привет! Я SheV. Давай поговорим. Я могу говорить по-разному.", TextToSpeech.QUEUE_FLUSH, null, "shev-profile-preview")
+                            },
+                            onSelect = {
+                                selectedProfileId = profile.id
+                                voicePrefs.edit().putString("voice_profile", profile.id).apply()
+                            }
+                        )
+                    }
+                    Text("ЭМОЦИИ И МАНЕРА РЕЧИ", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    SheVVoiceProfiles.emotions.forEach { emotion ->
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.weight(1f)) {
+                                Text(emotion.title, style = MaterialTheme.typography.bodyMedium)
+                                Text(emotion.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            TextButton(onClick = {
+                                selectedEmotionId = emotion.id
+                                voicePrefs.edit().putString("voice_emotion", emotion.id).apply()
+                                speech.setPitch((selectedProfile.pitch * emotion.pitchMultiplier).coerceIn(0.5f, 2.0f))
+                                speech.setSpeechRate((selectedProfile.rate * emotion.rateMultiplier).coerceIn(0.5f, 2.0f))
+                                speech.speak("Привет! Я SheV. Рада тебя слышать. Давай обсудим это вместе.", TextToSpeech.QUEUE_FLUSH, null, "shev-emotion-preview")
+                            }) { Text(if (selectedEmotionId == emotion.id) "Выбрано" else "Слушать") }
                         }
                     }
+                    Text(
+                        "Важно: профили меняют высоту и скорость одного установленного голоса Android. Это не десять отдельных тембров. Для настоящих разных женских и мужских голосов нужны дополнительные голосовые модели или другой TTS-движок.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "Системный голос: ${selectedVoiceName ?: "автоматический"}. Доступно на устройстве: ${availableVoices.size} русских вариантов.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             },
             confirmButton = { TextButton(onClick = { showVoicePicker = false }) { Text("Готово") } }
@@ -645,24 +640,16 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
 
 
 @androidx.compose.runtime.Composable
-private fun VoiceChoiceRow(
-    label: String,
-    voice: Voice,
+private fun VoiceProfileRow(
+    profile: SheVVoiceProfile,
     selected: Boolean,
     onPreview: () -> Unit,
     onSelect: () -> Unit
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
-            Text(
-                if (voice.isNetworkConnectionRequired) "Требуется интернет" else "Работает офлайн",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text(profile.title, style = MaterialTheme.typography.bodyMedium, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+            Text(profile.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         TextButton(onClick = onPreview) { Text("Слушать") }
         TextButton(onClick = onSelect) { Text(if (selected) "Выбран" else "Выбрать") }
