@@ -16,7 +16,8 @@ import kotlin.coroutines.coroutineContext
 data class OpenAiCompatibleConfig(
     val baseUrl: String,
     val modelId: String,
-    val apiToken: String
+    val apiToken: String,
+    val providerName: String = "AI-провайдер"
 ) {
     fun validatedBaseUrl(): String {
         require(baseUrl.length <= MAX_BASE_URL_LENGTH) { "Адрес сервера слишком длинный." }
@@ -147,10 +148,10 @@ class OpenAiCompatibleClient(
                 val detail = listOfNotNull(providerCode, providerType, providerMessage)
                     .filter { it.isNotBlank() }.distinct().joinToString(" · ")
                 val base = when (status) {
-                    401 -> "OpenAI не принял авторизацию (HTTP 401)."
-                    403 -> "OpenAI запретил запрос (HTTP 403)."
+                    401 -> "${config.providerName} не принял авторизацию (HTTP 401)."
+                    403 -> "${config.providerName} запретил запрос (HTTP 403)."
                     404 -> "Эндпоинт не найден (HTTP 404). Проверь адрес /v1."
-                    429 -> "OpenAI ограничил запросы или квоту (HTTP 429)."
+                    429 -> "${config.providerName} ограничил запросы или квоту (HTTP 429)."
                     in 500..599 -> "Ошибка сервера провайдера (HTTP $status)."
                     in 300..399 -> "Перенаправления сервера запрещены для защищённого запроса."
                     else -> "Запрос к провайдеру отклонён (HTTP $status)."
