@@ -12,7 +12,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.shev.agent.data.SheVAgentDatabaseProvider
@@ -32,21 +32,24 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.statusBarColor = android.graphics.Color.rgb(16, 19, 24)
+        window.navigationBarColor = android.graphics.Color.rgb(16, 19, 24)
+        window.decorView.systemUiVisibility = 0
         // Keep database initialization so the encrypted conversation history remains available.
         SheVAgentDatabaseProvider.get(applicationContext)
         val chatViewModel = ViewModelProvider(this)[LocalModelViewModel::class.java]
         setContent {
-            val palette = lightColorScheme(
-                primary = Color(0xFF4268D5),
-                onPrimary = Color.White,
-                secondary = Color(0xFF159EAD),
-                background = Color(0xFFDDE1E9),
-                onBackground = Color(0xFF17243B),
-                surface = Color(0xFFEEF0F5),
-                onSurface = Color(0xFF17243B),
-                surfaceVariant = Color(0xFFD0D6E1),
-                onSurfaceVariant = Color(0xFF505D73),
-                outline = Color(0xFFB8C1D0)
+            val palette = darkColorScheme(
+                primary = Color(0xFF8EA9FF),
+                onPrimary = Color(0xFF101318),
+                secondary = Color(0xFF75D4D8),
+                background = Color(0xFF101318),
+                onBackground = Color(0xFFE8EAF0),
+                surface = Color(0xFF1B2029),
+                onSurface = Color(0xFFE8EAF0),
+                surfaceVariant = Color(0xFF292F3A),
+                onSurfaceVariant = Color(0xFFB2BAC8),
+                outline = Color(0xFF424B5A)
             )
             MaterialTheme(colorScheme = palette) {
                 Surface(
