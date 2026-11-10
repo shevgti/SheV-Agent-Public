@@ -763,6 +763,26 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     }
 
 
+    state.codexApproval?.let { approval ->
+        AlertDialog(
+            onDismissRequest = { viewModel.approveCodexRequest(approval.requestId, false) },
+            title = { Text(approval.title) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(if (approval.kind.contains("command")) "Codex хочет выполнить команду:" else "Codex хочет изменить файлы:")
+                    Text(approval.detail.take(2400), style = MaterialTheme.typography.bodySmall)
+                    Text("Действие ограничено папкой рабочего пространства SheV Agent.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = {
+                Button(onClick = { viewModel.approveCodexRequest(approval.requestId, true) }) { Text("Разрешить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.approveCodexRequest(approval.requestId, false) }) { Text("Отклонить") }
+            }
+        )
+    }
+
     if (showUpdateDialog && updateInfo != null) {
         val update = updateInfo!!
         AlertDialog(
@@ -909,6 +929,19 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                             contentColor = if (fromUser) Color.White else MaterialTheme.colorScheme.onSurface
                         ) {
                             Text(message, modifier = Modifier.padding(horizontal = 15.dp, vertical = 12.dp))
+                        }
+                    }
+                }
+                state.streamingMessage?.let { streaming ->
+                    item(key = "codex-streaming") {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            ) {
+                                Text(streaming.substringAfter(":").trim(), modifier = Modifier.padding(horizontal = 15.dp, vertical = 12.dp))
+                            }
                         }
                     }
                 }
