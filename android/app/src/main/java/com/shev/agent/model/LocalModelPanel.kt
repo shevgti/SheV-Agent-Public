@@ -371,8 +371,8 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                             selected = selectedProfileId == profile.id,
                             onPreview = {
                                 availableVoices.firstOrNull { it.name == selectedVoiceName }?.let { speech.voice = it }
-                                speech.setPitch(profile.pitch)
-                                speech.setSpeechRate(profile.rate)
+                                speech.setPitch((profile.pitch * selectedEmotion.pitchMultiplier).coerceIn(0.5f, 2.0f))
+                                speech.setSpeechRate((profile.rate * selectedEmotion.rateMultiplier).coerceIn(0.5f, 2.0f))
                                 speech.speak("Привет! Я SheV. Давай поговорим. Я могу говорить по-разному.", TextToSpeech.QUEUE_FLUSH, null, "shev-profile-preview")
                             },
                             onSelect = {
@@ -388,8 +388,8 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                             selected = selectedProfileId == profile.id,
                             onPreview = {
                                 availableVoices.firstOrNull { it.name == selectedVoiceName }?.let { speech.voice = it }
-                                speech.setPitch(profile.pitch)
-                                speech.setSpeechRate(profile.rate)
+                                speech.setPitch((profile.pitch * selectedEmotion.pitchMultiplier).coerceIn(0.5f, 2.0f))
+                                speech.setSpeechRate((profile.rate * selectedEmotion.rateMultiplier).coerceIn(0.5f, 2.0f))
                                 speech.speak("Привет! Я SheV. Давай поговорим. Я могу говорить по-разному.", TextToSpeech.QUEUE_FLUSH, null, "shev-profile-preview")
                             },
                             onSelect = {
