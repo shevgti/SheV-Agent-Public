@@ -156,19 +156,22 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     }
                     account = client.accountRead(true).getAsJsonObject("account")
                 }
-                require(account?.get("type")?.asString == "chatgpt") {
+                val accountDetails = account
+                    ?: throw IllegalStateException("Codex не вернул данные аккаунта ChatGPT.")
+                require(accountDetails.get("type")?.asString == "chatgpt") {
                     "Codex не подтвердил вход через аккаунт ChatGPT."
                 }
-                val email = account.get("email")?.asString.orEmpty()
-                val planType = account.get("planType")?.asString.orEmpty()
+                val email = accountDetails.get("email")?.asString.orEmpty()
+                val planType = accountDetails.get("planType")?.asString.orEmpty()
                 val models = client.listModels().getAsJsonArray("data")
                 val selectedModel = models?.mapNotNull { item ->
                     item.takeIf { it.isJsonObject }?.asJsonObject
                 }?.firstOrNull { it.get("isDefault")?.asBoolean == true }
                     ?: models?.firstOrNull { it.isJsonObject }?.asJsonObject
-                val modelId = selectedModel?.get("model")?.asString
-                    ?: selectedModel?.get("id")?.asString
                     ?: throw IllegalStateException("Codex не вернул доступных моделей для этого аккаунта.")
+                val modelId = selectedModel.get("model")?.asString
+                    ?: selectedModel.get("id")?.asString
+                    ?: throw IllegalStateException("Codex не вернул идентификатор доступной модели.")
                 val modelName = selectedModel.get("displayName")?.asString ?: modelId
                 val usedPercent = runCatching {
                     client.request("account/rateLimits/read")
