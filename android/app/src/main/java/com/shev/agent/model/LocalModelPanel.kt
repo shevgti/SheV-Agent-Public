@@ -92,10 +92,12 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     val chatListState = rememberLazyListState()
 
     val femaleVoices = remember(availableVoices) {
-        availableVoices.filter { RussianVoiceCatalog.classify(it.name) == RussianVoiceGender.FEMALE }.take(5)
+        availableVoices.filter { RussianVoiceCatalog.classify(it.name) == RussianVoiceGender.FEMALE }
+            .distinctBy { RussianVoiceCatalog.identityKey(it.name) }.take(5)
     }
     val maleVoices = remember(availableVoices) {
-        availableVoices.filter { RussianVoiceCatalog.classify(it.name) == RussianVoiceGender.MALE }.take(5)
+        availableVoices.filter { RussianVoiceCatalog.classify(it.name) == RussianVoiceGender.MALE }
+            .distinctBy { RussianVoiceCatalog.identityKey(it.name) }.take(5)
     }
     val unclassifiedVoices = remember(availableVoices) {
         availableVoices.filter { RussianVoiceCatalog.classify(it.name) == RussianVoiceGender.UNKNOWN }
