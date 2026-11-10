@@ -175,6 +175,23 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     )
                     register(
                         AgentToolDescriptor(
+                            id = SheVAgentAdkTools.APP_CONTEXT_TOOL_ID,
+                            title = "Состояние приложения и доступы",
+                            description = "Возвращает фактическое состояние SheV Agent, инструменты и разрешения Android",
+                            capabilities = setOf(AgentCapability.ANALYZE_DATA),
+                            inputSchema = ToolInputSchema(
+                                listOf(ToolInputField(
+                                    "query",
+                                    ToolInputType.STRING,
+                                    required = true,
+                                    maxLength = 16,
+                                    allowedValues = setOf("status")
+                                ))
+                            )
+                        )
+                    )
+                    register(
+                        AgentToolDescriptor(
                             id = SheVAgentAdkTools.CURRENT_TIME_TOOL_ID,
                             title = "Текущее местное время",
                             description = "Возвращает фактические дату, время и часовой пояс устройства",
@@ -246,6 +263,22 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     mapOf(
                         SheVAgentAdkTools.TOOL_ID to AgentTool {
                             AgentToolResult(true, registry.list().joinToString { it.id })
+                        },
+                        SheVAgentAdkTools.APP_CONTEXT_TOOL_ID to AgentTool { _ ->
+                            AgentToolResult(
+                                true,
+                                AgentAppContextReader.read(
+                                    context = getApplication(),
+                                    registeredTools = registry.list(),
+                                    localModelVerified = mutableState.value.verified,
+                                    runtimeReady = runtime != null,
+                                    backendName = runtime?.backendName,
+                                    grantedCapabilities = setOf(
+                                        AgentCapability.ANALYZE_DATA,
+                                        AgentCapability.CREATE_DRAFT
+                                    )
+                                )
+                            )
                         },
                         SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to currentTimeHandler
                     ),
