@@ -324,6 +324,93 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                         }
                     }
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Настоящие нейроголоса · Supertonic 3", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Отдельный офлайн-пакет: десять разных дикторских тембров, русский язык, работа без интернета после загрузки. Модель не входит в APK.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (!neuralTtsInstalled) {
+                                OutlinedButton(
+                                    enabled = !neuralTtsDownloading,
+                                    onClick = {
+                                        scope.launch {
+                                            neuralTtsDownloading = true
+                                            neuralTtsStatus = "Загружаю голосовую модель…"
+                                            try {
+                                                neuralTts.downloadModel { done, total ->
+                                                    neuralTtsDownloaded = done
+                                                    neuralTtsTotal = total
+                                                }
+                                                neuralTtsInstalled = neuralTts.isInstalled()
+                                                neuralTtsStatus = "Пакет установлен. Теперь можно прослушать все 10 дикторов."
+                                            } catch (error: Exception) {
+                                                neuralTtsStatus = error.message ?: "Не удалось загрузить голосовую модель."
+                                            } finally {
+                                                neuralTtsDownloading = false
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text(if (neuralTtsDownloading) "Загрузка…" else "Загрузить 10 нейроголосов") }
+                                if (neuralTtsDownloading) {
+                                    if (neuralTtsTotal > 0L) {
+                                        LinearProgressIndicator(
+                                            progress = { (neuralTtsDownloaded.toFloat() / neuralTtsTotal.toFloat()).coerceIn(0f, 1f) },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        Text(
+                                            "${neuralTtsDownloaded / (1024 * 1024)} МБ из ${neuralTtsTotal / (1024 * 1024)} МБ",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    } else {
+                                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                    }
+                                }
+                            } else {
+                                Text("Пакет установлен · 10 дикторов доступны офлайн", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                                for (speakerId in 0 until SupertonicRussianTts.SPEAKER_COUNT) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                        Text(
+                                            "Диктор ${speakerId + 1}",
+                                            modifier = Modifier.weight(1f),
+                                            fontWeight = if (selectedNeuralSpeaker == speakerId) FontWeight.SemiBold else FontWeight.Normal
+                                        )
+                                        TextButton(
+                                            enabled = !neuralTtsPlaying,
+                                            onClick = {
+                                                selectedNeuralSpeaker = speakerId
+                                                voicePrefs.edit().putInt("neural_speaker_id", speakerId).apply()
+                                                scope.launch {
+                                                    neuralTtsPlaying = true
+                                                    neuralTtsStatus = "Генерирую и воспроизвожу диктора ${speakerId + 1}…"
+                                                    try {
+                                                        neuralTts.speak(
+                                                            "Привет! Я голос ${speakerId + 1} приложения SheV. Давай поговорим. Я могу помогать тебе каждый день.",
+                                                            speakerId
+                                                        )
+                                                        neuralTtsStatus = "Прослушивание завершено. Выбран диктор ${speakerId + 1}."
+                                                    } catch (error: Exception) {
+                                                        neuralTtsStatus = error.message ?: "Не удалось воспроизвести нейроголос."
+                                                    } finally {
+                                                        neuralTtsPlaying = false
+                                                    }
+                                                }
+                                            }
+                                        ) { Text(if (selectedNeuralSpeaker == speakerId) "Выбран · Слушать" else "Слушать") }
+                                    }
+                                }
+                            }
+                            Text(neuralTtsStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "Пол и эмоциональную манеру каждого диктора пока не подписываем наугад: сначала нужно прослушать образцы. Текущая модель даёт выбор диктора и скорости; отдельные эмоции потребуют модели с управлением просодией.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Подключение ChatGPT", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text("Прямой доступ к OpenAI API с отдельным ключом. Подписка ChatGPT не заменяет API-биллинг.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
