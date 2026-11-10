@@ -92,6 +92,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var showSettings by remember { mutableStateOf(false) }
     var showGatewaySettings by remember { mutableStateOf(false) }
     var showOpenAISettings by remember { mutableStateOf(false) }
+    var showGeminiSettings by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<AppUpdate?>(null) }
     var updateMessage by remember { mutableStateOf<String?>(null) }
     var checkingUpdate by remember { mutableStateOf(false) }
@@ -473,6 +474,16 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+                    }
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Бесплатный AI · Google Gemini", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Начнём с бесплатного лимита Gemini 2.5 Flash. Нужен отдельный ключ Google AI Studio; действуют ограничения бесплатного тарифа.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            OutlinedButton(onClick = { showGeminiSettings = !showGeminiSettings }, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (showGeminiSettings) "Скрыть настройки Gemini" else "Настроить бесплатный Gemini")
+                            }
+                            if (showGeminiSettings) GeminiProviderPanel(viewModel)
                         }
                     }
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
