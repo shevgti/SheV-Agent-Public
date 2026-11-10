@@ -170,7 +170,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
         }
     }
 
-    LaunchedEffect(state.messages.size, voiceConversation) {
+    LaunchedEffect(state.messages.lastOrNull(), state.busy) {
         val last = state.messages.lastOrNull()
         if (voiceConversation && last?.startsWith("SheV:") == true && !state.busy) {
             val answer = last.substringAfter(":").trim()
