@@ -63,11 +63,18 @@ jobs:
         env:
           GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
         run: gradle testDebugUnitTest --stacktrace
-      - name: Assemble debug APK
+      - name: Assemble debug APK with injected versionCode
         working-directory: android
         env:
           GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
-        run: gradle assembleDebug
+          SHEV_VERSION_CODE: "22"
+        run: gradle -PSHEV_VERSION_CODE="$SHEV_VERSION_CODE" assembleDebug
+      - name: Verify injected APK versionCode
+        working-directory: android
+        run: |
+          ACTUAL_CODE=$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p" | head -n 1)
+          test "$ACTUAL_CODE" = "22"
+          echo "Gradle injected versionCode verified: $ACTUAL_CODE"
       - name: Prepare debug test package
         working-directory: android
         run: |
