@@ -612,7 +612,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     "shev_openrouter",
                     Application.MODE_PRIVATE
                 )
-                val modelId = preferences.getString("model_id", "openrouter-2.5-flash") ?: "openrouter-2.5-flash"
+                val modelId = preferences.getString("model_id", "openrouter/free") ?: "openrouter/free"
                 val encryptedToken = preferences.getString("encrypted_token", null)
                     ?: throw IllegalStateException("Сначала сохрани API-ключ OpenRouter в настройках.")
                 val token = OpenRouterSecretCipher.decrypt(encryptedToken)
