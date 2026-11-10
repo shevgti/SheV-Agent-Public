@@ -6,6 +6,7 @@ on:
     paths:
       - "android/**"
       - ".github/workflows/android-ci.yml"
+      - ".github/workflows/publish-update.yml"
   push:
     branches: [main]
     paths:
