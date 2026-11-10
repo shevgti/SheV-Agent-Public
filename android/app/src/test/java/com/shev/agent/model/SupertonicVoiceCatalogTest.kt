@@ -25,7 +25,7 @@ class SupertonicVoiceCatalogTest {
             SupertonicVoiceCatalog.styles.map { it.id }.distinct().size
         )
         SupertonicVoiceCatalog.styles.mapNotNull { it.expressionTag }.forEach {
-            assertTrue(it in SupertonicRussianTts.SUPPORTED_EXPRESSION_TAGS)
+            assertTrue(it in SupertonicVoiceCatalog.expressionTags)
         }
     }
 }
