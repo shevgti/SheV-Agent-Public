@@ -37,9 +37,7 @@ internal class UpdateCheckWorker(context: Context, params: WorkerParameters) : C
         if (prefs.getInt(KEY_NOTIFIED, 0) >= update.versionCode) return Result.success()
 
         val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            manager.createNotificationChannel(NotificationChannel(CHANNEL, "Обновления SheV Agent", NotificationManager.IMPORTANCE_DEFAULT))
-        }
+        ensureNotificationChannel(applicationContext)
         val launch = Intent(applicationContext, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
@@ -54,7 +52,7 @@ internal class UpdateCheckWorker(context: Context, params: WorkerParameters) : C
             .setStyle(NotificationCompat.BigTextStyle().bigText("Новая версия SheV Agent ${update.versionName} доступна. Открой приложение, чтобы скачать и установить обновление."))
             .setContentIntent(pending)
             .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
         NotificationManagerCompat.from(applicationContext).notify(NOTIFICATION_ID, notification)
         prefs.edit().putInt(KEY_NOTIFIED, update.versionCode).apply()
@@ -67,10 +65,26 @@ internal class UpdateCheckWorker(context: Context, params: WorkerParameters) : C
     companion object {
         private const val PREFS = "shev_update_notifications"
         private const val KEY_NOTIFIED = "notified_version"
-        private const val CHANNEL = "shev_agent_updates"
+        // New channel ID is intentional: Android does not let apps raise an existing channel's importance.
+        private const val CHANNEL = "shev_agent_updates_v2"
         private const val NOTIFICATION_ID = 8102
         private const val PERIODIC = "shev_agent_update_check"
         private const val IMMEDIATE = "shev_agent_update_check_now"
+
+        fun ensureNotificationChannel(context: Context) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channel = NotificationChannel(
+                CHANNEL,
+                "Обновления SheV Agent",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Всплывающие уведомления о новых версиях SheV Agent"
+                enableVibration(true)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
+            }
+            manager.createNotificationChannel(channel)
+        }
 
         fun schedule(context: Context) {
             val manager = WorkManager.getInstance(context)
