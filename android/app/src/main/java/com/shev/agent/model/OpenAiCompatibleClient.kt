@@ -31,10 +31,13 @@ data class OpenAiCompatibleConfig(
         }
         require(uri.port == -1 || uri.port in 1..65535) { "Некорректный порт сервера." }
         val path = uri.path.trimEnd('/')
-        require(path.isEmpty() || path == "/v1" || path == "/v1beta/openai") { "Путь сервера должен быть пустым, /v1 или /v1beta/openai." }
+        require(path.isEmpty() || path == "/v1" || path == "/api/v1" || path == "/v1beta/openai") {
+            "Допустимый путь API: пустой, /v1, /api/v1 или /v1beta/openai."
+        }
         require(modelId.isNotBlank() && modelId.length <= MAX_MODEL_ID_LENGTH) { "Некорректный идентификатор модели." }
         require(apiToken.isNotBlank() && apiToken.length <= MAX_TOKEN_LENGTH) { "Не задан API-токен провайдера." }
-        return if (path == "/v1beta/openai") "${uri.scheme}://${uri.rawAuthority}/v1beta/openai" else "${uri.scheme}://${uri.rawAuthority}/v1"
+        val normalizedPath = path.ifEmpty { "/v1" }
+        return "${uri.scheme}://${uri.rawAuthority}$normalizedPath"
     }
 
     private companion object {
@@ -150,7 +153,7 @@ class OpenAiCompatibleClient(
                 val base = when (status) {
                     401 -> "${config.providerName} не принял авторизацию (HTTP 401)."
                     403 -> "${config.providerName} запретил запрос (HTTP 403)."
-                    404 -> "Эндпоинт не найден (HTTP 404). Проверь адрес /v1."
+                    404 -> "${config.providerName}: эндпоинт не найден (HTTP 404). Проверь базовый URL API и путь провайдера."
                     429 -> "${config.providerName} ограничил запросы или квоту (HTTP 429)."
                     in 500..599 -> "Ошибка сервера провайдера (HTTP $status)."
                     in 300..399 -> "Перенаправления сервера запрещены для защищённого запроса."

@@ -14,11 +14,15 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag must match app version, for example v0.2.0"
+        description: "Release tag must match app version, for example v0.3.1"
         required: true
-        default: "v0.2.0"
+        default: "v0.3.1"
 permissions:
   contents: write
+
+concurrency:
+  group: shev-agent-release
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -61,11 +65,60 @@ jobs:
             ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
           fi
 
+      - name: Allocate next Android versionCode
+        working-directory: android
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          gradle_file = Path("app/build.gradle.kts").read_text()
+          configured = re.search(r"getOrElse\((\d+)\)", gradle_file)
+          if not configured:
+              raise SystemExit("Cannot read the baseline versionCode from app/build.gradle.kts")
+          baseline = int(configured.group(1))
+
+          raw = subprocess.check_output(
+              ["gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/releases?per_page=100"],
+              text=True,
+          )
+          releases = [
+              item for item in json.loads(raw)
+              if not item.get("draft") and not item.get("prerelease")
+          ]
+          if not releases:
+              raise SystemExit("No published release found; refusing to guess the previous versionCode.")
+
+          releases.sort(key=lambda item: item.get("published_at") or item.get("created_at") or "", reverse=True)
+          latest = releases[0]
+          match = re.search(r"(?im)^versionCode:\s*(\d+)\s*$", latest.get("body") or "")
+          if not match:
+              raise SystemExit(
+                  f"Latest release {latest.get('tag_name')} has no versionCode in its release notes; "
+                  "refusing to publish an APK with an unverified versionCode."
+              )
+
+          previous = int(match.group(1))
+          next_code = max(baseline, previous) + 1
+          if next_code > 2_100_000_000:
+              raise SystemExit("Android versionCode limit reached.")
+
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"APP_VERSION_CODE={next_code}\n")
+              env.write(f"PREVIOUS_VERSION_CODE={previous}\n")
+          print(f"Previous published versionCode: {previous}")
+          print(f"Allocated versionCode: {next_code}")
+          PY
+
       - name: Verify release tag matches app version
         working-directory: android
         run: |
           VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
-          CODE=$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts)
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             RELEASE_TAG="${{ inputs.release_tag }}"
           elif [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
@@ -75,16 +128,24 @@ jobs:
           fi
           test "v$VERSION" = "$RELEASE_TAG"
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "APP_VERSION_CODE=$CODE" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
 
       - name: Run unit tests
         working-directory: android
-        run: gradle testDebugUnitTest --stacktrace
+        run: gradle -PSHEV_VERSION_CODE="$APP_VERSION_CODE" testDebugUnitTest --stacktrace
 
       - name: Assemble APK
         working-directory: android
-        run: gradle assembleDebug
+        run: gradle -PSHEV_VERSION_CODE="$APP_VERSION_CODE" assembleDebug
+
+      - name: Verify APK versionCode
+        run: |
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          ACTUAL_CODE=$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging "$APK" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -n 1)
+          test -n "$ACTUAL_CODE"
+          test "$ACTUAL_CODE" = "$APP_VERSION_CODE"
+          test "$ACTUAL_CODE" -gt "$PREVIOUS_VERSION_CODE"
+          echo "Verified APK versionCode=$ACTUAL_CODE is greater than previous=$PREVIOUS_VERSION_CODE"
 
       - name: Prepare release files
         run: |
@@ -92,7 +153,7 @@ jobs:
           cp android/app/build/outputs/apk/debug/app-debug.apk release-package/app-debug.apk
           cd release-package
           sha256sum app-debug.apk > app-debug.apk.sha256
-          printf 'version=%s\nversionCode=%s\ncommit=%s\n' "$APP_VERSION" "$APP_VERSION_CODE" "$GITHUB_SHA" > build-info.txt
+          printf 'version=%s\nversionCode=%s\ncommit=%s\n' "$APP_VERSION" "$APP_VERSION_CODE" "$(git -C .. rev-parse HEAD)" > build-info.txt
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -104,6 +165,8 @@ jobs:
             SheV Agent Android update ${{ env.APP_VERSION }}.
 
             versionCode: ${{ env.APP_VERSION_CODE }}
+
+            Previous versionCode: ${{ env.PREVIOUS_VERSION_CODE }}
 
             Install the attached app-debug.apk from the app's built-in update screen.
           files: |

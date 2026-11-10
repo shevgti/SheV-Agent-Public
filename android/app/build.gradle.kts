@@ -3,6 +3,14 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
 }
+
+val configuredVersionCode = providers.gradleProperty("SHEV_VERSION_CODE")
+    .map { it.toInt() }
+    .getOrElse(21)
+require(configuredVersionCode > 0) {
+    "SHEV_VERSION_CODE must be a positive Android versionCode."
+}
+
 android {
     namespace = "com.shev.agent"
     compileSdk = 37
@@ -10,8 +18,8 @@ android {
         applicationId = "com.shev.agent"
         minSdk = 26
         targetSdk = 35
-        versionCode = 21
-        versionName = "0.3.0"
+        versionCode = configuredVersionCode
+        versionName = "0.3.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val githubClientId = providers.gradleProperty("GITHUB_CLIENT_ID")
             .orElse(providers.environmentVariable("GITHUB_CLIENT_ID"))
