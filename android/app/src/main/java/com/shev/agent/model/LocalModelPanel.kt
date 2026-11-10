@@ -345,43 +345,31 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                 ) {
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Выбор основного AI", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            Text("Выбери, кто будет отвечать в основном чате. Активным может быть один основной провайдер.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Google Gemini · облачная модель", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text(if (state.useGemini) "Сейчас выбран Gemini" else "Для работы нужен ключ Google AI Studio.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            OutlinedButton(onClick = { showGeminiSettings = !showGeminiSettings }, modifier = Modifier.fillMaxWidth()) {
-                                Text(if (showGeminiSettings) "Скрыть настройки Gemini" else "Настроить / выбрать Gemini")
-                            }
-                            if (showGeminiSettings) GeminiProviderPanel(viewModel)
-                            androidx.compose.material3.HorizontalDivider()
-                            Text("Gemma · локально на телефоне", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Локальный ИИ SheV", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text("Работает прямо на телефоне. Без Gemini API, без OmniRoute, без платных ключей и без отправки переписки в облачные модели.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 when {
-                                    state.useGemini || state.useOpenAI || state.useOpenRouter || state.useOmniRoute -> "Сейчас выбран облачный провайдер"
-                                    state.ready -> "Gemma запущена и выбрана для локальной работы"
-                                    state.verified -> "Модель загружена и проверена"
-                                    else -> "Модель ещё не загружена · размер около 2,58 ГБ"
+                                    state.ready -> "Gemma запущена · ${state.backendName ?: "локальный режим"}"
+                                    state.verified -> "Модель установлена и проверена · запускаю локальный интеллект"
+                                    state.progress != null -> "Загрузка Gemma: ${((state.progress ?: 0f) * 100).toInt()}%"
+                                    else -> "Для первого запуска нужна Gemma 4 E2B · около 2,58 ГБ"
                                 },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
                             )
                             if (state.progress != null) {
                                 LinearProgressIndicator(progress = { state.progress ?: 0f }, modifier = Modifier.fillMaxWidth())
-                                Text("Загрузка: ${((state.progress ?: 0f) * 100).toInt()}%")
                                 TextButton(onClick = viewModel::cancelDownload) { Text("Отменить загрузку") }
                             } else if (!state.verified) {
                                 Button(onClick = viewModel::download, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-                                    Text(if (state.busy) "Подготовка…" else "Скачать Gemma · 2,58 ГБ")
+                                    Text(if (state.busy) "Подготавливаю…" else "Скачать локальную Gemma · 2,58 ГБ")
                                 }
                                 OutlinedButton(onClick = { importLauncher.launch(arrayOf("*/*")) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-                                    Text("Выбрать файл Gemma")
+                                    Text("Выбрать уже скачанный файл Gemma")
                                 }
-                            } else {
+                            } else if (!state.ready) {
                                 Button(onClick = viewModel::selectLocalModel, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-                                    Text(if (state.ready && !state.useGemini && !state.useOpenAI && !state.useOpenRouter && !state.useOmniRoute) "Gemma выбрана" else "Выбрать Gemma")
-                                }
-                                OutlinedButton(onClick = viewModel::deleteModel, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-                                    Text("Удалить Gemma с телефона")
+                                    Text(if (state.busy) "Запускаю…" else "Запустить локального SheV")
                                 }
                             }
                             Text(state.deviceSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -662,34 +650,10 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                             )
                         }
                     }
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Бесплатные AI-модели · OpenRouter", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Единый доступ к бесплатным моделям разных разработчиков. По умолчанию используется автоматический бесплатный маршрутизатор.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            OutlinedButton(onClick = { showOpenRouterSettings = !showOpenRouterSettings }, modifier = Modifier.fillMaxWidth()) {
-                                Text(if (showOpenRouterSettings) "Скрыть настройки OpenRouter" else "Настроить бесплатный OpenRouter")
-                            }
-                            if (showOpenRouterSettings) OpenRouterProviderPanel(viewModel)
-                        }
-                    }
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Подключение ChatGPT", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Прямой доступ к OpenAI API с отдельным ключом. Подписка ChatGPT не заменяет API-биллинг.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            OutlinedButton(onClick = { showOpenAISettings = !showOpenAISettings }, modifier = Modifier.fillMaxWidth()) {
-                                Text(if (showOpenAISettings) "Скрыть настройки OpenAI" else "Настроить ChatGPT / OpenAI")
-                            }
-                            if (showOpenAISettings) OpenAIProviderPanel(viewModel)
-                        }
-                    }
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Подключение AI-шлюза", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Необязательно. Настраивается отдельно и не требуется для локальной модели.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            OutlinedButton(onClick = { showGatewaySettings = !showGatewaySettings }, modifier = Modifier.fillMaxWidth()) {
-                                Text(if (showGatewaySettings) "Скрыть настройки OmniRoute" else "Настроить OmniRoute")
-                            }
-                            if (showGatewaySettings) OmniRoutePanel(viewModel)
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Облачные API отключены", fontWeight = FontWeight.SemiBold)
+                            Text("Основной чат работает только через локальную Gemma. Ввод API-ключей и подключение платных провайдеров в этой сборке не используются.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     TextButton(
