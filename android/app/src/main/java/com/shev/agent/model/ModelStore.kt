@@ -41,6 +41,20 @@ class ModelStore(context: Context) {
         candidate.takeIf { it.isFile && sha256(it) == spec.sha256 }
     }
 
+    /** Remove the pinned Gemma artifact and any interrupted download/import files. */
+    suspend fun deleteModel(spec: ModelArtifactSpec = ModelArtifactSpec.GEMMA_4_E2B_IT) = withContext(Dispatchers.IO) {
+        val targets = listOf(
+            File(modelDirectory, spec.fileName),
+            File(modelDirectory, "${spec.fileName}.part"),
+            File(modelDirectory, "${spec.fileName}.import.part")
+        )
+        targets.forEach { file ->
+            if (file.exists() && !file.delete()) {
+                error("Не удалось удалить файл модели: ${file.name}")
+            }
+        }
+    }
+
     /**
      * Imports an already-downloaded model from a user-selected document.
      * The source is never trusted: bytes are copied privately and SHA-256 is checked
