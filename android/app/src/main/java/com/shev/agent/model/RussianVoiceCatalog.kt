@@ -13,6 +13,10 @@ enum class RussianVoiceGender {
 }
 
 object RussianVoiceCatalog {
+    /** Remove transport suffixes so network/local copies count as one voice. */
+    fun identityKey(voiceId: String): String =
+        voiceId.lowercase().replace(Regex("-(network|local)$"), "")
+
     fun classify(voiceId: String): RussianVoiceGender {
         val id = voiceId.lowercase()
         val female = listOf("female", "fem", "x-ruf", "_ruf", "-ruf", "voice-f")
