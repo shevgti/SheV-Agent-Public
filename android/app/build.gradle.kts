@@ -10,8 +10,8 @@ android {
         applicationId = "com.shev.agent"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "0.2.7"
+        versionCode = 19
+        versionName = "0.2.8"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val githubClientId = providers.gradleProperty("GITHUB_CLIENT_ID")
             .orElse(providers.environmentVariable("GITHUB_CLIENT_ID"))
