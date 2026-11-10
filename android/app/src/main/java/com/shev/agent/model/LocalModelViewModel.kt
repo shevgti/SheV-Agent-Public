@@ -41,6 +41,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+data class CodexApproval(
+    val requestId: Long,
+    val kind: String,
+    val title: String,
+    val detail: String
+)
+
 data class LocalModelUiState(
     val verified: Boolean = false,
     val progress: Float? = null,
@@ -51,6 +58,16 @@ data class LocalModelUiState(
     val useOpenAI: Boolean = false,
     val useGemini: Boolean = false,
     val useOpenRouter: Boolean = false,
+    val useCodex: Boolean = false,
+    val codexConnecting: Boolean = false,
+    val codexConnected: Boolean = false,
+    val codexEmail: String = "",
+    val codexPlanType: String = "",
+    val codexModelId: String = "",
+    val codexRateUsedPercent: Int? = null,
+    val codexStatus: String = "Codex не подключён",
+    val codexApproval: CodexApproval? = null,
+    val streamingMessage: String? = null,
     val backendName: String? = null,
     val deviceSummary: String = "Проверяю характеристики устройства…",
     val prompt: String = "",
@@ -70,6 +87,9 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private val mutableState = MutableStateFlow(LocalModelUiState())
     val state: StateFlow<LocalModelUiState> = mutableState.asStateFlow()
     private var runtime: SheVAgentRuntime? = null
+    private var codexClient: CodexAppServerClient? = null
+    private var codexActiveThreadId: String? = null
+    private var codexActiveTurnId: String? = null
     private var downloadJob: Job? = null
     private var responseJob: Job? = null
 
@@ -78,11 +98,13 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val openAiPreferences = application.getSharedPreferences("shev_openai", Application.MODE_PRIVATE)
         val geminiPreferences = application.getSharedPreferences("shev_gemini", Application.MODE_PRIVATE)
         val openRouterPreferences = application.getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
-        val useOpenRouter = openRouterPreferences.getBoolean("use_for_primary_chat", false)
-        val useGemini = !useOpenRouter && geminiPreferences.getBoolean("use_for_primary_chat", false)
-        val useOpenAI = !useOpenRouter && !useGemini && openAiPreferences.getBoolean("use_for_primary_chat", false)
-        val useOmniRoute = !useOpenRouter && !useGemini && !useOpenAI && gatewayPreferences.getBoolean("use_for_primary_chat", false)
-        mutableState.update { it.copy(useOmniRoute = useOmniRoute, useOpenAI = useOpenAI, useGemini = useGemini, useOpenRouter = useOpenRouter) }
+        val codexPreferences = application.getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+        val useCodex = codexPreferences.getBoolean("use_for_primary_chat", false)
+        val useOpenRouter = !useCodex && openRouterPreferences.getBoolean("use_for_primary_chat", false)
+        val useGemini = !useCodex && !useOpenRouter && geminiPreferences.getBoolean("use_for_primary_chat", false)
+        val useOpenAI = !useCodex && !useOpenRouter && !useGemini && openAiPreferences.getBoolean("use_for_primary_chat", false)
+        val useOmniRoute = !useCodex && !useOpenRouter && !useGemini && !useOpenAI && gatewayPreferences.getBoolean("use_for_primary_chat", false)
+        mutableState.update { it.copy(useCodex = useCodex, useOmniRoute = useOmniRoute, useOpenAI = useOpenAI, useGemini = useGemini, useOpenRouter = useOpenRouter) }
         viewModelScope.launch(Dispatchers.IO) {
             val deviceSummary = DeviceDiagnostics.summary(getApplication())
             val available = store.findVerifiedModel() != null
@@ -109,6 +131,26 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 }
             }
+        }
+    }
+
+    fun setCodexPrimaryEnabled(enabled: Boolean) {
+        val preferences = getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+        preferences.edit().putBoolean("use_for_primary_chat", enabled).apply()
+        if (enabled) {
+            listOf("shev_omniroute", "shev_openai", "shev_gemini", "shev_openrouter").forEach { name ->
+                getApplication<Application>().getSharedPreferences(name, Application.MODE_PRIVATE)
+                    .edit().putBoolean("use_for_primary_chat", false).apply()
+            }
+        }
+        mutableState.update {
+            it.copy(
+                useCodex = enabled,
+                useOmniRoute = if (enabled) false else it.useOmniRoute,
+                useOpenAI = if (enabled) false else it.useOpenAI,
+                useGemini = if (enabled) false else it.useGemini,
+                useOpenRouter = if (enabled) false else it.useOpenRouter
+            )
         }
     }
 
