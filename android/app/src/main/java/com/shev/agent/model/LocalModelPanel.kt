@@ -80,6 +80,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var showVoicePicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showGatewaySettings by remember { mutableStateOf(false) }
+    var showOpenAISettings by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<AppUpdate?>(null) }
     var updateMessage by remember { mutableStateOf<String?>(null) }
     var checkingUpdate by remember { mutableStateOf(false) }
@@ -314,6 +315,16 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     }
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Подключение ChatGPT", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Прямой доступ к OpenAI API с отдельным ключом. Подписка ChatGPT не заменяет API-биллинг.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            OutlinedButton(onClick = { showOpenAISettings = !showOpenAISettings }, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (showOpenAISettings) "Скрыть настройки OpenAI" else "Настроить ChatGPT / OpenAI")
+                            }
+                            if (showOpenAISettings) OpenAIProviderPanel(viewModel)
+                        }
+                    }
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Подключение AI-шлюза", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text("Необязательно. Настраивается отдельно и не требуется для локальной модели.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             OutlinedButton(onClick = { showGatewaySettings = !showGatewaySettings }, modifier = Modifier.fillMaxWidth()) {
@@ -502,7 +513,8 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                         voiceConversation && listening -> "Слушаю тебя"
                         voiceConversation && state.busy -> "Готовлю ответ"
                         voiceConversation -> "Голосовой диалог включён"
-                        state.useOmniRoute -> "Удалённый AI"
+                        state.useOpenAI -> "ChatGPT · OpenAI"
+                        state.useOmniRoute -> "Удалённый AI · OmniRoute"
                         state.ready -> "Личный помощник"
                         else -> "Твой AI-помощник"
                     },
@@ -523,7 +535,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
         }
 
 
-        if (!state.ready && !state.useOmniRoute) {
+        if (!state.ready && !state.useOmniRoute && !state.useOpenAI) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(22.dp),
