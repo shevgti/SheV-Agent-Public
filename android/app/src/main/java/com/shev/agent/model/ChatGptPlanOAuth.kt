@@ -207,8 +207,39 @@ internal class ChatGptPlanOAuth(
         }.getOrElse { throw IllegalStateException("Сохранённая авторизация ChatGPT недоступна. Подключи аккаунт заново.") }
     }
 
-    fun disconnect() {
+    suspend fun disconnect(): Boolean = withContext(Dispatchers.IO) {
+        val session = runCatching { load() }.getOrNull()
+        val revoked = if (session == null) {
+            true
+        } else {
+            runCatching {
+                val endpoint = getJson(DISCOVERY_URL).get("revocation_endpoint")?.asString
+                    ?: throw IllegalStateException("OpenAI не опубликовал revocation endpoint.")
+                val body = listOf(
+                    "token" to session.refreshToken,
+                    "token_type_hint" to "refresh_token",
+                    "client_id" to session.clientId
+                ).joinToString("&") { "${encode(it.first)}=${encode(it.second)}" }
+                val connection = (URL(endpoint).openConnection() as java.net.HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 15_000
+                    readTimeout = 20_000
+                    instanceFollowRedirects = false
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                    setRequestProperty("Accept", "application/json")
+                }
+                try {
+                    connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
+                    connection.responseCode == 200
+                } finally {
+                    connection.disconnect()
+                }
+            }.getOrDefault(false)
+        }
+        // Clear local credentials even if the revocation endpoint could not be reached.
         preferences.edit().remove(KEY_SESSION).apply()
+        revoked
     }
 
     private fun save(session: ChatGptPlanSession) {
