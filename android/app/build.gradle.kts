@@ -47,6 +47,10 @@ android {
     }
     buildFeatures { compose = true; buildConfig = true }
     packaging {
+        jniLibs {
+            // The bundled Codex App Server is an executable ELF placed in nativeLibraryDir.
+            useLegacyPackaging = true
+        }
         resources {
             excludes += "META-INF/INDEX.LIST"
             excludes += "META-INF/DEPENDENCIES"
