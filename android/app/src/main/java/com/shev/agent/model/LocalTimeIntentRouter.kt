@@ -6,7 +6,7 @@ import java.util.Locale
 object LocalTimeIntentRouter {
     private val patterns = listOf(
         Regex("\\bкотор(?:ый|ое)\\s+час\\b"),
-        Regex("\\bсколько\\s+времени\\b"),
+        Regex("\\bсколько(?:\\s+сейчас)?\\s+времени\\b"),
         Regex("\\bтекущ(?:ее|ую)\\s+время\\b"),
         Regex("\\bвремя\\s+сейчас\\b"),
         Regex("\\bкакое\\s+сегодня\\s+число\\b"),
