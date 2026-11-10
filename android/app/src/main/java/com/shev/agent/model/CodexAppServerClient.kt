@@ -65,7 +65,7 @@ internal class CodexAppServerClient(
         if (!configFile.exists()) {
             configFile.writeText(
                 "approval_policy = \"on-request\"\n" +
-                    "sandbox_mode = \"workspace-write\"\n" +
+                    "sandbox_mode = \"read-only\"\n" +
                     "model_reasoning_effort = \"medium\"\n",
                 StandardCharsets.UTF_8
             )
@@ -151,7 +151,7 @@ internal class CodexAppServerClient(
             JsonObject().apply {
                 addProperty("model", model)
                 addProperty("cwd", workspace.absolutePath)
-                addProperty("sandbox", "workspace-write")
+                addProperty("sandbox", "read-only")
                 addProperty("serviceName", "shev_agent")
                 addProperty(
                     "developerInstructions",
