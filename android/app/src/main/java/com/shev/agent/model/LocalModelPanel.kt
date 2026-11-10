@@ -270,7 +270,21 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             val answer = last.substringAfter(":").trim()
             if (answer.isNotBlank()) {
                 voiceStatus = "SheV отвечает…"
-                speech.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "shev-answer-${state.messages.size}")
+                if (neuralTtsInstalled) {
+                    neuralTtsPlaying = true
+                    try {
+                        neuralTts.speak(answer, selectedNeuralSpeaker)
+                        voiceStatus = "Ответ завершён"
+                        if (currentVoiceMode) beginListening()
+                    } catch (error: Exception) {
+                        voiceStatus = "Нейроголос недоступен: ${error.message ?: "ошибка"}. Использую системный голос."
+                        speech.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "shev-answer-${state.messages.size}")
+                    } finally {
+                        neuralTtsPlaying = false
+                    }
+                } else {
+                    speech.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "shev-answer-${state.messages.size}")
+                }
             }
         }
     }
