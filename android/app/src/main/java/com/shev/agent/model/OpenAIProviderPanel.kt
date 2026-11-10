@@ -39,7 +39,7 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
     val preferences = remember(context) {
         context.getSharedPreferences("shev_openai", android.content.Context.MODE_PRIVATE)
     }
-    var modelId by remember { mutableStateOf("gpt-4.1-mini") }
+    var modelId by remember { mutableStateOf("gpt-6.1-sol") }
     var apiKey by remember { mutableStateOf("") }
     var prompt by remember { mutableStateOf("Привет! Представься по-русски и кратко расскажи, чем можешь помочь в SheV Agent.") }
     var answer by remember { mutableStateOf("") }
@@ -49,7 +49,12 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(preferences) {
-        modelId = preferences.getString("model_id", modelId) ?: modelId
+        val savedModel = preferences.getString("model_id", null)
+        // Migrate the previous default to GPT-6.1 Sol, preserving custom model IDs.
+        modelId = if (savedModel.isNullOrBlank() || savedModel == "gpt-4.1-mini") {
+            preferences.edit().putString("model_id", "gpt-6.1-sol").apply()
+            "gpt-6.1-sol"
+        } else savedModel
         apiKey = preferences.getString("encrypted_token", null)?.let { encrypted ->
             runCatching { OpenAISecretCipher.decrypt(encrypted) }.getOrDefault("")
         } ?: ""
@@ -118,7 +123,7 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = { Text("Модель OpenAI") },
-                supportingText = { Text("По умолчанию gpt-4.1-mini. Можно указать другую доступную API-модель.") }
+                supportingText = { Text("GPT-6.1 Sol: gpt-6.1-sol. Также доступны gpt-6-astra, gpt-6.1-terra и экономичная gpt-6-luna, если они разрешены для API-проекта.") }
             )
             OutlinedTextField(
                 value = apiKey,
