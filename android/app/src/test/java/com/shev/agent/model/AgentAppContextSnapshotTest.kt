@@ -11,8 +11,8 @@ class AgentAppContextSnapshotTest {
         val snapshot = AgentAppContextSnapshot(
             appName = "SheV Agent",
             packageName = "com.shev.agent",
-            appVersion = "0.2.6",
-            versionCode = 17,
+            appVersion = "0.2.7",
+            versionCode = 18,
             localModelVerified = true,
             runtimeReady = true,
             selectedPrimaryBackend = "Локальная модель",
