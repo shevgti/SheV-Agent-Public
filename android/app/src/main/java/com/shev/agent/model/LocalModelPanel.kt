@@ -399,14 +399,14 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                                                 voicePrefs.edit().putInt("neural_speaker_id", speakerId).apply()
                                                 scope.launch {
                                                     neuralTtsPlaying = true
-                                                    neuralTtsStatus = "Генерирую и воспроизвожу диктора ${speakerId + 1}…"
+                                                    neuralTtsStatus = "Генерирую и воспроизвожу: ${SupertonicVoiceCatalog.speakers[speakerId].title}…"
                                                     try {
                                                         neuralTts.speak(
                                                             "Привет! Я ${SupertonicVoiceCatalog.speakers[speakerId].title} приложения SheV. Давай поговорим. Я могу помогать тебе каждый день.",
                                                             speakerId,
                                                             SupertonicVoiceCatalog.styles.firstOrNull { it.id == selectedNeuralEmotion }?.expressionTag
                                                         )
-                                                        neuralTtsStatus = "Прослушивание завершено. Выбран диктор ${speakerId + 1}."
+                                                        neuralTtsStatus = "Прослушивание завершено. Выбрано: ${SupertonicVoiceCatalog.speakers[speakerId].title}."
                                                     } catch (error: Exception) {
                                                         neuralTtsStatus = error.message ?: "Не удалось воспроизвести нейроголос."
                                                     } finally {
