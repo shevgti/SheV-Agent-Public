@@ -609,13 +609,29 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 )
                 val candidates = ModelFallbackRouter.candidates(modelId)
+                val toolsEnabled = preferences.getBoolean("enable_agent_tools", false)
                 val (usedModel, answer) = ModelFallbackRouter.firstSuccessful(candidates) { candidate ->
-                    OpenAiCompatibleClient(
-                        OpenAiCompatibleConfig(baseUrl, candidate, token)
-                    ).complete(
-                        promptWithContext,
-                        systemInstruction = "Ты — SheV, личный помощник пользователя. Отвечай по-русски. Это удалённый режим: у тебя нет доступа к локальным инструментам, телефону, файлам или действиям приложения. Не утверждай, что выполнил действие. Если пользователь просит выполнить действие на устройстве, объясни, что удалённая модель не может его выполнить. Не раскрывай API-ключи и секреты."
-                    )
+                    val config = OpenAiCompatibleConfig(baseUrl, candidate, token)
+                    if (toolsEnabled) {
+                        val input = JsonArray().apply {
+                            add(JsonObject().apply {
+                                addProperty("role", "user")
+                                addProperty("content", promptWithContext)
+                            })
+                        }
+                        val bridge = OpenAiLocalToolBridge(taskRepository)
+                        OpenAiResponsesClient(config).completeWithTools(
+                            history = input,
+                            instructions = "Ты — SheV, личный помощник пользователя. Отвечай по-русски. Ты можешь вызывать только явно перечисленные инструменты SheV. Используй создание черновика только когда пользователь прямо просит сохранить поручение. Не утверждай, что действие выполнено, если инструмент вернул not_executed. Не раскрывай ключи и секреты.",
+                            tools = bridge.definitions,
+                            executeTool = bridge::execute
+                        )
+                    } else {
+                        OpenAiCompatibleClient(config).complete(
+                            promptWithContext,
+                            systemInstruction = "Ты — SheV, личный помощник пользователя. Отвечай по-русски. Это удалённый режим без локальных инструментов: не утверждай, что выполнил действие. Не раскрывай API-ключи и секреты."
+                        )
+                    }
                 }
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
