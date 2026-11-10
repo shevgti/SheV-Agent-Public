@@ -87,6 +87,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var selectedNeuralSpeaker by remember { mutableStateOf(voicePrefs.getInt("neural_speaker_id", 0).coerceIn(0, 9)) }
     var selectedNeuralEmotion by remember { mutableStateOf(voicePrefs.getString("neural_emotion_id", "natural") ?: "natural") }
     var neuralTtsPlaying by remember { mutableStateOf(false) }
+    var lastSpokenMessageIndex by remember { mutableStateOf(-1) }
     var showVoicePicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showGatewaySettings by remember { mutableStateOf(false) }
@@ -265,26 +266,38 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
         }
     }
 
-    LaunchedEffect(state.messages.lastOrNull(), state.busy) {
+    LaunchedEffect(state.messages.size, state.busy, voiceConversation) {
+        val messageIndex = state.messages.lastIndex
         val last = state.messages.lastOrNull()
-        if (voiceConversation && last?.startsWith("SheV:") == true && !state.busy) {
-            val answer = last.substringAfter(":").trim()
+        // A completed assistant turn is spoken once only. The previous effect could
+        // run again when busy changed, causing overlapping/repeated speech.
+        if (voiceConversation && !state.busy && messageIndex > lastSpokenMessageIndex &&
+            last?.startsWith("SheV:") == true
+        ) {
+            lastSpokenMessageIndex = messageIndex
+            val answer = cleanTextForSpeech(last.substringAfter(":"))
             if (answer.isNotBlank()) {
                 voiceStatus = "SheV отвечает…"
+                speech.stop()
                 if (neuralTtsInstalled) {
                     neuralTtsPlaying = true
                     try {
-                        neuralTts.speak(answer, selectedNeuralSpeaker, SupertonicVoiceCatalog.styles.firstOrNull { it.id == selectedNeuralEmotion }?.expressionTag)
+                        neuralTts.speak(
+                            answer,
+                            selectedNeuralSpeaker,
+                            SupertonicVoiceCatalog.styles.firstOrNull { it.id == selectedNeuralEmotion }?.expressionTag
+                        )
                         voiceStatus = "Ответ завершён"
                         if (currentVoiceMode) beginListening()
                     } catch (error: Exception) {
-                        voiceStatus = "Нейроголос недоступен: ${error.message ?: "ошибка"}. Использую системный голос."
-                        speech.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "shev-answer-${state.messages.size}")
+                        // Do not start a second engine after a neural playback failure:
+                        // it may already have emitted part of the answer.
+                        voiceStatus = "Ошибка нейроголоса: ${error.message ?: "не удалось воспроизвести ответ"}."
                     } finally {
                         neuralTtsPlaying = false
                     }
                 } else {
-                    speech.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "shev-answer-${state.messages.size}")
+                    speech.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "shev-answer-$messageIndex")
                 }
             }
         }
@@ -828,4 +841,18 @@ private fun VoiceChoiceRow(
         TextButton(onClick = onPreview) { Text("Слушать") }
         TextButton(onClick = onSelect) { Text(if (selected) "Выбран" else "Выбрать") }
     }
+}
+
+
+private fun cleanTextForSpeech(source: String): String {
+    return source
+        .replace(Regex("`{1,3}"), "")
+        .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1")
+        .replace(Regex("(?m)^\\s{0,3}#{1,6}\\s*"), "")
+        .replace(Regex("(?m)^\\s*[-*+]\\s+"), "")
+        .replace(Regex("(?m)^\\s*\\d+[.)]\\s+"), "")
+        .replace(Regex("\\[([^]]+)]\\([^)]+\\)"), "$1")
+        .replace(Regex("https?://\\S+"), "")
+        .replace(Regex("\\s+"), " ")
+        .trim()
 }
