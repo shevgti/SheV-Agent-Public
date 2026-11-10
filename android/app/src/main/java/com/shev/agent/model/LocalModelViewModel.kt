@@ -228,6 +228,39 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         downloadJob?.cancel()
     }
 
+    /** Select the on-device Gemma backend and disable mutually exclusive cloud providers. */
+    fun selectLocalModel() {
+        listOf("shev_gemini", "shev_openai", "shev_openrouter", "shev_omniroute").forEach { name ->
+            getApplication<Application>().getSharedPreferences(name, Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
+        }
+        mutableState.update {
+            it.copy(useGemini = false, useOpenAI = false, useOpenRouter = false, useOmniRoute = false)
+        }
+        if (mutableState.value.verified) {
+            launchAgent()
+        } else {
+            mutableState.update { it.copy(error = "Сначала загрузи Gemma или выбери файл модели.") }
+        }
+    }
+
+    /** Stop the native runtime before deleting its verified model and incomplete downloads. */
+    fun deleteModel() {
+        if (downloadJob?.isActive == true || mutableState.value.busy) return
+        mutableState.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val active = runtime
+                runtime = null
+                if (active != null) active.close()
+                store.deleteModel()
+                mutableState.update { it.copy(verified = false, ready = false, busy = false, progress = null, backendName = null) }
+            } catch (failure: Exception) {
+                mutableState.update { it.copy(busy = false, error = failure.message ?: "Не удалось удалить модель.") }
+            }
+        }
+    }
+
     fun importModel(uri: Uri) {
         if (downloadJob?.isActive == true || mutableState.value.busy) return
         mutableState.update { it.copy(busy = true, progress = null, error = null) }
