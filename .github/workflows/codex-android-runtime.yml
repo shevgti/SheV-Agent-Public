@@ -30,6 +30,9 @@ jobs:
         with:
           targets: aarch64-linux-android
 
+      - name: Ensure Android Rust standard library is installed
+        run: rustup target add aarch64-linux-android --toolchain stable
+
       - name: Configure Android linker
         shell: bash
         run: |
