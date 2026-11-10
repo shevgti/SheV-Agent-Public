@@ -984,8 +984,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                                     val detail = when (method) {
                                         "item/commandExecution/requestApproval" -> buildString {
                                             append(command.ifBlank { "Команда не указана" })
-                                            params.get("cwd")?.asString?.let { append("\\nРабочая папка: $it") }
-                                            params.get("reason")?.asString?.let { append("\\nПричина: $it") }
+                                            params.get("cwd")?.asString?.let { append("\nРабочая папка: $it") }
+                                            params.get("reason")?.asString?.let { append("\nПричина: $it") }
                                         }
                                         else -> params.toString()
                                     }
