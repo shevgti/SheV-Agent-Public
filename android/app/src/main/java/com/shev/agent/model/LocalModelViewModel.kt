@@ -944,6 +944,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         val eventTurnId = params.get("turnId")?.asString
                             ?: params.getAsJsonObject("turn")?.get("id")?.asString
                         if (eventThreadId != null && eventThreadId != threadId) return@collect
+                        if (eventTurnId != null && eventTurnId != turnId) return@collect
 
                         when (method) {
                             "item/agentMessage/delta" -> {
