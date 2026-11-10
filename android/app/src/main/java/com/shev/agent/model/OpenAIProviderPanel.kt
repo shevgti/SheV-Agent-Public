@@ -11,7 +11,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -25,60 +24,36 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
-/** Direct OpenAI API configuration. API keys are encrypted with a dedicated Android Keystore key. */
+/** Official Sign in with ChatGPT for the open-source SheV Android client. */
 @Composable
 fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
     val agentState by viewModel.state.collectAsState()
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val preferences = remember(context) {
         context.getSharedPreferences("shev_openai", android.content.Context.MODE_PRIVATE)
     }
     var modelId by remember { mutableStateOf("gpt-6.1-sol") }
-    var apiKey by remember { mutableStateOf("") }
-    var prompt by remember { mutableStateOf("Привет! Представься по-русски и кратко расскажи, чем можешь помочь в SheV Agent.") }
-    var answer by remember { mutableStateOf("") }
-    var status by remember { mutableStateOf("Не подключено") }
+    var connected by remember { mutableStateOf(false) }
+    var accountLabel by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var credentialsSaved by remember { mutableStateOf(false) }
-    var chatGptConnected by remember { mutableStateOf(false) }
-    var chatGptEmail by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf("ChatGPT не подключён") }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(preferences) {
-        val savedModel = preferences.getString("model_id", null)
-        // Migrate the previous default to GPT-6.1 Sol, preserving custom model IDs.
-        modelId = if (savedModel.isNullOrBlank() || savedModel == "gpt-4.1-mini") {
-            preferences.edit().putString("model_id", "gpt-6.1-sol").apply()
-            "gpt-6.1-sol"
-        } else savedModel
-        apiKey = preferences.getString("encrypted_token", null)?.let { encrypted ->
-            runCatching { OpenAISecretCipher.decrypt(encrypted) }.getOrDefault("")
-        } ?: ""
-        val planSession = runCatching { ChatGptPlanOAuth(context, preferences).load() }.getOrNull()
-        chatGptConnected = planSession != null
-        chatGptEmail = planSession?.email.orEmpty()
-        credentialsSaved = apiKey.isNotBlank() || chatGptConnected
-        if (preferences.contains("encrypted_token") && apiKey.isBlank() && !chatGptConnected) {
-            status = "Сохранённый ключ недоступен. Можно войти через ChatGPT без API-ключа."
-        } else if (chatGptConnected) {
-            status = "ChatGPT подключён: ${chatGptEmail.ifBlank { "аккаунт подтверждён" }}."
+        modelId = preferences.getString("model_id", "gpt-6.1-sol") ?: "gpt-6.1-sol"
+        val session = runCatching { ChatGptPlanOAuth(context, preferences).load() }.getOrNull()
+        connected = session != null
+        accountLabel = session?.email.orEmpty()
+        status = if (connected) {
+            "ChatGPT подключён: ${accountLabel.ifBlank { "аккаунт подтверждён" }}."
+        } else {
+            "Нажми «Войти через ChatGPT». API-ключ создавать не нужно."
         }
     }
-
-    fun markDirty() {
-        credentialsSaved = false
-        if (agentState.useOpenAI) viewModel.setOpenAIPrimaryEnabled(false)
-    }
-
-    fun client(): OpenAiCompatibleClient = OpenAiCompatibleClient(
-        OpenAiCompatibleConfig("https://api.openai.com/v1", modelId.trim(), apiKey.trim())
-    )
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -87,11 +62,11 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("OpenAI · ChatGPT", style = MaterialTheme.typography.titleLarge)
+            Text("ChatGPT · официальный вход", style = MaterialTheme.typography.titleLarge)
             Text(
-                "Подключи свой аккаунт ChatGPT напрямую. Для открытого приложения доступен официальный вход через ChatGPT — без API-ключа и без отдельного API-баланса. Доступность зависит от разрешения и лимитов твоего плана.",
+                "SheV подключается напрямую к ChatGPT через официальный OAuth для открытых приложений. Никаких API-ключей, Gemini, сторонних шлюзов или Termux. Ты подтверждаешь доступ в браузере, а токены хранятся зашифрованными на телефоне.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -103,9 +78,8 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
                     scope.launch {
                         try {
                             val session = ChatGptPlanOAuth(context, preferences).authorize()
-                            chatGptConnected = true
-                            chatGptEmail = session.email
-                            credentialsSaved = true
+                            connected = true
+                            accountLabel = session.email
                             viewModel.setOpenAIPrimaryEnabled(true)
                             status = "ChatGPT подключён. SheV использует доступ твоего аккаунта без API-ключа."
                         } catch (error: Exception) {
@@ -117,167 +91,54 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
                 },
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth()
-            ) { Text(if (chatGptConnected) "Переподключить ChatGPT" else "Войти через ChatGPT — без API-ключа") }
-            if (chatGptConnected) {
+            ) {
+                Text(if (connected) "Переподключить ChatGPT" else "Войти через ChatGPT")
+            }
+            if (connected) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "Подключён: ${chatGptEmail.ifBlank { "аккаунт ChatGPT" }}",
+                        "Аккаунт: ${accountLabel.ifBlank { "ChatGPT" }}",
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )
                     TextButton(onClick = {
                         ChatGptPlanOAuth(context, preferences).disconnect()
-                        chatGptConnected = false
-                        chatGptEmail = ""
-                        credentialsSaved = apiKey.isNotBlank()
+                        connected = false
+                        accountLabel = ""
                         viewModel.setOpenAIPrimaryEnabled(false)
                         status = "Аккаунт ChatGPT отключён."
                     }) { Text("Отключить") }
                 }
             }
-            Button(
-                onClick = {
-                    runCatching {
-                        val intent = android.content.Intent(
-                            android.content.Intent.ACTION_VIEW,
-                            android.net.Uri.parse("https://platform.openai.com/api-keys")
-                        )
-                        context.startActivity(intent)
-                        status = "Открой создание секретного ключа. Скопируй его и вернись сюда."
-                    }.onFailure { status = "Не удалось открыть страницу ключей OpenAI." }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("1 · Получить API-ключ OpenAI") }
-            OutlinedButton(
-                onClick = {
-                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
-                        as android.content.ClipboardManager
-                    val copied = clipboard.primaryClip?.takeIf { it.itemCount > 0 }
-                        ?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
-                    if (copied.startsWith("sk-") && copied.length > 20) {
-                        apiKey = copied.trim()
-                        markDirty()
-                        status = "Ключ вставлен. Нажми «Сохранить ключ»."
-                    } else {
-                        status = "В буфере не найден API-ключ OpenAI. Скопируй секретный ключ на странице OpenAI."
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("2 · Вставить скопированный ключ") }
             OutlinedTextField(
                 value = modelId,
-                onValueChange = { modelId = it; markDirty() },
+                onValueChange = {
+                    modelId = it
+                    preferences.edit().putString("model_id", it.trim()).apply()
+                    if (agentState.useOpenAI) viewModel.setOpenAIPrimaryEnabled(false)
+                },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                label = { Text("Модель OpenAI") },
-                supportingText = { Text("GPT-6.1 Sol: gpt-6.1-sol. Также доступны gpt-6-astra, gpt-6.1-terra и экономичная gpt-6-luna, если они разрешены для API-проекта.") }
-            )
-            OutlinedTextField(
-                value = apiKey,
-                onValueChange = { apiKey = it; markDirty() },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                label = { Text("Секретный API-ключ") },
-                visualTransformation = PasswordVisualTransformation()
+                label = { Text("Модель ChatGPT") },
+                supportingText = { Text("По умолчанию gpt-6.1-sol. Доступность модели проверяется самим ChatGPT-аккаунтом.") }
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = {
-                        runCatching {
-                            OpenAiCompatibleConfig("https://api.openai.com/v1", modelId.trim(), apiKey.trim()).validatedBaseUrl()
-                            preferences.edit()
-                                .putString("model_id", modelId.trim())
-                                .putString("encrypted_token", OpenAISecretCipher.encrypt(apiKey.trim()))
-                                .apply()
-                            credentialsSaved = true
-                            status = "Ключ сохранён в Android Keystore."
-                        }.onFailure { status = it.message ?: "Не удалось сохранить настройки OpenAI." }
-                    },
-                    enabled = apiKey.isNotBlank() && modelId.isNotBlank(),
-                    modifier = Modifier.weight(1f)
-                ) { Text("Сохранить ключ") }
-                TextButton(onClick = {
-                    preferences.edit().clear().apply()
-                    apiKey = ""
-                    credentialsSaved = false
-                    viewModel.setOpenAIPrimaryEnabled(false)
-                    status = "Ключ OpenAI удалён."
-                }) { Text("Удалить") }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Использовать OpenAI для основного чата", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Использовать ChatGPT для основного чата SheV",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium
+                )
                 Switch(
                     checked = agentState.useOpenAI,
                     onCheckedChange = viewModel::setOpenAIPrimaryEnabled,
-                    enabled = credentialsSaved && !busy
+                    enabled = connected && !busy
                 )
             }
-            Text(
-                "ChatGPT может пользоваться только тремя безопасными инструментами SheV: узнать местное время, посмотреть доступные инструменты и сохранить черновик поручения. Черновик ждёт подтверждения во вкладке «Память». Изменение настроек, отправка сообщений, удаление и другие рискованные действия пока недоступны.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            OutlinedButton(
-                onClick = {
-                    if (busy) return@OutlinedButton
-                    busy = true
-                    status = "Проверяю API-ключ и модель…"
-                    scope.launch {
-                        try {
-                            // Test the actual chat endpoint rather than GET /models.
-                            // Restricted project keys may be allowed to create responses but not list models.
-                            val testAnswer = withContext(Dispatchers.IO) {
-                                client().complete(
-                                    "Ответь одним словом: подключение работает?",
-                                    "Ты проверяешь соединение. Ответь кратко по-русски."
-                                )
-                            }
-                            status = "Подключение OpenAI работает. Модель $modelId ответила: ${testAnswer.take(120)}"
-                        } catch (error: Exception) {
-                            status = error.message ?: "Не удалось проверить OpenAI API."
-                        } finally { busy = false }
-                    }
-                },
-                enabled = !busy && apiKey.isNotBlank(),
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Проверить подключение") }
-            OutlinedTextField(
-                value = prompt,
-                onValueChange = { prompt = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Пробный запрос") },
-                minLines = 2,
-                maxLines = 4
-            )
-            Button(
-                onClick = {
-                    if (busy || prompt.isBlank()) return@Button
-                    busy = true
-                    answer = ""
-                    status = "Отправляю пробный запрос…"
-                    scope.launch {
-                        try {
-                            answer = withContext(Dispatchers.IO) {
-                                client().complete(prompt.trim(), "Ты — SheV, личный AI-помощник. Отвечай по-русски.")
-                            }
-                            status = "Ответ получен от OpenAI."
-                        } catch (error: Exception) {
-                            status = error.message ?: "Ошибка запроса к OpenAI."
-                        } finally { busy = false }
-                    }
-                },
-                enabled = !busy && apiKey.isNotBlank() && prompt.isNotBlank(),
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Отправить тестовый запрос") }
             if (busy) CircularProgressIndicator()
             Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-            if (answer.isNotBlank()) {
-                Text("Ответ ChatGPT", style = MaterialTheme.typography.titleMedium)
-                Text(answer)
-            }
             Text(
-                "ChatGPT OAuth-токены и обновляемый refresh token хранятся зашифрованными ключом Android Keystore. История чата отправляется в OpenAI только при выборе этого провайдера. API-ключ можно не вводить.",
+                "Разрешение ChatGPT plan usage и лимиты определяются твоим аккаунтом и настройками ChatGPT. SheV не получает доступ к перепискам ChatGPT — только разрешение на запросы к моделям. История SheV отправляется в OpenAI, когда выбран этот провайдер.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
