@@ -115,11 +115,18 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             .putBoolean("use_for_primary_chat", enabled)
             .apply()
         if (enabled) {
-            getApplication<Application>()
-                .getSharedPreferences("shev_openai", Application.MODE_PRIVATE)
+            getApplication<Application>().getSharedPreferences("shev_openai", Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
+            getApplication<Application>().getSharedPreferences("shev_gemini", Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
         }
-        mutableState.update { it.copy(useOmniRoute = enabled, useOpenAI = if (enabled) false else it.useOpenAI) }
+        mutableState.update {
+            it.copy(
+                useOmniRoute = enabled,
+                useOpenAI = if (enabled) false else it.useOpenAI,
+                useGemini = if (enabled) false else it.useGemini
+            )
+        }
     }
 
     fun setOpenAIPrimaryEnabled(enabled: Boolean) {
@@ -129,11 +136,18 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             .putBoolean("use_for_primary_chat", enabled)
             .apply()
         if (enabled) {
-            getApplication<Application>()
-                .getSharedPreferences("shev_omniroute", Application.MODE_PRIVATE)
+            getApplication<Application>().getSharedPreferences("shev_omniroute", Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
+            getApplication<Application>().getSharedPreferences("shev_gemini", Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
         }
-        mutableState.update { it.copy(useOpenAI = enabled, useOmniRoute = if (enabled) false else it.useOmniRoute) }
+        mutableState.update {
+            it.copy(
+                useOpenAI = enabled,
+                useOmniRoute = if (enabled) false else it.useOmniRoute,
+                useGemini = if (enabled) false else it.useGemini
+            )
+        }
     }
 
     fun setGeminiPrimaryEnabled(enabled: Boolean) {
