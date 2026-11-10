@@ -200,6 +200,39 @@ internal class ChatGptPlanOAuth(
         session.accessToken
     }
 
+    suspend fun availableModels(): List<ChatGptPlanModel> = withContext(Dispatchers.IO) {
+        val accessToken = validAccessToken()
+        val connection = (URL("$RESOURCE/models").openConnection() as java.net.HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 15_000
+            readTimeout = 20_000
+            instanceFollowRedirects = false
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("Authorization", "Bearer $accessToken")
+        }
+        try {
+            val status = connection.responseCode
+            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+            val body = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText().take(MAX_HTTP_BODY_CHARS) }.orEmpty()
+            if (status !in 200..299) {
+                throw IllegalStateException("Не удалось получить список моделей ChatGPT (HTTP $status).")
+            }
+            val models = JsonParser.parseString(body).asJsonObject.getAsJsonArray("models")
+                ?: return@withContext emptyList()
+            models.mapNotNull { item ->
+                item.takeIf { it.isJsonObject }?.asJsonObject?.takeIf {
+                    it.get("visibility")?.asString == "list"
+                }?.let { json ->
+                    val slug = json.get("slug")?.asString.orEmpty()
+                    val label = json.get("display_name")?.asString.orEmpty()
+                    if (slug.isBlank()) null else ChatGptPlanModel(slug, label.ifBlank { slug })
+                }
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     fun load(): ChatGptPlanSession? {
         val encrypted = preferences.getString(KEY_SESSION, null) ?: return null
         return runCatching {
@@ -344,6 +377,8 @@ internal class ChatGptPlanOAuth(
         private const val KEY_SESSION = "chatgpt_plan_session"
     }
 }
+
+internal data class ChatGptPlanModel(val id: String, val displayName: String)
 
 internal data class ChatGptPlanSession(
     val clientId: String,
