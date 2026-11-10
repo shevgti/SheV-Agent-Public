@@ -35,6 +35,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -93,6 +94,8 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var lastSpokenMessageIndex by remember { mutableStateOf(-1) }
     var showVoicePicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    val agentTeamPrefs = remember(context) { context.getSharedPreferences("shev_agent_team", android.content.Context.MODE_PRIVATE) }
+    var enabledAgentRoles by remember { mutableStateOf(agentTeamPrefs.getStringSet("enabled_roles", null)?.toSet() ?: setOf("shev_researcher", "shev_planner", "shev_engineer", "shev_reviewer")) }
     var showGatewaySettings by remember { mutableStateOf(false) }
     var showOpenAISettings by remember { mutableStateOf(false) }
     var showGeminiSettings by remember { mutableStateOf(false) }
@@ -321,6 +324,34 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Команда локальных AI-агентов", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Все роли работают на одной загруженной модели. Изменения применятся после перезапуска локальной модели.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            listOf(
+                                "shev_researcher" to ("Исследователь" to "Анализирует вопросы и факты"),
+                                "shev_planner" to ("Планировщик" to "Разбивает задачи на этапы"),
+                                "shev_engineer" to ("Инженер" to "Помогает с кодом и Android"),
+                                "shev_reviewer" to ("Контролёр" to "Проверяет решения и ошибки")
+                            ).forEach { (id, info) ->
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(info.first, fontWeight = FontWeight.Medium)
+                                        Text(info.second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Checkbox(
+                                        checked = id in enabledAgentRoles,
+                                        onCheckedChange = { checked ->
+                                            val updated = if (checked) enabledAgentRoles + id else enabledAgentRoles - id
+                                            enabledAgentRoles = updated
+                                            agentTeamPrefs.edit().putStringSet("enabled_roles", updated).apply()
+                                        }
+                                    )
+                                }
+                            }
+                            Text("Активно: ${enabledAgentRoles.size} из 4", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Приложение", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
