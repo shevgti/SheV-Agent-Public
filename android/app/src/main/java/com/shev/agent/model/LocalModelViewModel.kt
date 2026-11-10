@@ -174,6 +174,23 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     )
                     register(
                         AgentToolDescriptor(
+                            id = SheVAgentAdkTools.CURRENT_TIME_TOOL_ID,
+                            title = "Текущее местное время",
+                            description = "Возвращает фактические дату, время и часовой пояс устройства",
+                            capabilities = setOf(AgentCapability.ANALYZE_DATA),
+                            inputSchema = ToolInputSchema(
+                                listOf(ToolInputField(
+                                    "query",
+                                    ToolInputType.STRING,
+                                    required = true,
+                                    maxLength = 8,
+                                    allowedValues = setOf("now")
+                                ))
+                            )
+                        )
+                    )
+                    register(
+                        AgentToolDescriptor(
                             id = SheVAgentAdkTools.CREATE_TASK_DRAFT_ID,
                             title = "Создать черновик поручения",
                             description = "Сохраняет локальное поручение в ожидании подтверждения; ничего не выполняет",
@@ -220,11 +237,17 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         }
                     }
                 }
+                val currentTimeHandler = AgentTool { _ ->
+                    AgentToolResult(true, LocalTimeTool().readCurrentTime())
+                }
                 val executor = AgentToolExecutor(
                     registry,
-                    mapOf(SheVAgentAdkTools.TOOL_ID to AgentTool {
-                        AgentToolResult(true, registry.list().joinToString { it.id })
-                    }),
+                    mapOf(
+                        SheVAgentAdkTools.TOOL_ID to AgentTool {
+                            AgentToolResult(true, registry.list().joinToString { it.id })
+                        },
+                        SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to currentTimeHandler
+                    ),
                     suspendingHandlers = mapOf(
                         SheVAgentAdkTools.CREATE_TASK_DRAFT_ID to taskDraftHandler
                     )
