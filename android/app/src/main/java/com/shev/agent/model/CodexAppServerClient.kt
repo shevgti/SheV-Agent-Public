@@ -64,9 +64,9 @@ internal class CodexAppServerClient(
         val configFile = java.io.File(codexHome, "config.toml")
         if (!configFile.exists()) {
             configFile.writeText(
-                "approval_policy = \"on-request\"\\n" +
-                    "sandbox_mode = \"workspace-write\"\\n" +
-                    "model_reasoning_effort = \"medium\"\\n",
+                "approval_policy = \"on-request\"\n" +
+                    "sandbox_mode = \"workspace-write\"\n" +
+                    "model_reasoning_effort = \"medium\"\n",
                 StandardCharsets.UTF_8
             )
         }
