@@ -535,7 +535,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
         }
 
 
-        if (!state.ready && !state.useOmniRoute) {
+        if (!state.ready && !state.useOmniRoute && !state.useOpenAI) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(22.dp),
