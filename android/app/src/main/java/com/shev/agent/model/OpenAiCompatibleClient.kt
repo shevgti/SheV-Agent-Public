@@ -30,10 +30,10 @@ data class OpenAiCompatibleConfig(
         }
         require(uri.port == -1 || uri.port in 1..65535) { "Некорректный порт сервера." }
         val path = uri.path.trimEnd('/')
-        require(path.isEmpty() || path == "/v1") { "Путь сервера должен быть пустым или оканчиваться на /v1." }
+        require(path.isEmpty() || path == "/v1" || path == "/v1beta/openai") { "Путь сервера должен быть пустым, /v1 или /v1beta/openai." }
         require(modelId.isNotBlank() && modelId.length <= MAX_MODEL_ID_LENGTH) { "Некорректный идентификатор модели." }
         require(apiToken.isNotBlank() && apiToken.length <= MAX_TOKEN_LENGTH) { "Не задан API-токен провайдера." }
-        return "${uri.scheme}://${uri.rawAuthority}/v1"
+        return if (path == "/v1beta/openai") "${uri.scheme}://${uri.rawAuthority}/v1beta/openai" else "${uri.scheme}://${uri.rawAuthority}/v1"
     }
 
     private companion object {
