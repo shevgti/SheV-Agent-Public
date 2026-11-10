@@ -102,13 +102,28 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )
-                    TextButton(onClick = {
-                        ChatGptPlanOAuth(context, preferences).disconnect()
-                        connected = false
-                        accountLabel = ""
-                        viewModel.setOpenAIPrimaryEnabled(false)
-                        status = "Аккаунт ChatGPT отключён."
-                    }) { Text("Отключить") }
+                    TextButton(
+                        onClick = {
+                            if (busy) return@TextButton
+                            busy = true
+                            scope.launch {
+                                try {
+                                    val revoked = ChatGptPlanOAuth(context, preferences).disconnect()
+                                    connected = false
+                                    accountLabel = ""
+                                    viewModel.setOpenAIPrimaryEnabled(false)
+                                    status = if (revoked) {
+                                        "Аккаунт ChatGPT отключён, refresh-сессия отозвана."
+                                    } else {
+                                        "Локальные токены удалены. Удалённый отзыв OpenAI не удалось подтвердить."
+                                    }
+                                } finally {
+                                    busy = false
+                                }
+                            }
+                        },
+                        enabled = !busy
+                    ) { Text("Отключить") }
                 }
             }
             OutlinedTextField(
