@@ -38,7 +38,7 @@ The token is never written to application logs. **Забыть ключ** clears
 
 The OmniRoute panel provides both a separate gateway test/chat surface and an explicit switch for the primary SheV chat. When the switch is enabled, the main chat sends the current message, up to 12 recent completed turns, and the rolling summary to the configured remote model. The user must enable this deliberately. Turn the switch off to return to the on-device Gemma runtime.
 
-Remote OmniRoute responses do not receive direct access to Android tools or device actions. The remote-mode system instruction tells the model not to claim it performed local actions. Tool calling and approval-gated local execution remain available only through the local ADK runtime until a separately reviewed bridge is implemented.
+Remote OmniRoute chat can optionally use the existing Responses API function-call bridge. Enable **Разрешить инструменты SheV** only when the selected gateway and model support `POST /v1/responses` with function tools. The bridge exposes only local time, registered-tool inspection, and creation of a pending task draft; all calls are validated by the app-owned AgentToolExecutor. It does not grant shell, file, browser, or arbitrary device access. If the gateway returns an unsupported-endpoint response (404/405/501), the app falls back to ordinary Chat Completions and tells the model local tools are unavailable. This preserves chat availability but does not provide tool execution.
 
 Before enabling gateway-backed primary chat, add an explicit provider selector, per-conversation data-sharing notice, cancellation/streaming support, and tool-call approval mapping. MCP management credentials must never be forwarded to the autonomous local executor.
 
