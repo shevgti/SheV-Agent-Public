@@ -39,7 +39,8 @@ class OpenAiResponsesClient(
     private val connectTimeoutMillis: Int = 10_000,
     private val readTimeoutMillis: Int = 120_000,
     private val maxResponseBytes: Int = 1_048_576,
-    private val maxToolRounds: Int = 4
+    private val maxToolRounds: Int = 4,
+    private val chatGptPlanUsage: Boolean = false
 ) {
     private val baseUrl = config.validatedBaseUrl().trimEnd('/')
 
@@ -59,7 +60,16 @@ class OpenAiResponsesClient(
         require(instructions.isNotBlank() && instructions.length <= 8_000)
         require(tools.size <= 16)
         val input = history.deepCopy()
-        val toolArray = JsonArray().apply { tools.forEach { add(it.toJson()) } }
+        val toolArray = if (chatGptPlanUsage) {
+            JsonArray().apply {
+                add(JsonObject().apply {
+                    addProperty("type", "namespace")
+                    addProperty("name", "shev")
+                    addProperty("description", "Безопасные локальные инструменты приложения SheV Agent.")
+                    add("tools", JsonArray().apply { tools.forEach { add(it.toJson()) } })
+                })
+            }
+        } else JsonArray().apply { tools.forEach { add(it.toJson()) } }
 
         repeat(maxToolRounds + 1) { round ->
             coroutineContext.ensureActive()
@@ -69,9 +79,12 @@ class OpenAiResponsesClient(
                 add("input", input)
                 add("tools", toolArray)
                 addProperty("tool_choice", "auto")
-                addProperty("parallel_tool_calls", false)
-                addProperty("max_output_tokens", 2048)
+                if (!chatGptPlanUsage) {
+                    addProperty("parallel_tool_calls", false)
+                    addProperty("max_output_tokens", 2048)
+                }
                 addProperty("store", false)
+                if (chatGptPlanUsage) addProperty("stream", true)
             }
             val response = request(body)
             val output = response.getAsJsonArray("output")
@@ -132,6 +145,53 @@ class OpenAiResponsesClient(
             ?: throw IllegalStateException("OpenAI Responses API вернул пустой текстовый ответ.")
     }
 
+    private suspend fun readStreamingResponse(connection: HttpURLConnection): JsonObject {
+        var completed: JsonObject? = null
+        var eventName = ""
+        val data = StringBuilder()
+        var streamedChars = 0
+        connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+            while (true) {
+                coroutineContext.ensureActive()
+                val line = reader.readLine() ?: break
+                when {
+                    line.startsWith("event:") -> eventName = line.substringAfter(':').trim()
+                    line.startsWith("data:") -> {
+                        if (data.isNotEmpty()) data.append('\n')
+                        val chunk = line.substringAfter(':').trimStart()
+                        streamedChars += chunk.length
+                        if (streamedChars > maxResponseBytes) {
+                            throw IllegalStateException("Поток ChatGPT превышает допустимый размер.")
+                        }
+                        data.append(chunk)
+                    }
+                    line.isEmpty() && data.isNotEmpty() -> {
+                        val payload = data.toString()
+                        data.clear()
+                        if (payload != "[DONE]") {
+                            val event = runCatching { JsonParser.parseString(payload).asJsonObject }
+                                .getOrElse { throw IllegalStateException("OpenAI вернул повреждённое событие Responses stream.") }
+                            val type = event.get("type")?.asString ?: eventName
+                            when (type) {
+                                "response.completed" -> completed = event.getAsJsonObject("response")
+                                    ?: throw IllegalStateException("OpenAI завершил поток без объекта response.")
+                                "response.failed" -> {
+                                    val error = event.getAsJsonObject("response")?.getAsJsonObject("error")
+                                    val code = error?.get("code")?.asString ?: "unknown_error"
+                                    val message = error?.get("message")?.asString ?: "ошибка выполнения"
+                                    throw IllegalStateException("ChatGPT Responses завершился ошибкой: $code — $message")
+                                }
+                                "response.incomplete" -> throw IllegalStateException("ChatGPT вернул неполный ответ.")
+                            }
+                        }
+                        eventName = ""
+                    }
+                }
+            }
+        }
+        return completed ?: throw IllegalStateException("Поток ChatGPT завершился без response.completed.")
+    }
+
     private suspend fun request(body: JsonObject): JsonObject {
         coroutineContext.ensureActive()
         val connection = (URL("$baseUrl/responses").openConnection() as HttpURLConnection).apply {
@@ -152,14 +212,18 @@ class OpenAiResponsesClient(
             if (status !in 200..299) {
                 throw IllegalStateException(
                     when (status) {
-                        401, 403 -> "OpenAI отклонил API-ключ (HTTP $status)."
+                        401 -> if (chatGptPlanUsage) "ChatGPT отклонил OAuth-сессию (HTTP 401). Переподключи аккаунт." else "OpenAI отклонил API-ключ (HTTP 401)."
+                        403 -> if (chatGptPlanUsage) "ChatGPT plan usage недоступен для этого аккаунта или региона (HTTP 403)." else "OpenAI запретил запрос (HTTP 403)."
                         404 -> "OpenAI Responses API не найден (HTTP 404). Проверь модель и адрес /v1."
-                        429 -> "OpenAI временно ограничил запросы (HTTP 429)."
+                        429 -> if (chatGptPlanUsage) "Достигнут лимит использования ChatGPT plan usage (HTTP 429)." else "OpenAI временно ограничил запросы (HTTP 429)."
                         in 500..599 -> "Ошибка сервера OpenAI (HTTP $status)."
                         in 300..399 -> "Перенаправления для защищённого запроса запрещены."
                         else -> "Запрос к OpenAI отклонён (HTTP $status)."
                     }
                 )
+            }
+            if (chatGptPlanUsage) {
+                return readStreamingResponse(connection)
             }
             val bytes = connection.inputStream.use { stream ->
                 val output = ByteArrayOutputStream()
