@@ -2,6 +2,9 @@ name: Codex App Server Android cross-build
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - "feat/codex-app-server-android-native"
   pull_request:
     paths:
       - ".github/workflows/codex-android-runtime.yml"
@@ -57,7 +60,7 @@ jobs:
       - name: Inspect Android executable
         run: |
           file codex/codex-rs/target/aarch64-linux-android/release/codex-app-server
-          llvm-readelf -h codex/codex-rs/target/aarch64-linux-android/release/codex-app-server | head -30
+          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -h codex/codex-rs/target/aarch64-linux-android/release/codex-app-server | head -30
 
       - name: Upload Android ARM64 App Server
         uses: actions/upload-artifact@v4
