@@ -131,14 +131,14 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
         try {
             // GitHub may briefly be unreachable while the app is opening (mobile data/VPN wake-up).
             // Retry automatically so the user does not need to enter Settings and press Check.
-            repeat(3) { attempt ->
+            for (attempt in 0..2) {
                 try {
                     val found = AppUpdater.check(BuildConfig.VERSION_CODE)
                     updateInfo = found
                     if (found != null) showUpdateDialog = true
                     updateMessage = if (found == null) "Установлена последняя версия" else null
                     lastError = null
-                    return@repeat
+                    break
                 } catch (error: Exception) {
                     lastError = error
                     if (attempt < 2) kotlinx.coroutines.delay(3000L * (attempt + 1))
