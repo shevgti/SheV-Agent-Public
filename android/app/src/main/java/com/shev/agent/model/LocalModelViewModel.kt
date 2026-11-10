@@ -71,6 +71,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     val state: StateFlow<LocalModelUiState> = mutableState.asStateFlow()
     private var runtime: SheVAgentRuntime? = null
     private var downloadJob: Job? = null
+    private var responseJob: Job? = null
 
     init {
         val gatewayPreferences = application.getSharedPreferences("shev_omniroute", Application.MODE_PRIVATE)
@@ -190,6 +191,13 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 .edit().putBoolean("use_for_primary_chat", false).apply()
         }
         mutableState.update { it.copy(useGemini = enabled, useOpenAI = if (enabled) false else it.useOpenAI, useOmniRoute = if (enabled) false else it.useOmniRoute, useOpenRouter = if (enabled) false else it.useOpenRouter) }
+    }
+
+    /** Cancels the active answer so voice input can take priority. */
+    fun cancelResponse() {
+        responseJob?.cancel()
+        responseJob = null
+        mutableState.update { it.copy(busy = false, error = null) }
     }
 
     fun setPrompt(value: String) {
@@ -362,7 +370,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         mutableState.update {
             it.copy(prompt = "", busy = true, error = null, messages = it.messages + "Вы: $message")
         }
-        viewModelScope.launch(Dispatchers.IO) {
+        responseJob = viewModelScope.launch(Dispatchers.IO) {
             val userMessageId = UUID.randomUUID().toString()
             try {
                 dao.appendConversationMessage(
@@ -447,7 +455,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         mutableState.update {
             it.copy(prompt = "", busy = true, error = null, messages = it.messages + "Вы: $message")
         }
-        viewModelScope.launch(Dispatchers.IO) {
+        responseJob = viewModelScope.launch(Dispatchers.IO) {
             val userMessageId = UUID.randomUUID().toString()
             var eventFailed = false
             try {
@@ -530,7 +538,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         mutableState.update {
             it.copy(prompt = "", busy = true, error = null, messages = it.messages + "Вы: $message")
         }
-        viewModelScope.launch(Dispatchers.IO) {
+        responseJob = viewModelScope.launch(Dispatchers.IO) {
             val userMessageId = UUID.randomUUID().toString()
             try {
                 val preferences = getApplication<Application>().getSharedPreferences(
@@ -605,7 +613,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         mutableState.update {
             it.copy(prompt = "", busy = true, error = null, messages = it.messages + "Вы: $message")
         }
-        viewModelScope.launch(Dispatchers.IO) {
+        responseJob = viewModelScope.launch(Dispatchers.IO) {
             val userMessageId = UUID.randomUUID().toString()
             try {
                 val preferences = getApplication<Application>().getSharedPreferences(
@@ -678,7 +686,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         mutableState.update {
             it.copy(prompt = "", busy = true, error = null, messages = it.messages + "Вы: $message")
         }
-        viewModelScope.launch(Dispatchers.IO) {
+        responseJob = viewModelScope.launch(Dispatchers.IO) {
             val userMessageId = UUID.randomUUID().toString()
             try {
                 val preferences = getApplication<Application>().getSharedPreferences(
@@ -753,7 +761,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         mutableState.update {
             it.copy(prompt = "", busy = true, error = null, messages = it.messages + "Вы: $message")
         }
-        viewModelScope.launch(Dispatchers.IO) {
+        responseJob = viewModelScope.launch(Dispatchers.IO) {
             val userMessageId = UUID.randomUUID().toString()
             try {
                 val preferences = getApplication<Application>().getSharedPreferences(
