@@ -34,6 +34,7 @@ class SupertonicRussianTts(private val context: Context) {
         const val MODEL_ARCHIVE_URL =
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-supertonic-3-tts-int8-2026-05-11.tar.bz2"
         const val MODEL_FOLDER = "sherpa-onnx-supertonic-3-tts-int8-2026-05-11"
+        val SUPPORTED_EXPRESSION_TAGS = setOf("<laugh>", "<breath>", "<surprise>", "<sigh>", "<scream>", "<throatclear>", "<sad>", "<angry>", "<cough>", "<yawn>")
         private val REQUIRED_FILES = setOf(
             "duration_predictor.int8.onnx",
             "text_encoder.int8.onnx",
@@ -132,15 +133,17 @@ class SupertonicRussianTts(private val context: Context) {
         }
     }
 
-    suspend fun speak(text: String, speakerId: Int, speed: Float = 1.0f) {
+    suspend fun speak(text: String, speakerId: Int, emotionTag: String? = null, speed: Float = 1.0f) {
         require(speakerId in 0 until SPEAKER_COUNT) { "Неизвестный диктор." }
         require(text.isNotBlank() && text.length <= 4000) { "Текст для озвучивания пустой или слишком длинный." }
+        require(emotionTag == null || emotionTag in SUPPORTED_EXPRESSION_TAGS) { "Неизвестная эмоция для Supertonic." }
         mutex.withLock {
             withContext(Dispatchers.Default) {
                 check(isInstalled()) { "Сначала загрузи пакет русских нейроголосов." }
                 val engine = tts ?: createEngine().also { tts = it }
+                val expressiveText = if (emotionTag == null) text else "$emotionTag $text"
                 val audio = engine.generateWithConfig(
-                    text,
+                    expressiveText,
                     GenerationConfig(
                         sid = speakerId,
                         numSteps = 8,
