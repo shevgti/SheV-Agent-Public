@@ -162,7 +162,7 @@ internal class CodexAppServerClient(
                 )
             }
         )
-        return result.getAsJsonObject("thread")?.get("id")?.asString
+        return result.get("thread")?.takeIf { it.isJsonObject }?.asJsonObject?.get("id")?.asString
             ?: throw IllegalStateException("Codex не вернул идентификатор диалога.")
     }
 
@@ -171,7 +171,7 @@ internal class CodexAppServerClient(
             addProperty("threadId", threadId)
             addProperty("excludeTurns", true)
         })
-        return result.getAsJsonObject("thread")?.get("id")?.asString
+        return result.get("thread")?.takeIf { it.isJsonObject }?.asJsonObject?.get("id")?.asString
             ?: throw IllegalStateException("Не удалось восстановить диалог Codex.")
     }
 
