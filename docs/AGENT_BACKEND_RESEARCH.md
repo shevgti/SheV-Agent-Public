@@ -1,3 +1,24 @@
+
+## Preferred path update: Sign in with ChatGPT for open-source Android clients
+
+Official OpenAI documentation now provides a direct OAuth flow for open-source and locally hosted apps to use an eligible user's ChatGPT plan for Responses API inference. This avoids API keys and avoids any Termux process or remote agent host:
+- Overview: https://developers.openai.com/siwc/token-sharing-open-source
+- Registration/sign-in: https://developers.openai.com/siwc/token-sharing-open-source/sign-in
+- Accounts/sessions: https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions
+- Models/inference: https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference
+- Preview limitations: https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations
+
+The open-source client dynamically registers with `client_id=dynamic_agent_client`, `agent_name_hint`, and a stable `ext_agent_host_id`; it uses PKCE, nonce and state, a loopback callback, then exchanges the authorization code using the issued client ID. No client secret or partner API key is required for this OSS flow. It must validate the ID token against OpenAI's JWKS, verify the `chatgpt.tokens.use.direct` scope, store/refresh credentials securely, and use the public `POST /v1/responses` endpoint with `store:false` and `stream:true`.
+
+Important boundary: OpenAI documents this flow for open-source and locally hosted apps. A paid or remotely hosted app must use the separate interest/partner route. SheV should therefore run this integration inside its open-source Android client and keep tokens on-device; do not put ChatGPT OAuth tokens into a shared hosted proxy. Model access, region eligibility and usage limits remain controlled by OpenAI and the user's account. OAuth success alone is not proof that inference is allowed.
+
+### Implementation underway in SheV
+- PR #31: https://github.com/shevgti/SheV-Agent-Public/pull/31
+- Branch `feat/chatgpt-plan-oauth-android`
+- Adds on-device OAuth/PKCE callback, JWKS signature validation, encrypted Android Keystore token storage and refresh, no-key ChatGPT settings UI, and the existing SheV local tool loop over the ChatGPT plan Responses route.
+- Requires exact-head Android CI and real account sign-in/inference testing before release.
+- This is now preferred over the Termux/Codex App Server idea. Termux is not part of the target workflow; no user terminal commands are required.
+
 # SheV Agent: hosted agent backend research
 
 Updated: 2026-11-10
