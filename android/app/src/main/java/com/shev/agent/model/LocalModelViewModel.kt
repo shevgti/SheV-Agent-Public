@@ -975,14 +975,18 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                             }
                             "item/commandExecution/requestApproval",
                             "item/fileChange/requestApproval" -> {
-                                val requestId = event.get("id")?.asLong
+                                val requestId = runCatching { event.get("id")?.asLong }.getOrNull()
                                 if (requestId != null) {
                                     val command = params.get("command")?.let { value ->
                                         if (value.isJsonArray) value.asJsonArray.joinToString(" ") { it.asString }
                                         else value.asString
                                     }.orEmpty()
                                     val detail = when (method) {
-                                        "item/commandExecution/requestApproval" -> command.ifBlank { params.toString() }
+                                        "item/commandExecution/requestApproval" -> buildString {
+                                            append(command.ifBlank { "Команда не указана" })
+                                            params.get("cwd")?.asString?.let { append("\\nРабочая папка: $it") }
+                                            params.get("reason")?.asString?.let { append("\\nПричина: $it") }
+                                        }
                                         else -> params.toString()
                                     }
                                     mutableState.update {
