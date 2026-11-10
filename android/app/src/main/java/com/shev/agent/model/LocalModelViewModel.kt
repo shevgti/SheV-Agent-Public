@@ -122,12 +122,15 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 .edit().putBoolean("use_for_primary_chat", false).apply()
             getApplication<Application>().getSharedPreferences("shev_gemini", Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
+            getApplication<Application>().getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
         }
         mutableState.update {
             it.copy(
                 useOmniRoute = enabled,
                 useOpenAI = if (enabled) false else it.useOpenAI,
-                useGemini = if (enabled) false else it.useGemini
+                useGemini = if (enabled) false else it.useGemini,
+                useOpenRouter = if (enabled) false else it.useOpenRouter
             )
         }
     }
@@ -143,12 +146,15 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 .edit().putBoolean("use_for_primary_chat", false).apply()
             getApplication<Application>().getSharedPreferences("shev_gemini", Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
+            getApplication<Application>().getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
         }
         mutableState.update {
             it.copy(
                 useOpenAI = enabled,
                 useOmniRoute = if (enabled) false else it.useOmniRoute,
-                useGemini = if (enabled) false else it.useGemini
+                useGemini = if (enabled) false else it.useGemini,
+                useOpenRouter = if (enabled) false else it.useOpenRouter
             )
         }
     }
@@ -180,8 +186,10 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 .edit().putBoolean("use_for_primary_chat", false).apply()
             getApplication<Application>().getSharedPreferences("shev_omniroute", Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
+            getApplication<Application>().getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
         }
-        mutableState.update { it.copy(useGemini = enabled, useOpenAI = if (enabled) false else it.useOpenAI, useOmniRoute = if (enabled) false else it.useOmniRoute) }
+        mutableState.update { it.copy(useGemini = enabled, useOpenAI = if (enabled) false else it.useOpenAI, useOmniRoute = if (enabled) false else it.useOmniRoute, useOpenRouter = if (enabled) false else it.useOpenRouter) }
     }
 
     fun setPrompt(value: String) {
