@@ -65,7 +65,8 @@ dependencies {
     implementation("com.google.code.gson:gson:2.11.0")
 
     // Optional offline Russian neural TTS runtime; model weights are downloaded on demand.
-    implementation("com.github.k2-fsa:sherpa-onnx:2.0.1")
+    implementation("com.k2fsa:sherpa-onnx:v2.0.1@aar")
+    implementation("com.k2fsa:sherpa-onnx-jvm:v2.0.1")
     implementation("org.apache.commons:commons-compress:1.27.1")
 
     // Google ADK Kotlin + on-device LiteRT-LM inference.
