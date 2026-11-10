@@ -22,7 +22,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Optional Russian neural TTS pack. Runtime is sherpa-onnx (Apache-2.0);
@@ -50,7 +49,6 @@ class SupertonicRussianTts(private val context: Context) {
     private val installMarker = File(modelDir, ".complete")
     private val mutex = Mutex()
     private var tts: OfflineTts? = null
-    private val playing = AtomicBoolean(false)
 
     fun isInstalled(): Boolean =
         installMarker.isFile && REQUIRED_FILES.all { File(modelDir, it).isFile && File(modelDir, it).length() > 0L }
@@ -118,6 +116,7 @@ class SupertonicRussianTts(private val context: Context) {
                 check(REQUIRED_FILES.all { File(staging, it).isFile && File(staging, it).length() > 0L }) {
                     "В архиве отсутствуют необходимые файлы модели Supertonic."
                 }
+                modelDir.deleteRecursively()
                 staging.renameTo(modelDir).also { renamed ->
                     check(renamed) { "Не удалось установить голосовую модель." }
                 }
