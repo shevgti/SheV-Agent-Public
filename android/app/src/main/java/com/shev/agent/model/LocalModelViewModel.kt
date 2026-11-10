@@ -33,6 +33,7 @@ import com.shev.agent.tools.SheVAgentAdkTools
 import java.util.UUID
 import com.google.gson.JsonParser
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -42,6 +43,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.collect
 
 data class CodexApproval(
@@ -638,6 +640,10 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             return
         }
 
+        if (mutableState.value.useCodex) {
+            sendViaCodex(message)
+            return
+        }
         if (mutableState.value.useOpenRouter) {
             sendViaOpenRouter(message)
             return
@@ -842,6 +848,186 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 }
             } finally {
                 mutableState.update { it.copy(busy = false) }
+            }
+        }
+    }
+
+    /** Persistent ChatGPT agent session hosted by the official embedded Codex App Server. */
+    private fun sendViaCodex(message: String) {
+        mutableState.update {
+            it.copy(
+                prompt = "",
+                busy = true,
+                error = null,
+                streamingMessage = null,
+                messages = it.messages + "Вы: $message"
+            )
+        }
+        responseJob = viewModelScope.launch(Dispatchers.IO) {
+            val userMessageId = UUID.randomUUID().toString()
+            var collector: Job? = null
+            try {
+                val preferences = getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+                val client = ensureCodexClient()
+                val account = client.accountRead(false).getAsJsonObject("account")
+                require(account?.get("type")?.asString == "chatgpt") {
+                    "Сначала подключи ChatGPT в настройках Codex."
+                }
+                val savedThreadId = preferences.getString("thread_id", null)
+                val threadId = if (savedThreadId.isNullOrBlank()) {
+                    client.startThread(
+                        preferences.getString("model_id", mutableState.value.codexModelId).orEmpty()
+                    )
+                } else {
+                    runCatching { client.resumeThread(savedThreadId) }
+                        .getOrElse {
+                            client.startThread(
+                                preferences.getString("model_id", mutableState.value.codexModelId).orEmpty()
+                            )
+                        }
+                }
+                val isNewThread = savedThreadId.isNullOrBlank() || threadId != savedThreadId
+                preferences.edit().putString("thread_id", threadId).apply()
+                codexActiveThreadId = threadId
+
+                val inputText = if (isNewThread) {
+                    val history = dao.getRecentCompletedConversationMessages(CONTEXT_HISTORY_LIMIT).asReversed()
+                        .map { it.copy(content = LocalMessageCipher.decrypt(it.content)) }
+                    val summaryRead = conversationStateRepository.readSummary()
+                    ConversationContextBuilder.build(
+                        chronologicalHistory = history,
+                        currentMessage = message,
+                        rollingSummary = (summaryRead as? ConversationSummaryRead.Ready)?.plaintext,
+                        summaryThroughMessageId = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
+                    )
+                } else message
+
+                dao.appendConversationMessage(
+                    ConversationMessageEntity(
+                        id = userMessageId,
+                        role = ConversationContextBuilder.ROLE_USER,
+                        content = LocalMessageCipher.encrypt(message),
+                        status = ConversationContextBuilder.STATUS_PENDING,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+
+                val started = client.startTurn(threadId, inputText)
+                val turnId = started.getAsJsonObject("turn")?.get("id")?.asString
+                    ?: throw IllegalStateException("Codex не вернул идентификатор хода.")
+                codexActiveTurnId = turnId
+                val answer = StringBuilder()
+                val completed = CompletableDeferred<JsonObject>()
+
+                collector = launch(Dispatchers.IO) {
+                    client.events.collect { event ->
+                        val method = event.get("method")?.asString.orEmpty()
+                        val params = event.getAsJsonObject("params") ?: JsonObject()
+                        val eventThreadId = params.get("threadId")?.asString
+                        val eventTurnId = params.get("turnId")?.asString
+                            ?: params.getAsJsonObject("turn")?.get("id")?.asString
+                        if (eventThreadId != null && eventThreadId != threadId) return@collect
+
+                        when (method) {
+                            "item/agentMessage/delta" -> {
+                                if (eventTurnId == null || eventTurnId == turnId) {
+                                    val delta = params.get("delta")?.asString.orEmpty()
+                                    if (delta.isNotEmpty()) {
+                                        answer.append(delta)
+                                        mutableState.update {
+                                            it.copy(streamingMessage = "SheV: ${answer}")
+                                        }
+                                    }
+                                }
+                            }
+                            "item/completed" -> {
+                                val item = params.getAsJsonObject("item")
+                                if (item?.get("type")?.asString == "agentMessage" && answer.isEmpty()) {
+                                    val text = item.getAsJsonArray("content")?.mapNotNull { part ->
+                                        part.takeIf { it.isJsonObject }?.asJsonObject
+                                            ?.get("text")?.asString
+                                    }?.joinToString("").orEmpty()
+                                    if (text.isNotBlank()) answer.append(text)
+                                }
+                            }
+                            "turn/completed" -> {
+                                if (eventTurnId == turnId || params.getAsJsonObject("turn")?.get("id")?.asString == turnId) {
+                                    completed.complete(params)
+                                }
+                            }
+                            "item/commandExecution/requestApproval",
+                            "item/fileChange/requestApproval" -> {
+                                val requestId = event.get("id")?.asLong
+                                if (requestId != null) {
+                                    val command = params.get("command")?.let { value ->
+                                        if (value.isJsonArray) value.asJsonArray.joinToString(" ") { it.asString }
+                                        else value.asString
+                                    }.orEmpty()
+                                    val detail = when (method) {
+                                        "item/commandExecution/requestApproval" -> command.ifBlank { params.toString() }
+                                        else -> params.toString()
+                                    }
+                                    mutableState.update {
+                                        it.copy(
+                                            codexApproval = CodexApproval(
+                                                requestId = requestId,
+                                                kind = method,
+                                                title = if (method.contains("command")) "Разрешить команду Codex?" else "Разрешить изменение файлов?",
+                                                detail = detail
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                val completion = withTimeout(180_000L) { completed.await() }
+                collector.cancel()
+                collector = null
+                val turn = completion.getAsJsonObject("turn")
+                val status = turn?.get("status")?.asString.orEmpty()
+                if (status.isNotBlank() && status != "completed") {
+                    throw IllegalStateException(turn.get("error")?.asString ?: "Codex завершил ход со статусом $status.")
+                }
+                val finalAnswer = answer.toString().trim()
+                if (finalAnswer.isBlank()) {
+                    throw IllegalStateException("Codex завершил ход, но не вернул текстовый ответ.")
+                }
+                dao.appendConversationMessage(
+                    ConversationMessageEntity(
+                        id = UUID.randomUUID().toString(),
+                        role = ConversationContextBuilder.ROLE_ASSISTANT,
+                        content = LocalMessageCipher.encrypt(finalAnswer),
+                        status = ConversationContextBuilder.STATUS_COMPLETE,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+                dao.updateConversationMessageStatus(userMessageId, ConversationContextBuilder.STATUS_COMPLETE)
+                mutableState.update {
+                    it.copy(
+                        messages = it.messages + "SheV: $finalAnswer",
+                        streamingMessage = null,
+                        codexApproval = null,
+                        codexStatus = "Codex готов"
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                dao.updateConversationMessageStatus(userMessageId, ConversationContextBuilder.STATUS_FAILED)
+                mutableState.update {
+                    it.copy(
+                        error = failure.message ?: failure.javaClass.simpleName + ": ошибка Codex App Server.",
+                        streamingMessage = null,
+                        codexApproval = null
+                    )
+                }
+            } finally {
+                collector?.cancel()
+                codexActiveTurnId = null
+                mutableState.update { it.copy(busy = false, streamingMessage = null) }
             }
         }
     }
