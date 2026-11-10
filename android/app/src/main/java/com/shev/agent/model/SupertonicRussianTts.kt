@@ -214,11 +214,13 @@ class SupertonicRussianTts(private val context: Context) {
             while (offset < pcm.size) {
                 currentCoroutineContext().ensureActive()
                 val written = track.write(pcm, offset, pcm.size - offset, AudioTrack.WRITE_BLOCKING)
+                if (playbackCancelled) return
                 check(written > 0) { "Не удалось подготовить аудиопоток." }
                 offset += written
             }
+            if (playbackCancelled) return
             track.play()
-            while (track.playState == AudioTrack.PLAYSTATE_PLAYING && track.playbackHeadPosition < pcm.size) {
+            while (!playbackCancelled && track.playState == AudioTrack.PLAYSTATE_PLAYING && track.playbackHeadPosition < pcm.size) {
                 currentCoroutineContext().ensureActive()
                 Thread.sleep(20)
             }
