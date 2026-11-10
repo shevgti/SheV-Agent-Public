@@ -875,7 +875,14 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             )
             Button(
                 onClick = {
-                    if (voiceConversation) {
+                    if (voiceConversation && state.busy) {
+                        // Let the user take the floor while SheV is generating an answer.
+                        viewModel.cancelResponse()
+                        speech.stop()
+                        recognizer?.cancel()
+                        voiceStatus = "Остановил ответ. Слушаю тебя…"
+                        beginListening()
+                    } else if (voiceConversation) {
                         voiceConversation = false
                         listening = false
                         recognizer?.cancel()
@@ -892,7 +899,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                 },
                 shape = CircleShape,
                 enabled = !state.busy || voiceConversation
-            ) { Text(if (voiceConversation) "■" else "🎙") }
+            ) { Text(if (voiceConversation && state.busy) "↻" else if (voiceConversation) "■" else "🎙") }
             Button(
                 onClick = viewModel::send,
                 enabled = state.prompt.isNotBlank() && !state.busy,
