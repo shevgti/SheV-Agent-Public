@@ -30,13 +30,13 @@ class MainActivity : ComponentActivity() {
                 primary = Color(0xFF4268D5),
                 onPrimary = Color.White,
                 secondary = Color(0xFF159EAD),
-                background = Color(0xFFF5F6FA),
+                background = Color(0xFFDDE1E9),
                 onBackground = Color(0xFF17243B),
-                surface = Color.White,
+                surface = Color(0xFFEEF0F5),
                 onSurface = Color(0xFF17243B),
-                surfaceVariant = Color(0xFFE9EEF8),
-                onSurfaceVariant = Color(0xFF65738D),
-                outline = Color(0xFFDCE3F0)
+                surfaceVariant = Color(0xFFD0D6E1),
+                onSurfaceVariant = Color(0xFF505D73),
+                outline = Color(0xFFB8C1D0)
             )
             MaterialTheme(colorScheme = palette) {
                 Surface(
