@@ -78,7 +78,7 @@ jobs:
           from pathlib import Path
 
           gradle_file = Path("app/build.gradle.kts").read_text()
-          configured = re.search(r"versionCode\s*=\s*(\d+)", gradle_file)
+          configured = re.search(r"getOrElse\((\d+)\)", gradle_file)
           if not configured:
               raise SystemExit("Cannot read the baseline versionCode from app/build.gradle.kts")
           baseline = int(configured.group(1))
