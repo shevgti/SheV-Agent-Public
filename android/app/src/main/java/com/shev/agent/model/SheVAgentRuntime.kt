@@ -89,7 +89,10 @@ class SheVAgentRuntime private constructor(
                     model = activeModel
                     activeModel.engine.initialize()
                     initialized = true
-                    val agent = SheVAgentModelFactory.createAgent(activeModel, tools)
+                    val enabledRoles = context.getSharedPreferences("shev_agent_team", Context.MODE_PRIVATE)
+                        .getStringSet("enabled_roles", null)?.toSet()
+                        ?: setOf("shev_researcher", "shev_planner", "shev_engineer", "shev_reviewer")
+                    val agent = SheVAgentModelFactory.createAgent(activeModel, tools, enabledRoles)
                     val sessionService = InMemorySessionService()
                     SheVAgentSession.initialize(sessionService)
                     val activeRunner = InMemoryRunner(
