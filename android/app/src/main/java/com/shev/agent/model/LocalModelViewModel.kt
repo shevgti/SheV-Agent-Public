@@ -620,12 +620,25 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                             })
                         }
                         val bridge = OpenAiLocalToolBridge(taskRepository)
-                        OpenAiResponsesClient(config).completeWithTools(
-                            history = input,
-                            instructions = "Ты — SheV, личный помощник пользователя. Отвечай по-русски. Ты можешь вызывать только явно перечисленные инструменты SheV. Используй создание черновика только когда пользователь прямо просит сохранить поручение. Не утверждай, что действие выполнено, если инструмент вернул not_executed. Не раскрывай ключи и секреты.",
-                            tools = bridge.definitions,
-                            executeTool = bridge::execute
-                        )
+                        try {
+                            OpenAiResponsesClient(config).completeWithTools(
+                                history = input,
+                                instructions = "Ты — SheV, личный помощник пользователя. Отвечай по-русски. Ты можешь вызывать только явно перечисленные инструменты SheV. Используй создание черновика только когда пользователь прямо просит сохранить поручение. Не утверждай, что действие выполнено, если инструмент вернул not_executed. Не раскрывай ключи и секреты.",
+                                tools = bridge.definitions,
+                                executeTool = bridge::execute
+                            )
+                        } catch (error: IllegalStateException) {
+                            val message = error.message.orEmpty()
+                            val responsesUnsupported = message.contains("Responses API не найден") ||
+                                message.contains("HTTP 404") ||
+                                message.contains("HTTP 405") ||
+                                message.contains("HTTP 501")
+                            if (!responsesUnsupported) throw error
+                            OpenAiCompatibleClient(config).complete(
+                                promptWithContext,
+                                systemInstruction = "Ты — SheV, личный помощник пользователя. Отвечай по-русски. Внимание: подключённый шлюз не поддерживает API вызова инструментов, поэтому сейчас у тебя нет доступа к локальным инструментам SheV. Не утверждай, что выполнил действие. Не раскрывай ключи и секреты."
+                            )
+                        }
                     } else {
                         OpenAiCompatibleClient(config).complete(
                             promptWithContext,
