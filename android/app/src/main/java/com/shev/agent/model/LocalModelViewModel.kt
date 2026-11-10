@@ -1,6 +1,7 @@
 package com.shev.agent.model
 
 import android.app.Application
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -40,6 +41,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.collect
 
 data class CodexApproval(
     val requestId: Long,
@@ -132,6 +135,135 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 }
             }
         }
+    }
+
+    suspend fun connectCodex(context: Context) {
+        mutableState.update { it.copy(codexConnecting = true, codexStatus = "Запускаю встроенный Codex…", error = null) }
+        try {
+            val details = withContext(Dispatchers.IO) {
+                val client = ensureCodexClient()
+                var account = client.accountRead(false).getAsJsonObject("account")
+                if (account?.get("type")?.asString != "chatgpt") {
+                    val login = client.beginChatGptLogin()
+                    val loginId = login.get("loginId")?.asString
+                        ?: throw IllegalStateException("Codex не вернул идентификатор входа.")
+                    val authUrl = login.get("authUrl")?.asString
+                        ?: throw IllegalStateException("Codex не вернул ссылку входа ChatGPT.")
+                    withContext(Dispatchers.Main) { client.openAuthUrl(context, authUrl) }
+                    val completed = client.awaitLogin(loginId)
+                    if (completed.get("success")?.asBoolean != true) {
+                        throw IllegalStateException(completed.get("error")?.asString ?: "Вход через ChatGPT не завершён.")
+                    }
+                    account = client.accountRead(true).getAsJsonObject("account")
+                }
+                require(account?.get("type")?.asString == "chatgpt") {
+                    "Codex не подтвердил вход через аккаунт ChatGPT."
+                }
+                val email = account.get("email")?.asString.orEmpty()
+                val planType = account.get("planType")?.asString.orEmpty()
+                val models = client.listModels().getAsJsonArray("data")
+                val selectedModel = models?.mapNotNull { item ->
+                    item.takeIf { it.isJsonObject }?.asJsonObject
+                }?.firstOrNull { it.get("isDefault")?.asBoolean == true }
+                    ?: models?.firstOrNull { it.isJsonObject }?.asJsonObject
+                val modelId = selectedModel?.get("model")?.asString
+                    ?: selectedModel?.get("id")?.asString
+                    ?: throw IllegalStateException("Codex не вернул доступных моделей для этого аккаунта.")
+                val modelName = selectedModel.get("displayName")?.asString ?: modelId
+                val usedPercent = runCatching {
+                    client.request("account/rateLimits/read")
+                        .getAsJsonObject("rateLimits")?.getAsJsonObject("primary")
+                        ?.get("usedPercent")?.asInt
+                }.getOrNull()
+                Triple(
+                    Triple(email, planType, modelId),
+                    modelName,
+                    usedPercent
+                )
+            }
+            getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+                .edit().putString("model_id", details.first.third).apply()
+            mutableState.update {
+                it.copy(
+                    codexConnected = true,
+                    codexEmail = details.first.first,
+                    codexPlanType = details.first.second,
+                    codexModelId = details.first.third,
+                    codexRateUsedPercent = details.third,
+                    codexStatus = "ChatGPT подключён · ${details.first.second.ifBlank { "план не указан" }} · ${details.second}"
+                )
+            }
+            setCodexPrimaryEnabled(true)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            mutableState.update {
+                it.copy(codexConnected = false, codexStatus = failure.message ?: "Не удалось подключить Codex.")
+            }
+        } finally {
+            mutableState.update { it.copy(codexConnecting = false) }
+        }
+    }
+
+    suspend fun disconnectCodex() {
+        mutableState.update { it.copy(codexConnecting = true) }
+        try {
+            withContext(Dispatchers.IO) {
+                val client = codexClient
+                if (client != null) {
+                    runCatching { client.logout() }
+                    client.close()
+                    codexClient = null
+                }
+                java.io.File(getApplication<Application>().noBackupFilesDir, "codex-home").deleteRecursively()
+            }
+            getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+                .edit().remove("thread_id").putBoolean("use_for_primary_chat", false).apply()
+            mutableState.update {
+                it.copy(
+                    useCodex = false,
+                    codexConnected = false,
+                    codexEmail = "",
+                    codexPlanType = "",
+                    codexRateUsedPercent = null,
+                    codexApproval = null,
+                    codexStatus = "Аккаунт ChatGPT отключён."
+                )
+            }
+        } finally {
+            mutableState.update { it.copy(codexConnecting = false) }
+        }
+    }
+
+    fun approveCodexRequest(requestId: Long, accepted: Boolean) {
+        val client = codexClient ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                client.respondToServerRequest(
+                    requestId,
+                    JsonObject().apply { addProperty("decision", if (accepted) "accept" else "decline") }
+                )
+            }.onFailure { failure ->
+                mutableState.update { it.copy(error = failure.message ?: "Не удалось отправить решение Codex.") }
+            }
+            mutableState.update { it.copy(codexApproval = null) }
+        }
+    }
+
+    private suspend fun ensureCodexClient(): CodexAppServerClient {
+        codexClient?.takeIf { it.isAlive }?.let { return it }
+        codexClient?.close()
+        val client = CodexAppServerClient(getApplication()) { code ->
+            mutableState.update {
+                it.copy(
+                    codexConnected = false,
+                    codexStatus = "Codex остановился (код $code). Повтори подключение."
+                )
+            }
+        }
+        client.start()
+        codexClient = client
+        return client
     }
 
     fun setCodexPrimaryEnabled(enabled: Boolean) {
