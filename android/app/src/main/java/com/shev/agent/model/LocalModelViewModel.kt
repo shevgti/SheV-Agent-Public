@@ -392,12 +392,15 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         createdAtEpochMillis = System.currentTimeMillis()
                     )
                 )
-                val answer = OpenAiCompatibleClient(
-                    OpenAiCompatibleConfig(baseUrl, modelId, token)
-                ).complete(
-                    promptWithContext,
-                    systemInstruction = "Ты — SheV, личный помощник пользователя. Отвечай по-русски. Это удалённый режим: у тебя нет доступа к локальным инструментам, телефону, файлам или действиям приложения. Не утверждай, что выполнил действие. Если пользователь просит выполнить действие на устройстве, объясни, что удалённая модель не может его выполнить. Не раскрывай API-ключи и секреты."
-                )
+                val candidates = ModelFallbackRouter.candidates(modelId)
+                val (usedModel, answer) = ModelFallbackRouter.firstSuccessful(candidates) { candidate ->
+                    OpenAiCompatibleClient(
+                        OpenAiCompatibleConfig(baseUrl, candidate, token)
+                    ).complete(
+                        promptWithContext,
+                        systemInstruction = "Ты — SheV, личный помощник пользователя. Отвечай по-русски. Это удалённый режим: у тебя нет доступа к локальным инструментам, телефону, файлам или действиям приложения. Не утверждай, что выполнил действие. Если пользователь просит выполнить действие на устройстве, объясни, что удалённая модель не может его выполнить. Не раскрывай API-ключи и секреты."
+                    )
+                }
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
                         id = UUID.randomUUID().toString(),
