@@ -829,12 +829,18 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     "shev_openai",
                     Application.MODE_PRIVATE
                 )
-                val modelId = preferences.getString("model_id", "gpt-4.1-mini")
-                    ?: "gpt-4.1-mini"
-                val encryptedToken = preferences.getString("encrypted_token", null)
-                    ?: throw IllegalStateException("Сначала сохрани API-ключ OpenAI.")
-                val token = OpenAISecretCipher.decrypt(encryptedToken)
-                require(token.isNotBlank()) { "Сохранённый API-ключ OpenAI пустой. Введи его заново." }
+                val modelId = preferences.getString("model_id", "gpt-6.1-sol")
+                    ?: "gpt-6.1-sol"
+                val chatGptPlanAuth = ChatGptPlanOAuth(getApplication(), preferences)
+                val planSession = chatGptPlanAuth.load()
+                val token = if (planSession != null) {
+                    chatGptPlanAuth.validAccessToken()
+                } else {
+                    val encryptedToken = preferences.getString("encrypted_token", null)
+                        ?: throw IllegalStateException("Подключи ChatGPT кнопкой «Войти через ChatGPT» — API-ключ не требуется.")
+                    OpenAISecretCipher.decrypt(encryptedToken)
+                }
+                require(token.isNotBlank()) { "Авторизация OpenAI пуста. Подключи ChatGPT заново." }
 
                 val history = dao.getRecentCompletedConversationMessages(CONTEXT_HISTORY_LIMIT).asReversed()
                     .map { it.copy(content = LocalMessageCipher.decrypt(it.content)) }
@@ -864,7 +870,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 val localTools = OpenAiLocalToolBridge(taskRepository)
                 val answer = OpenAiResponsesClient(
-                    OpenAiCompatibleConfig("https://api.openai.com/v1", modelId, token)
+                    OpenAiCompatibleConfig("https://api.openai.com/v1", modelId, token),
+                    chatGptPlanUsage = planSession != null
                 ).completeWithTools(
                     history = responseInput,
                     instructions = "Ты — SheV, персональный AI-помощник пользователя. Всегда отвечай по-русски. Ты работаешь внутри Android-приложения SheV Agent. В твоём распоряжении только три локальных инструмента, перечисленных в запросе: точное местное время, просмотр доступных инструментов и создание черновика поручения. Вызывай создание черновика только если пользователь явно просит сохранить или добавить поручение; черновик остаётся на вкладке «Память» и ждёт подтверждения, ничего не исполняется. Не пытайся выполнять другие действия, не придумывай результаты инструментов, не проси пользователя отправлять API-ключи в чат. Все вызовы проверяются приложением.",
