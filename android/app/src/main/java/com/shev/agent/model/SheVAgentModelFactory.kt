@@ -45,6 +45,15 @@ object SheVAgentModelFactory {
         )
     )
 
+    val DEFAULT_SKILLS = setOf("research", "coding", "planning", "quality")
+
+    private val skillInstructions = mapOf(
+        "research" to "Навык исследования: отделяй подтверждённые факты от предположений; указывай, что требует проверки; используй доступные инструменты поиска только если они реально подключены.",
+        "coding" to "Навык разработки: сначала изучай существующую архитектуру и соглашения проекта; предлагай минимальные совместимые изменения; проверяй сборку и тесты; не выдумывай результаты CI.",
+        "planning" to "Навык планирования: разбивай большие поручения на этапы с зависимостями, критериями готовности и рисками; не выдавай план за выполненную работу.",
+        "quality" to "Навык контроля качества: проверяй безопасность, обработку ошибок, отмену задач, состояние UI и регрессии; требуй проверяемые критерии приёмки."
+    )
+
     fun createModel(modelFile: File, cacheDir: File, backend: Backend): LiteRtLmModel =
         LiteRtLmModel.create(
             EngineConfig(
@@ -55,7 +64,7 @@ object SheVAgentModelFactory {
             name = modelFile.name
         )
 
-    fun createAgent(model: LiteRtLmModel, tools: SheVAgentAdkTools, enabledSpecialists: Set<String> = specialists.map { it.name }.toSet()): LlmAgent {
+    fun createAgent(model: LiteRtLmModel, tools: SheVAgentAdkTools, enabledSpecialists: Set<String> = specialists.map { it.name }.toSet(), enabledSkills: Set<String> = DEFAULT_SKILLS): LlmAgent {
         val activeSpecialists = specialists.filter { it.name in enabledSpecialists }
         val team = activeSpecialists.map { specialist ->
             LlmAgent(
@@ -79,6 +88,8 @@ object SheVAgentModelFactory {
                 инженер-разработчик (shev_engineer) и контролёр качества (shev_reviewer).
                 Доступные в этой сессии специалисты: ${activeSpecialists.joinToString { it.name }}.
                 Не делегируй отключённым специалистам и не пытайся вызвать отсутствующую роль.
+                Активные навыки пользователя: ${enabledSkills.mapNotNull { skillInstructions[it] }.joinToString(" ")}
+                Применяй только включённые навыки, выбирая подходящие для текущего поручения.
                 Делегируй им подходящие части сложных задач через передачу управления агенту.
                 Не запускай всех специалистов для простого вопроса: выбирай только нужных.
                 Для сложного плана попроси планировщика; для программирования — инженера;
