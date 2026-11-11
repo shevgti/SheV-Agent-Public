@@ -51,9 +51,6 @@ import androidx.lifecycle.lifecycleScope
 import com.shev.chat.data.ChatEntryEntity
 import com.shev.chat.data.ChatHistoryDatabase
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.UUID
 
 private val Mint = Color(0xFF6EE7B7)
@@ -210,7 +207,7 @@ private fun SheVChatHome(
                     }
                     Column(Modifier.padding(start = 10.dp)) {
                         Text("SheV Chat", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                        Text("Проектная история и быстрый переход в ChatGPT", color = Muted, fontSize = 11.sp)
+                        Text("Заметки проекта и быстрый переход в ChatGPT", color = Muted, fontSize = 11.sp)
                     }
                 }
 
