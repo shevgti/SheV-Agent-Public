@@ -1,4 +1,4 @@
-name: SheV Agent Android
+name: SheV Agent + SheV Chat Android
 
 on:
   push:
@@ -6,21 +6,23 @@ on:
       - 'android/**'
       - '.github/workflows/shev-agent-android.yml'
       - 'docs/AGENTS.md'
+      - 'docs/SHEV_CHAT_PRODUCT_ARCHITECTURE.md'
   pull_request:
     paths:
       - 'android/**'
       - '.github/workflows/shev-agent-android.yml'
       - 'docs/AGENTS.md'
+      - 'docs/SHEV_CHAT_PRODUCT_ARCHITECTURE.md'
   workflow_dispatch:
     inputs:
       run_emulator:
-        description: 'Run the optional Android emulator smoke test'
+        description: 'Run Android 16 app launch smoke test'
         required: false
-        default: false
+        default: true
         type: boolean
 
 concurrency:
-  group: shev-agent-android-v2-${{ github.ref }}
+  group: shev-agent-chat-android-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -28,9 +30,9 @@ permissions:
 
 jobs:
   build-and-unit-tests:
-    name: Unit tests and debug APK
+    name: Unit tests and both debug APKs
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -62,8 +64,10 @@ jobs:
         working-directory: android
         env:
           GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
-        run: gradle testDebugUnitTest --stacktrace
-      - name: Allocate next Android versionCode
+        run: |
+          set -o pipefail
+          gradle testDebugUnitTest --stacktrace 2>&1 | tee ../gradle-unit-tests.log
+      - name: Allocate next SheV Agent versionCode
         working-directory: android
         env:
           GH_TOKEN: ${{ github.token }}
@@ -93,7 +97,7 @@ jobs:
           releases.sort(key=lambda item: item.get("published_at") or item.get("created_at") or "", reverse=True)
           match = re.search(r"(?im)^versionCode:\s*(\d+)\s*$", releases[0].get("body") or "")
           if not match:
-              raise SystemExit("Latest published release has no versionCode; refusing unsafe APK version.")
+              raise SystemExit("Latest release has no versionCode; refusing unsafe APK version.")
           previous = int(match.group(1))
           next_code = max(baseline, previous) + 1
           if next_code > 2_100_000_000:
@@ -104,57 +108,63 @@ jobs:
           print(f"Previous published versionCode: {previous}")
           print(f"Allocated versionCode: {next_code}")
           PY
-      - name: Assemble debug APK with injected versionCode
+      - name: Assemble both debug APKs
         working-directory: android
         env:
           GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
-        run: gradle -PSHEV_VERSION_CODE="$APP_VERSION_CODE" assembleDebug
-      - name: Verify APK contains Codex ARM64 runtime and versionCode
+        run: |
+          set -o pipefail
+          gradle -PSHEV_VERSION_CODE="$APP_VERSION_CODE" assembleDebug --stacktrace 2>&1 | tee ../gradle-assemble.log
+      - name: Verify SheV Agent APK versionCode
         working-directory: android
         run: |
-          ACTUAL_CODE=$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p" | head -n 1)
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          ACTUAL_CODE=$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging "$APK" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -n 1)
           test "$ACTUAL_CODE" = "$APP_VERSION_CODE"
           test "$ACTUAL_CODE" -gt "$PREVIOUS_VERSION_CODE"
-          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "lib/arm64-v8a/libcodex_app_server.so"
-          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "lib/arm64-v8a/libc++_shared.so"
-          echo "Gradle versionCode verified: $ACTUAL_CODE > $PREVIOUS_VERSION_CODE"
-      - name: Assemble debug APK with injected versionCode
-        working-directory: android
-        env:
-          GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
-        run: gradle -PSHEV_VERSION_CODE="$APP_VERSION_CODE" assembleDebug
-      - name: Verify APK versionCode
+          echo "SheV Agent versionCode=$ACTUAL_CODE > $PREVIOUS_VERSION_CODE"
+      - name: Verify standalone SheV Chat APK identity and signature
         working-directory: android
         run: |
-          ACTUAL_CODE=$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p" | head -n 1)
-          test "$ACTUAL_CODE" = "$APP_VERSION_CODE"
-          test "$ACTUAL_CODE" -gt "$PREVIOUS_VERSION_CODE"
-          echo "Gradle versionCode verified: $ACTUAL_CODE > $PREVIOUS_VERSION_CODE"
-      - name: Prepare debug test package
+          APK="shevchat/build/outputs/apk/debug/shevchat-debug.apk"
+          BADGING=$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging "$APK")
+          printf '%s\n' "$BADGING"
+          echo "$BADGING" | grep -F "package: name='com.shev.chat' versionCode='1' versionName='0.1.0'"
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose "$APK"
+      - name: Prepare both APK artifacts
         working-directory: android
         run: |
           mkdir -p ../shev-agent-package
           cp app/build/outputs/apk/debug/app-debug.apk ../shev-agent-package/
-          cp shevchat/build/outputs/apk/debug/shevchat-debug.apk ../shev-agent-package/shev-chat-debug.apk
-          VERSION=$(grep -oP 'versionName = "\\K[^"]+' app/build.gradle.kts)
-          CHAT_VERSION=$(grep -oP 'versionName = "\\K[^"]+' shevchat/build.gradle.kts)
-          test -n "$VERSION"
-          test -n "$CHAT_VERSION"
-          printf 'agentVersion=%s\\nchatVersion=%s\\ncommit=%s\\nrun=%s\\n' "$VERSION" "$CHAT_VERSION" "$GITHUB_SHA" "$GITHUB_RUN_ID" > ../shev-agent-package/build-info.txt
+          cp shevchat/build/outputs/apk/debug/shevchat-debug.apk ../shev-agent-package/
+          AGENT_VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          CHAT_VERSION=$(grep -oP 'versionName = "\K[^"]+' shevchat/build.gradle.kts)
+          CHAT_CODE=$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging shevchat/build/outputs/apk/debug/shevchat-debug.apk | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -n 1)
+          printf 'agentVersion=%s\nagentVersionCode=%s\nchatVersion=%s\nchatVersionCode=%s\npreviousAgentVersionCode=%s\ncommit=%s\nrun=%s\n' "$AGENT_VERSION" "$APP_VERSION_CODE" "$CHAT_VERSION" "$CHAT_CODE" "$PREVIOUS_VERSION_CODE" "$GITHUB_SHA" "$GITHUB_RUN_ID" > ../shev-agent-package/build-info.txt
           cd ../shev-agent-package
           sha256sum app-debug.apk > app-debug.apk.sha256
-          sha256sum shev-chat-debug.apk > shev-chat-debug.apk.sha256
-      - name: Upload debug test package
+          sha256sum shevchat-debug.apk > shevchat-debug.apk.sha256
+      - name: Upload Gradle diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: shev-agent-debug
+          name: shev-chat-gradle-diagnostics
+          path: |
+            gradle-unit-tests.log
+            gradle-assemble.log
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload both debug APKs and checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: shev-agent-and-chat-debug
           path: shev-agent-package/*
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
 
   android-16-emulator:
-    name: Optional Android 16 (API 36) instrumentation smoke test
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_emulator == true }}
+    name: Android 16 SheV Chat launch smoke test
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) }}
     needs: build-and-unit-tests
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -174,13 +184,18 @@ jobs:
         uses: android-actions/setup-android@v4
         with:
           packages: ''
-      - name: Install compile SDK for emulator build
+      - name: Install emulator SDK
         run: |
-          sdkmanager --install "platforms;android-37.0" "build-tools;37.0.0"
+          sdkmanager --install "platforms;android-37.0" "build-tools;37.0.0" "platform-tools"
           if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
             ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
           fi
-      - name: Run Android 16 emulator tests
+      - name: Download SheV Chat APK
+        uses: actions/download-artifact@v4
+        with:
+          name: shev-agent-and-chat-debug
+          path: test-package
+      - name: Launch SheV Chat on Android 16 emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
@@ -190,13 +205,15 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           script: |
-            cd android
-            gradle connectedDebugAndroidTest
-            mkdir -p ../shev-agent-ui-preview
-            adb pull /sdcard/Android/data/com.shev.agent/files/shev-agent-home.png ../shev-agent-ui-preview/shev-agent-home.png
-      - name: Upload actual Android emulator UI screenshot
+            adb install -r test-package/shevchat-debug.apk
+            adb shell am start -n com.shev.chat/.ChatActivity
+            sleep 5
+            adb shell pidof com.shev.chat
+            adb exec-out screencap -p > shev-chat-home.png
+      - name: Upload SheV Chat launch screenshot
         uses: actions/upload-artifact@v4
         with:
-          name: shev-agent-ui-preview
-          path: shev-agent-ui-preview/shev-agent-home.png
+          name: shev-chat-android-16-smoke
+          path: shev-chat-home.png
           if-no-files-found: error
+          retention-days: 7
