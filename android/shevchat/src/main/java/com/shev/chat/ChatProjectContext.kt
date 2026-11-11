@@ -1,14 +1,13 @@
 package com.shev.chat
 
 import com.shev.chat.data.ChatEntryEntity
-import com.shev.chat.data.MemorySnapshot
 
 /** Builds an explicit, project-scoped handoff prompt for the official ChatGPT app. */
 object ChatProjectContext {
     const val MEMORY_CHECKPOINT_URL =
         "https://github.com/shevgti/SheV-Memory/blob/main/ACTIVE-CHECKPOINT.md"
 
-    fun build(project: String, entries: List<ChatEntryEntity> = emptyList(), memory: MemorySnapshot? = null): String {
+    fun build(project: String, entries: List<ChatEntryEntity> = emptyList()): String {
         val projectLine = when (project) {
             "ФотоПорядок" -> "Проект: ФотоПорядок. Продолжай работу над Android-фотогалереей."
             "SheV Agent" -> "Проект: SheV Agent. Продолжай работу над Android-помощником."
@@ -27,21 +26,12 @@ object ChatProjectContext {
         return buildString {
             appendLine(projectLine)
             appendLine()
-            appendLine("Перед ответом восстанови подтверждённое состояние проекта из SheV-Memory.")
+            appendLine("Перед ответом восстанови подтверждённое состояние проекта из приватного репозитория SheV-Memory через уже подключённый GitHub-коннектор.")
             appendLine("Единая точка входа: $MEMORY_CHECKPOINT_URL")
+            appendLine("Затем открой паспорт выбранного проекта и последние относящиеся к нему записи.")
+            appendLine("Если GitHub-коннектор недоступен, честно попроси пользователя приложить экспорт памяти. Не заявляй, что прочитал репозиторий, если доступа не было.")
             appendLine("Не проси пользователя повторять уже сохранённое. Не утверждай, что что-либо изменил или сохранил, пока это не подтверждено фактическим результатом.")
             appendLine("После существенной работы подготовь обновление ACTIVE-CHECKPOINT.md и проверь его сохранение.")
-            if (memory != null && memory.project == project) {
-                appendLine()
-                appendLine("## Подтверждённый кэш SheV-Memory")
-                appendLine("Последняя успешная синхронизация: ${memory.syncedAtEpochMillis}")
-                appendLine("### Общая активная точка")
-                appendLine(memory.activeCheckpoint.take(6_000))
-                appendLine("### Паспорт выбранного проекта: $project")
-                appendLine(memory.projectMemory.take(10_000))
-            } else {
-                appendLine("Локального кэша SheV-Memory пока нет. Не выдумывай статус проекта; открой ссылку и восстанови его из источника.")
-            }
             appendLine("Важно: SheV Chat не читает историю ChatGPT и не отправляет сообщение автоматически.")
             if (recentHistory.isNotBlank()) {
                 appendLine()
