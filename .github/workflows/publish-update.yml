@@ -74,7 +74,7 @@ jobs:
         if: github.event_name != 'workflow_run'
         shell: bash
         run: |
-          rustup target add aarch64-linux-android
+          rustup target add --toolchain 1.95.0 aarch64-linux-android
           NDK="$ANDROID_HOME/ndk/27.2.12479018"
           TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
           echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
