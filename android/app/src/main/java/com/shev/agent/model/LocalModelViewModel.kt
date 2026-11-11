@@ -1015,7 +1015,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val turn = completion.get("turn")?.takeIf { it.isJsonObject }?.asJsonObject
                 val status = turn?.get("status")?.asString.orEmpty()
                 if (status.isNotBlank() && status != "completed") {
-                    throw IllegalStateException(turn.get("error")?.asString ?: "Codex завершил ход со статусом $status.")
+                    throw IllegalStateException(turn?.get("error")?.asString ?: "Codex завершил ход со статусом $status.")
                 }
                 val finalAnswer = answer.toString().trim()
                 if (finalAnswer.isBlank()) {
