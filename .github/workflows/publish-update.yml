@@ -63,10 +63,11 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           path: codex-runtime
 
-      - name: Install Rust Android target for standalone release
+      - name: Install Codex-pinned Rust 1.95.0 Android target for standalone release
         if: github.event_name != 'workflow_run'
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
+          components: clippy,rustfmt,rust-src
           targets: aarch64-linux-android
 
       - name: Configure Android linker for standalone release
