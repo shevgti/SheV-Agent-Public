@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">SheV Chat</string>
+    <string name="accessibility_service_description">Помогает открыть новый чат только в официальном приложении ChatGPT по команде из SheV Chat.</string>
+</resources>
