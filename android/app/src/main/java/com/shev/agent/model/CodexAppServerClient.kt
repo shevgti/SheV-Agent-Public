@@ -81,6 +81,7 @@ internal class CodexAppServerClient(
             put("XDG_CONFIG_HOME", codexHome.absolutePath)
             put("XDG_CACHE_HOME", cache.absolutePath)
             put("TMPDIR", cache.absolutePath)
+            put("LD_LIBRARY_PATH", appContext.applicationInfo.nativeLibraryDir)
             put("PATH", "/system/bin:/system/xbin")
             put("TERM", "dumb")
             put("NO_COLOR", "1")
