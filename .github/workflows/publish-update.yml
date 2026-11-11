@@ -154,7 +154,7 @@ jobs:
 
           releases.sort(key=lambda item: item.get("published_at") or item.get("created_at") or "", reverse=True)
           latest = releases[0]
-          match = re.search(r"(?im)^versionCode:\\s*(\\d+)\\s*$", latest.get("body") or "")
+          match = re.search(r"(?im)^versionCode:\s*(\d+)\s*$", latest.get("body") or "")
           if not match:
               raise SystemExit(
                   f"Latest release {latest.get('tag_name')} has no versionCode in its release notes; "
@@ -167,8 +167,8 @@ jobs:
               raise SystemExit("Android versionCode limit reached.")
 
           with open(os.environ["GITHUB_ENV"], "a") as env:
-              env.write(f"APP_VERSION_CODE={next_code}\\n")
-              env.write(f"PREVIOUS_VERSION_CODE={previous}\\n")
+              env.write(f"APP_VERSION_CODE={next_code}\n")
+              env.write(f"PREVIOUS_VERSION_CODE={previous}\n")
           print(f"Previous published versionCode: {previous}")
           print(f"Allocated versionCode: {next_code}")
           PY
@@ -199,7 +199,7 @@ jobs:
       - name: Verify APK versionCode and embedded Codex runtime
         run: |
           APK="android/app/build/outputs/apk/debug/app-debug.apk"
-          ACTUAL_CODE=$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging "$APK" | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p" | head -n 1)
+          ACTUAL_CODE=$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging "$APK" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -n 1)
           test -n "$ACTUAL_CODE"
           test "$ACTUAL_CODE" = "$APP_VERSION_CODE"
           test "$ACTUAL_CODE" -gt "$PREVIOUS_VERSION_CODE"
@@ -212,7 +212,7 @@ jobs:
           cp android/app/build/outputs/apk/debug/app-debug.apk release-package/app-debug.apk
           cd release-package
           sha256sum app-debug.apk > app-debug.apk.sha256
-          printf 'version=%s\\nversionCode=%s\\ncommit=%s\\n' "$APP_VERSION" "$APP_VERSION_CODE" "$(git -C .. rev-parse HEAD)" > build-info.txt
+          printf 'version=%s\nversionCode=%s\ncommit=%s\n' "$APP_VERSION" "$APP_VERSION_CODE" "$(git -C .. rev-parse HEAD)" > build-info.txt
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
