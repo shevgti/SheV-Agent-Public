@@ -68,6 +68,7 @@ class ChatActivity : ComponentActivity() {
             SheVChatHome(
                 database = history,
                 onOpenChatGPT = { openOfficialChatGPT() },
+                onOpenMemory = { openMemoryCheckpoint() },
                 onCopyContext = { project, entries ->
                     copyProjectContext(project, entries)
                     openOfficialChatGPT()
@@ -118,6 +119,10 @@ class ChatActivity : ComponentActivity() {
         }
     }
 
+    private fun openMemoryCheckpoint() {
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ChatProjectContext.MEMORY_CHECKPOINT_URL)))
+    }
+
     private fun startNewChat(project: String, entries: List<ChatEntryEntity>) {
         copyProjectContext(project, entries)
         getSharedPreferences(ChatGPTControlService.PREFS, MODE_PRIVATE)
@@ -163,6 +168,7 @@ class ChatActivity : ComponentActivity() {
 private fun SheVChatHome(
     database: ChatHistoryDatabase,
     onOpenChatGPT: () -> Unit,
+    onOpenMemory: () -> Unit,
     onCopyContext: (String, List<ChatEntryEntity>) -> Unit,
     onNewChat: (String, List<ChatEntryEntity>) -> Unit,
     onSaveEntry: (String, String, String) -> Unit,
@@ -328,12 +334,17 @@ private fun SheVChatHome(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     ) { Text("Открыть ChatGPT", fontSize = 11.sp) }
-                    Button(
-                        onClick = { onCopyContext(project, orderedEntries) },
+                    OutlinedButton(
+                        onClick = onOpenMemory,
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
-                    ) { Text("Контекст + ChatGPT", fontSize = 11.sp) }
+                    ) { Text("Открыть SheV-Memory", fontSize = 11.sp) }
                 }
+                Button(
+                    onClick = { onCopyContext(project, orderedEntries) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Скопировать контекст проекта + открыть ChatGPT", fontSize = 11.sp) }
                 OutlinedButton(
                     onClick = { onNewChat(project, orderedEntries) },
                     modifier = Modifier.fillMaxWidth(),
