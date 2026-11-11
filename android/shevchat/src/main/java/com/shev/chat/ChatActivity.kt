@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
@@ -97,9 +98,23 @@ class ChatActivity : ComponentActivity() {
         } else {
             Toast.makeText(
                 this,
-                "Официальное приложение ChatGPT не найдено. Установи его из Google Play.",
+                "Официальное приложение ChatGPT не найдено. Открываю Google Play.",
                 Toast.LENGTH_LONG
             ).show()
+            val marketIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("market://details?id=com.openai.chatgpt")
+            )
+            try {
+                startActivity(marketIntent)
+            } catch (_: Exception) {
+                startActivity(
+                    Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse("https://play.google.com/store/apps/details?id=com.openai.chatgpt")
+                    )
+                )
+            }
         }
     }
 
