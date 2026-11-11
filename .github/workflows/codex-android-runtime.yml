@@ -69,7 +69,10 @@ jobs:
           CARGO_PROFILE_RELEASE_STRIP: symbols
           CARGO_PROFILE_RELEASE_LTO: "true"
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
-        run: cargo build --release --target aarch64-linux-android --bin codex-app-server -p codex-app-server
+        # The pinned Codex dependency graph pulls in openssl-sys. Enable its
+        # vendored feature so the cross-build compiles OpenSSL for Android
+        # instead of incorrectly probing the Ubuntu host with pkg-config.
+        run: cargo build --release --target aarch64-linux-android --bin codex-app-server -p codex-app-server --features openssl/vendored
 
       - name: Inspect Android executable
         run: |
