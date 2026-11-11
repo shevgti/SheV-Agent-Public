@@ -55,6 +55,19 @@ class ChatProjectContextTest {
     }
 
     @Test
+    fun notesFromAnotherProjectNeverLeakIntoTheHandoff() {
+        val entries = listOf(
+            ChatEntryEntity("1", "ФотоПорядок", "USER", "Фото-проект", 100L),
+            ChatEntryEntity("2", "SheV Agent", "USER", "Agent-private note", 200L)
+        )
+
+        val prompt = ChatProjectContext.build("ФотоПорядок", entries)
+
+        assertTrue(prompt.contains("Фото-проект"))
+        assertTrue(!prompt.contains("Agent-private note"))
+    }
+
+    @Test
     fun privateMemoryRequiresTheConnectedGitHubConnector() {
         val prompt = ChatProjectContext.build("SheV Agent")
         assertTrue(prompt.contains("приватного репозитория SheV-Memory"))
