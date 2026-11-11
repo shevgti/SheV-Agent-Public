@@ -41,9 +41,8 @@ import com.shev.agent.tools.ToolWorkshopScreen
 import com.shev.agent.update.UpdateCheckWorker
 
 /**
- * SheV Agent starts directly in the conversation.
- * Projects, task dashboards, memory browsers and tool catalogs are intentionally
- * kept out of the first screen; they are not part of the initial chat experience.
+ * The specialised-agent factory is the default screen. The primary chat and
+ * safe tool workshop remain available as separate bottom-navigation destinations.
  */
 class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher =
