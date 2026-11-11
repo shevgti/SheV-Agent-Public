@@ -232,6 +232,7 @@ private fun SheVChatHome(
 
                 if (orderedEntries.isEmpty()) {
                     Card(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = scheme.surface),
                         shape = RoundedCornerShape(16.dp)
                     ) {
