@@ -20,7 +20,7 @@ The user wants to talk to the same official ChatGPT app/account used in this cha
 SheV Chat is a control panel around the official ChatGPT app:
 1. Launch the installed official ChatGPT Android app via its package launch intent.
 2. Let the user select a project (ФотоПорядок, SheV Agent, Моя память).
-3. Prepare a concise project-specific continuation prompt from the locally cached, confirmed SheV-Memory checkpoint.
+3. Prepare a concise project-specific continuation prompt that directs official ChatGPT to read the private SheV-Memory checkpoint through its already-connected GitHub integration.
 4. Copy that prompt to Android clipboard; user pastes it into ChatGPT. Do not claim that the prompt was automatically submitted.
 5. Provide shortcuts to open SheV-Memory repository/checkpoint and a visible last-synced status.
 6. Keep local notes and a durable task/checkpoint ledger so the user can continue even when ChatGPT starts a new chat.
@@ -43,6 +43,7 @@ SheV Chat is a control panel around the official ChatGPT app:
 - Clipboard prompt currently directs ChatGPT to read the SheV-Memory ACTIVE-CHECKPOINT file.
 - No API client, no API credentials, no API billing, no WebView login, no private ChatGPT session scraping.
 - The draft chat bubbles in this screen are not the real ChatGPT conversation; they must be removed or relabelled clearly. Do not make them look like messages sent to ChatGPT.
+- SheV-Memory is a private GitHub repository. SheV Chat must not fetch its raw.githubusercontent.com URLs without authentication; that would return 404 and would be a false sync. The app does not store GitHub tokens or perform OAuth. The copied prompt asks ChatGPT to use the user's connected GitHub integration. If that connector is unavailable, the assistant must ask the user to attach/export the checkpoint rather than claim it read it.
 - Current clipboard handoff is a first working prototype, not full automatic chat management. New-chat creation and automatic transcript syncing are not supported by public interfaces.
 
 ## Next implementation steps
@@ -61,7 +62,7 @@ SheV Chat is a control panel around the official ChatGPT app:
 - Project selection changes the exact context copied to clipboard.
 - The app never presents local draft bubbles as a real ChatGPT conversation.
 - No API keys, API billing, backend server, or user developer setup required.
-- Context can be prepared offline from last confirmed local checkpoint.
+- Context can be prepared offline from manually saved local project history; the private GitHub checkpoint is read by ChatGPT only when its GitHub connector is connected, otherwise the user must attach/export it.
 - Every sync has explicit success/failure status; no false "saved" claims.
 - Accessibility is not mandatory for core functionality and is never enabled without user consent.
 - All limitations around official chat control are stated clearly.
