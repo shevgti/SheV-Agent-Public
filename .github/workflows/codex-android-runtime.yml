@@ -63,16 +63,21 @@ jobs:
           git checkout 82e6bacb9c6950d3b56cb153847fa80bdd698053
           echo "Codex source commit: $(git rev-parse HEAD)"
 
+      - name: Enable vendored OpenSSL for Android target
+        shell: bash
+        run: |
+          # Codex's HTTP client depends directly on native-tls; its vendored
+          # feature enables openssl-sys/vendored for this cross-compile.
+          sed -i 's/^native-tls = "0.2"$/native-tls = { version = "0.2", features = ["vendored"] }/' codex/codex-rs/http-client/Cargo.toml
+          grep -F 'native-tls = { version = "0.2", features = ["vendored"] }' codex/codex-rs/http-client/Cargo.toml
+
       - name: Build official Codex App Server for Android ARM64
         working-directory: codex/codex-rs
         env:
           CARGO_PROFILE_RELEASE_STRIP: symbols
           CARGO_PROFILE_RELEASE_LTO: "true"
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
-        # The pinned Codex dependency graph pulls in openssl-sys. Enable its
-        # vendored feature so the cross-build compiles OpenSSL for Android
-        # instead of incorrectly probing the Ubuntu host with pkg-config.
-        run: cargo build --release --target aarch64-linux-android --bin codex-app-server -p codex-app-server --features openssl/vendored
+        run: cargo build --release --target aarch64-linux-android --bin codex-app-server -p codex-app-server
 
       - name: Inspect Android executable
         run: |
