@@ -48,7 +48,7 @@ class ChatProjectContextTest {
 
         val prompt = ChatProjectContext.build("ФотоПорядок", entries)
 
-        assertTrue(prompt.contains("Последние записи локальной истории"))
+        assertTrue(prompt.contains("Последние локальные заметки"))
         assertTrue(prompt.contains("Проверь новую сборку"))
         assertTrue(prompt.contains("Сборка ещё не подтверждена"))
         assertTrue(prompt.contains("не считать внешне синхронизированными"))
