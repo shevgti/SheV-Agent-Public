@@ -18,7 +18,7 @@ object ChatProjectContext {
             .sortedBy { it.createdAtEpochMillis }
             .takeLast(20)
             .joinToString("\n\n") { entry ->
-                val speaker = if (entry.role == "ASSISTANT") "Ответ ChatGPT" else "Моё сообщение"
+                val speaker = if (entry.role == "ASSISTANT") "Ответ ChatGPT (добавлен вручную)" else "Моя запись"
                 "$speaker:\n${entry.content.take(2500)}"
             }
             .takeLast(12_000)
@@ -35,7 +35,7 @@ object ChatProjectContext {
             appendLine("Важно: SheV Chat не читает историю ChatGPT и не отправляет сообщение автоматически.")
             if (recentHistory.isNotBlank()) {
                 appendLine()
-                appendLine("## Последние записи локальной истории SheV Chat (для контекста, не считать внешне синхронизированными)")
+                appendLine("## Последние локальные заметки SheV Chat (добавлены вручную; не являются перепиской ChatGPT)")
                 appendLine(recentHistory)
             }
         }
