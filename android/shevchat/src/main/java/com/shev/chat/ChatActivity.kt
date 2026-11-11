@@ -122,8 +122,8 @@ class ChatActivity : ComponentActivity() {
         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
     }
 
-    private fun copyProjectContext(project: String, entries: List<ChatEntryEntity>, memory: MemorySnapshot?) {
-        val prompt = ChatProjectContext.build(project, entries, memory)
+    private fun copyProjectContext(project: String, entries: List<ChatEntryEntity>) {
+        val prompt = ChatProjectContext.build(project, entries)
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("Контекст SheV — $project", prompt))
         Toast.makeText(
