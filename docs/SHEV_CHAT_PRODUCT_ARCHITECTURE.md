@@ -35,26 +35,23 @@ SheV Chat is a control panel around the official ChatGPT app:
 
 ## Current implementation in this branch
 
-- Standalone Android module `:shevchat`, applicationId `com.shev.chat`.
-- Russian-first Jetpack Compose shell.
-- Project selector.
-- Button to launch package `com.openai.chatgpt` if installed.
-- Button to prepare/copy a project continuation prompt to clipboard.
-- Clipboard prompt currently directs ChatGPT to read the SheV-Memory ACTIVE-CHECKPOINT file.
-- No API client, no API credentials, no API billing, no WebView login, no private ChatGPT session scraping.
-- The draft chat bubbles in this screen are not the real ChatGPT conversation; they must be removed or relabelled clearly. Do not make them look like messages sent to ChatGPT.
-- SheV-Memory is a private GitHub repository. SheV Chat must not fetch its raw.githubusercontent.com URLs without authentication; that would return 404 and would be a false sync. The app does not store GitHub tokens or perform OAuth. The copied prompt asks ChatGPT to use the user's connected GitHub integration. If that connector is unavailable, the assistant must ask the user to attach/export the checkpoint rather than claim it read it.
-- Current clipboard handoff is a first working prototype, not full automatic chat management. New-chat creation and automatic transcript syncing are not supported by public interfaces.
+- Standalone Android module `:shevchat`, applicationId `com.shev.chat`, independent from the SheV Agent app.
+- Russian-first Jetpack Compose companion UI with a persisted project selector for ФотоПорядок, SheV Agent and Моя память.
+- Local Room database stores only notes manually entered by the user, isolated by project and bounded to the latest 100 entries per project. These notes are clearly labelled as local/manual; they are not presented as a live ChatGPT transcript.
+- Project-aware handoff prompt includes up to 20 recent local notes (bounded to 12 KB), points to the private SheV-Memory ACTIVE-CHECKPOINT and tells ChatGPT to use its already-connected GitHub connector.
+- Private SheV-Memory is NOT fetched from raw.githubusercontent.com. The app has no GitHub token, no OAuth flow, and no network permission. A previous prototype attempted unauthenticated raw access; it was removed because a private repository returns 404 and would create a false sync status.
+- If ChatGPT's GitHub connector is unavailable, the prompt explicitly asks the assistant to request a user-provided export/attachment. It must not claim to have read memory.
+- Launches the official `com.openai.chatgpt` Android app if installed. User pastes the copied prompt manually.
+- Optional AccessibilityService prototype is scoped to the ChatGPT package and a user-queued New chat action; requests expire after 20 seconds. User must explicitly enable the service in Android Settings. This is not a guaranteed or device-verified capability.
+- No API client, API credentials, API billing, backend server, WebView login, private ChatGPT session scraping, or transcript synchronization.
+- CI workflow builds both debug APKs, checks SheV Agent versionCode against the latest release, verifies SheV Chat package identity/signature, uploads checksums/build-info and launches SheV Chat on Android 16 emulator.
 
-## Next implementation steps
+## Remaining implementation and acceptance work
 
-1. Fix CI and validate the separate APK builds.
-2. Replace fake chat transcript UI with a compact companion dashboard: project selector, "Открыть ChatGPT", "Скопировать контекст проекта", memory sync indicator, latest checkpoint summary.
-3. Persist selected project and last confirmed checkpoint locally (DataStore or Room); no ephemeral-only UI state.
-4. Add a safe refresh/cache path for public SheV-Memory checkpoint; do not store GitHub credentials in APK. If private repository access is needed, use an explicit OAuth flow only if user approves; otherwise use a manually exported/public checkpoint.
-5. Add "Новый чат" helper: open official ChatGPT and copy a project-aware start prompt. It cannot guarantee the official app opens a blank conversation; explain this.
-6. Investigate accessibility as an optional opt-in only. If not reliable on current ChatGPT version, keep clipboard workflow.
-7. Build and install-test on user's Android device only after CI artifact succeeds. Never claim a build/device test without evidence.
+1. Run CI on the latest PR head; inspect both APKs, checksums and build-info.
+2. Replace any remaining misleading "chat history" wording with "local notes" and ensure the screen remains usable on a small Android display.
+3. Device-test official ChatGPT launch, clipboard handoff, Room persistence, project isolation and the optional AccessibilityService on the user's Android device. Accessibility stays optional and must not be enabled without consent.
+4. If the user wants private memory visible inside the companion itself, first agree on an authenticated, least-privilege GitHub integration; do not add a token or unauthenticated raw fetch as a shortcut.
 
 ## Acceptance criteria
 
