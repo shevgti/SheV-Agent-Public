@@ -123,7 +123,7 @@ class ChatActivity : ComponentActivity() {
     }
 
     private fun copyProjectContext(project: String, entries: List<ChatEntryEntity>) {
-        val prompt = ChatProjectContext.build(project)
+        val prompt = ChatProjectContext.build(project, entries)
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("Контекст SheV — $project", prompt))
         Toast.makeText(
@@ -148,7 +148,13 @@ private fun SheVChatHome(
     onSaveEntry: (String, String, String) -> Unit,
     onEnableAutomation: () -> Unit
 ) {
-    var project by rememberSaveable { mutableStateOf("ФотоПорядок") }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val projectPrefs = remember(context) {
+        context.getSharedPreferences("shev_chat_projects", Context.MODE_PRIVATE)
+    }
+    var project by rememberSaveable {
+        mutableStateOf(projectPrefs.getString("selected_project", "ФотоПорядок") ?: "ФотоПорядок")
+    }
     var role by rememberSaveable { mutableStateOf(ChatActivity.ROLE_USER) }
     var draft by rememberSaveable { mutableStateOf("") }
     val entries by remember(project) {
@@ -192,7 +198,10 @@ private fun SheVChatHome(
                             listOf("ФотоПорядок", "SheV Agent", "Моя память").forEach { name ->
                                 val selected = project == name
                                 OutlinedButton(
-                                    onClick = { project = name },
+                                    onClick = {
+                                    project = name
+                                    projectPrefs.edit().putString("selected_project", name).apply()
+                                },
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(
