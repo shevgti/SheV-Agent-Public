@@ -74,7 +74,7 @@ class ChatActivity : ComponentActivity() {
                 onNewChat = { project, entries -> startNewChat(project, entries) },
                 onSaveEntry = { project, role, text ->
                     lifecycleScope.launch {
-                        history.entries().insert(
+                        history.entries().insertAndPrune(
                             ChatEntryEntity(
                                 id = UUID.randomUUID().toString(),
                                 projectId = project,
