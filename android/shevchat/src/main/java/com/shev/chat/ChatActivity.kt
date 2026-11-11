@@ -134,6 +134,11 @@ class ChatActivity : ComponentActivity() {
     }
 
     private fun openAccessibilitySettings() {
+        Toast.makeText(
+            this,
+            "В настройках найди SheV Chat в разделе специальных возможностей и включи службу вручную. Без этого приложение только скопирует контекст и откроет ChatGPT.",
+            Toast.LENGTH_LONG
+        ).show()
         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
     }
 
