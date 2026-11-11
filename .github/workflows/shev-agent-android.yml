@@ -205,7 +205,7 @@ jobs:
           from pathlib import Path
 
           gradle_file = Path("app/build.gradle.kts").read_text()
-          configured = re.search(r"getOrElse\\((\\d+)\\)", gradle_file)
+          configured = re.search(r"getOrElse\((\d+)\)", gradle_file)
           if not configured:
               raise SystemExit("Cannot read baseline versionCode from app/build.gradle.kts")
           baseline = int(configured.group(1))
@@ -220,7 +220,7 @@ jobs:
           if not releases:
               raise SystemExit("No published release found; refusing to guess previous versionCode.")
           releases.sort(key=lambda item: item.get("published_at") or item.get("created_at") or "", reverse=True)
-          match = re.search(r"(?im)^versionCode:\\s*(\\d+)\\s*$", releases[0].get("body") or "")
+          match = re.search(r"(?im)^versionCode:\s*(\d+)\s*$", releases[0].get("body") or "")
           if not match:
               raise SystemExit("Latest published release has no versionCode; refusing unsafe APK version.")
           previous = int(match.group(1))
@@ -228,8 +228,8 @@ jobs:
           if next_code > 2_100_000_000:
               raise SystemExit("Android versionCode limit reached.")
           with open(os.environ["GITHUB_ENV"], "a") as env:
-              env.write(f"APP_VERSION_CODE={next_code}\\n")
-              env.write(f"PREVIOUS_VERSION_CODE={previous}\\n")
+              env.write(f"APP_VERSION_CODE={next_code}\n")
+              env.write(f"PREVIOUS_VERSION_CODE={previous}\n")
           print(f"Previous published versionCode: {previous}")
           print(f"Allocated versionCode: {next_code}")
           PY
