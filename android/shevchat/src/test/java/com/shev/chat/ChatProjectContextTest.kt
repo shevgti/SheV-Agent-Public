@@ -55,6 +55,14 @@ class ChatProjectContextTest {
     }
 
     @Test
+    fun privateMemoryRequiresTheConnectedGitHubConnector() {
+        val prompt = ChatProjectContext.build("SheV Agent")
+        assertTrue(prompt.contains("приватного репозитория SheV-Memory"))
+        assertTrue(prompt.contains("GitHub-коннектор"))
+        assertTrue(prompt.contains("попроси пользователя приложить экспорт памяти"))
+    }
+
+    @Test
     fun unknownProjectDoesNotSilentlyBecomeAnotherProject() {
         val prompt = ChatProjectContext.build("Неизвестный проект")
         assertTrue(prompt.contains("Неизвестный проект"))
