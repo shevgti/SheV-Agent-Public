@@ -143,7 +143,7 @@ class ChatActivity : ComponentActivity() {
         clipboard.setPrimaryClip(ClipData.newPlainText("Контекст SheV — $project", prompt))
         Toast.makeText(
             this,
-            "Контекст и последние записи $project скопированы. Вставь их в ChatGPT.",
+            "Контекст и локальные заметки $project скопированы. Вставь их в ChatGPT.",
             Toast.LENGTH_LONG
         ).show()
     }
@@ -285,7 +285,7 @@ private fun SheVChatHome(
                                     containerColor = if (role == ChatActivity.ROLE_USER) Color(0xFF164E45) else Color.Transparent,
                                     contentColor = if (role == ChatActivity.ROLE_USER) Mint else scheme.onSurface
                                 )
-                            ) { Text("Моё сообщение", fontSize = 11.sp) }
+                            ) { Text("Моя запись", fontSize = 11.sp) }
                             OutlinedButton(
                                 onClick = { role = ChatActivity.ROLE_ASSISTANT },
                                 modifier = Modifier.weight(1f),
@@ -293,7 +293,7 @@ private fun SheVChatHome(
                                     containerColor = if (role == ChatActivity.ROLE_ASSISTANT) Color(0xFF164E45) else Color.Transparent,
                                     contentColor = if (role == ChatActivity.ROLE_ASSISTANT) Mint else scheme.onSurface
                                 )
-                            ) { Text("Ответ ChatGPT", fontSize = 11.sp) }
+                            ) { Text("Ответ ChatGPT (вручную)", fontSize = 10.sp) }
                         }
                         OutlinedTextField(
                             value = draft,
