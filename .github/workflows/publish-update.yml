@@ -110,6 +110,9 @@ jobs:
         run: |
           test -s ../codex-runtime/libcodex_app_server.so
           test -s ../codex-runtime/libc++_shared.so
+          READELF="$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          "$READELF" -l ../codex-runtime/libcodex_app_server.so | grep -q '0x4000'
+          "$READELF" -l ../codex-runtime/libc++_shared.so | grep -q '0x4000'
           mkdir -p app/src/main/jniLibs/arm64-v8a
           install -m 0755 ../codex-runtime/libcodex_app_server.so app/src/main/jniLibs/arm64-v8a/libcodex_app_server.so
           install -m 0644 ../codex-runtime/libc++_shared.so app/src/main/jniLibs/arm64-v8a/libc++_shared.so
