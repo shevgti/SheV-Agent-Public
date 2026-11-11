@@ -4,8 +4,8 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [AgentTaskEntity::class, AgentEventEntity::class, ImprovementEntity::class, CapabilityGrantEntity::class, WorkspaceLayoutEntity::class, ConversationMessageEntity::class, ApprovalEvidenceEntity::class, ConversationStateEntity::class],
-    version = 9,
+    entities = [AgentTaskEntity::class, AgentEventEntity::class, ImprovementEntity::class, CapabilityGrantEntity::class, WorkspaceLayoutEntity::class, ConversationMessageEntity::class, ApprovalEvidenceEntity::class, ConversationStateEntity::class, AgentDefinitionEntity::class],
+    version = 11,
     exportSchema = false
 )
 abstract class SheVAgentDatabase : RoomDatabase() {
@@ -68,6 +68,20 @@ internal val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
     }
 }
 
+
+internal val MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS agent_definitions (agentId TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, purpose TEXT NOT NULL, manifestJson TEXT NOT NULL, status TEXT NOT NULL, version INTEGER NOT NULL, createdAtEpochMillis INTEGER NOT NULL, updatedAtEpochMillis INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_agent_definitions_updatedAtEpochMillis ON agent_definitions (updatedAtEpochMillis)")
+    }
+}
+
+internal val MIGRATION_10_11 = object : androidx.room.migration.Migration(10, 11) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE agent_definitions ADD COLUMN agentMarkdown TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 object SheVAgentDatabaseProvider {
     @Volatile
     private var instance: SheVAgentDatabase? = null
@@ -86,7 +100,9 @@ object SheVAgentDatabaseProvider {
                 MIGRATION_5_6,
                 MIGRATION_6_7,
                 MIGRATION_7_8,
-                MIGRATION_8_9
+                MIGRATION_8_9,
+                MIGRATION_9_10,
+                MIGRATION_10_11
             ).build().also { instance = it }
         }
 }
