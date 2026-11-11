@@ -86,8 +86,11 @@ jobs:
           "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -h "$BINARY" | grep -E 'Class:|Machine:'
           "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -d "$BINARY" | grep NEEDED || true
           mkdir -p codex-runtime
+          LIBCXX="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"
           install -m 0755 "$BINARY" codex-runtime/libcodex_app_server.so
-          install -m 0644 "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" codex-runtime/libc++_shared.so
+          install -m 0644 "$LIBCXX" codex-runtime/libc++_shared.so
+          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -l "$BINARY" | grep -q '0x4000'
+          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -l "$LIBCXX" | grep -q '0x4000'
       - name: Upload Android ARM64 runtime
         uses: actions/upload-artifact@v4
         with:
