@@ -74,6 +74,33 @@ jobs:
           sed -i 's/^native-tls = "0.2"$/native-tls = { version = "0.2", features = ["vendored"] }/' codex/codex-rs/http-client/Cargo.toml
           grep -F 'native-tls = { version = "0.2", features = ["vendored"] }' codex/codex-rs/http-client/Cargo.toml
 
+      - name: Apply Android compatibility patch to MXC dependency
+        shell: bash
+        run: |
+          git clone https://github.com/microsoft/mxc.git mxc
+          cd mxc
+          git checkout b21120168d70befe12356411423266bfef168446
+          cd ..
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("mxc/src/mxc-sdk/src/core/mxc_engine/dispatch.rs")
+          s = p.read_text()
+          old = "    crate::mxc_engine::run::log_policy_hash(request, logger);"
+          new = """    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+          crate::mxc_engine::run::log_policy_hash(request, logger);"""
+          assert s.count(old) == 2, f"expected two run::log_policy_hash calls, found {s.count(old)}"
+          p.write_text(s.replace(old, new))
+          manifest = Path("codex/codex-rs/Cargo.toml")
+          cargo = manifest.read_text()
+          patch = '''
+          [patch."https://github.com/microsoft/mxc"]
+          mxc-sdk = { path = "../../mxc/src/mxc-sdk" }
+          '''
+          assert '[patch."https://github.com/microsoft/mxc"]' not in cargo
+          manifest.write_text(cargo + patch)
+          PY
+          grep -n -B1 -A1 'mxc_engine::run::log_policy_hash' mxc/src/mxc-sdk/src/core/mxc_engine/dispatch.rs
+
       - name: Build official Codex App Server for Android ARM64
         working-directory: codex/codex-rs
         env:
