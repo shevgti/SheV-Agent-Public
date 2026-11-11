@@ -2,7 +2,7 @@ name: Android CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feat/codex-app-server-android-native]
     paths:
       - "android/**"
       - ".github/workflows/android-ci.yml"
