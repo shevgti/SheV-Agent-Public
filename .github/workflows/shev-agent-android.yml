@@ -69,6 +69,14 @@ jobs:
           GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
           SHEV_VERSION_CODE: "22"
         run: gradle -PSHEV_VERSION_CODE="$SHEV_VERSION_CODE" assembleDebug
+      - name: Verify standalone SheV Chat APK identity and signature
+        working-directory: android
+        run: |
+          APK="shevchat/build/outputs/apk/debug/shevchat-debug.apk"
+          BADGING=$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging "$APK")
+          printf '%s\\n' "$BADGING"
+          echo "$BADGING" | grep -F "package: name='com.shev.chat' versionCode='1' versionName='0.1.0'"
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose "$APK"
       - name: Verify injected APK versionCode
         working-directory: android
         run: |
