@@ -16,7 +16,7 @@ on:
       release_tag:
         description: "Release tag must match app version, for example v0.3.1"
         required: true
-        default: "v0.3.1"
+        default: "v0.3.2"
 permissions:
   contents: write
   actions: read
