@@ -106,7 +106,10 @@ class ChatActivity : ComponentActivity() {
     private fun startNewChat(project: String, entries: List<ChatEntryEntity>) {
         copyProjectContext(project, entries)
         getSharedPreferences(ChatGPTControlService.PREFS, MODE_PRIVATE)
-            .edit().putBoolean(ChatGPTControlService.KEY_NEW_CHAT_REQUESTED, true).apply()
+            .edit()
+            .putBoolean(ChatGPTControlService.KEY_NEW_CHAT_REQUESTED, true)
+            .putLong(ChatGPTControlService.KEY_NEW_CHAT_REQUESTED_AT, System.currentTimeMillis())
+            .apply()
         openOfficialChatGPT()
         Toast.makeText(
             this,
@@ -120,33 +123,7 @@ class ChatActivity : ComponentActivity() {
     }
 
     private fun copyProjectContext(project: String, entries: List<ChatEntryEntity>) {
-        val projectLine = when (project) {
-            "ФотоПорядок" -> "Проект: ФотоПорядок. Продолжай работу над Android-фотогалереей."
-            "SheV Agent" -> "Проект: SheV Agent. Продолжай работу над Android-помощником и Agent Creator."
-            else -> "Проект: Моя память. Продолжай работу над календарём и системой напоминаний."
-        }
-        val recentHistory = entries
-            .sortedBy { it.createdAtEpochMillis }
-            .takeLast(20)
-            .joinToString("\n\n") { entry ->
-                val speaker = if (entry.role == ROLE_ASSISTANT) "Ответ ChatGPT" else "Моё сообщение"
-                "$speaker:\n${entry.content.take(2500)}"
-            }
-            .takeLast(12000)
-        val prompt = buildString {
-            appendLine(projectLine)
-            appendLine()
-            appendLine("Перед ответом восстанови подтверждённое состояние проекта из SheV-Memory:")
-            appendLine("https://github.com/shevgti/SheV-Memory")
-            appendLine("Начни с ACTIVE-CHECKPOINT.md, затем открой только относящиеся к проекту записи.")
-            appendLine("Не проси пользователя повторять уже сохранённое. Не утверждай, что что-либо изменил или сохранил, пока это не подтверждено фактическим результатом.")
-            appendLine("После существенной работы подготовь обновление ACTIVE-CHECKPOINT.md и проверь его сохранение.")
-            if (recentHistory.isNotBlank()) {
-                appendLine()
-                appendLine("## Последние записи локальной истории SheV Chat (для контекста, не считать внешне синхронизированными)")
-                appendLine(recentHistory)
-            }
-        }
+        val prompt = ChatProjectContext.build(project)
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("Контекст SheV — $project", prompt))
         Toast.makeText(
