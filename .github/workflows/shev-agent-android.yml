@@ -63,6 +63,9 @@ jobs:
           echo "CC_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android24-clang" >> "$GITHUB_ENV"
           echo "CXX_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android24-clang++" >> "$GITHUB_ENV"
           echo "AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar" >> "$GITHUB_ENV"
+          echo "RANLIB_aarch64_linux_android=$TOOLCHAIN/llvm-ranlib" >> "$GITHUB_ENV"
+          echo "TARGET_AR=$TOOLCHAIN/llvm-ar" >> "$GITHUB_ENV"
+          echo "TARGET_RANLIB=$TOOLCHAIN/llvm-ranlib" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/aarch64-linux-android24-clang" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS=-C link-arg=-Wl,-z,max-page-size=16384" >> "$GITHUB_ENV"
       - name: Checkout pinned official Codex source
@@ -72,6 +75,11 @@ jobs:
           ref: 82e6bacb9c6950d3b56cb153847fa80bdd698053
           path: codex
           fetch-depth: 1
+      - name: Enable vendored OpenSSL for Android target
+        shell: bash
+        run: |
+          sed -i 's/^native-tls = "0.2"$/native-tls = { version = "0.2", features = ["vendored"] }/' codex/codex-rs/http-client/Cargo.toml
+          grep -F 'native-tls = { version = "0.2", features = ["vendored"] }' codex/codex-rs/http-client/Cargo.toml
       - name: Build official Codex App Server for Android ARM64
         working-directory: codex/codex-rs
         env:
