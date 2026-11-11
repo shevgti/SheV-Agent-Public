@@ -63,26 +63,73 @@ jobs:
         env:
           GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
         run: gradle testDebugUnitTest --stacktrace
+      - name: Allocate next Android versionCode
+        working-directory: android
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          gradle_file = Path("app/build.gradle.kts").read_text()
+          configured = re.search(r"getOrElse\((\d+)\)", gradle_file)
+          if not configured:
+              raise SystemExit("Cannot read baseline versionCode from app/build.gradle.kts")
+          baseline = int(configured.group(1))
+          raw = subprocess.check_output(
+              ["gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/releases?per_page=100"],
+              text=True,
+          )
+          releases = [
+              item for item in json.loads(raw)
+              if not item.get("draft") and not item.get("prerelease")
+          ]
+          if not releases:
+              raise SystemExit("No published release found; refusing to guess previous versionCode.")
+          releases.sort(key=lambda item: item.get("published_at") or item.get("created_at") or "", reverse=True)
+          match = re.search(r"(?im)^versionCode:\s*(\d+)\s*$", releases[0].get("body") or "")
+          if not match:
+              raise SystemExit("Latest published release has no versionCode; refusing unsafe APK version.")
+          previous = int(match.group(1))
+          next_code = max(baseline, previous) + 1
+          if next_code > 2_100_000_000:
+              raise SystemExit("Android versionCode limit reached.")
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"APP_VERSION_CODE={next_code}\n")
+              env.write(f"PREVIOUS_VERSION_CODE={previous}\n")
+          print(f"Previous published versionCode: {previous}")
+          print(f"Allocated versionCode: {next_code}")
+          PY
       - name: Assemble debug APK with injected versionCode
         working-directory: android
         env:
           GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
-          SHEV_VERSION_CODE: "22"
-        run: gradle -PSHEV_VERSION_CODE="$SHEV_VERSION_CODE" assembleDebug
-      - name: Verify standalone SheV Chat APK identity and signature
-        working-directory: android
-        run: |
-          APK="shevchat/build/outputs/apk/debug/shevchat-debug.apk"
-          BADGING=$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging "$APK")
-          printf '%s\\n' "$BADGING"
-          echo "$BADGING" | grep -F "package: name='com.shev.chat' versionCode='1' versionName='0.1.0'"
-          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose "$APK"
-      - name: Verify injected APK versionCode
+        run: gradle -PSHEV_VERSION_CODE="$APP_VERSION_CODE" assembleDebug
+      - name: Verify APK contains Codex ARM64 runtime and versionCode
         working-directory: android
         run: |
           ACTUAL_CODE=$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p" | head -n 1)
-          test "$ACTUAL_CODE" = "22"
-          echo "Gradle injected versionCode verified: $ACTUAL_CODE"
+          test "$ACTUAL_CODE" = "$APP_VERSION_CODE"
+          test "$ACTUAL_CODE" -gt "$PREVIOUS_VERSION_CODE"
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "lib/arm64-v8a/libcodex_app_server.so"
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "lib/arm64-v8a/libc++_shared.so"
+          echo "Gradle versionCode verified: $ACTUAL_CODE > $PREVIOUS_VERSION_CODE"
+      - name: Assemble debug APK with injected versionCode
+        working-directory: android
+        env:
+          GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
+        run: gradle -PSHEV_VERSION_CODE="$APP_VERSION_CODE" assembleDebug
+      - name: Verify APK versionCode
+        working-directory: android
+        run: |
+          ACTUAL_CODE=$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p" | head -n 1)
+          test "$ACTUAL_CODE" = "$APP_VERSION_CODE"
+          test "$ACTUAL_CODE" -gt "$PREVIOUS_VERSION_CODE"
+          echo "Gradle versionCode verified: $ACTUAL_CODE > $PREVIOUS_VERSION_CODE"
       - name: Prepare debug test package
         working-directory: android
         run: |
