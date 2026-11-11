@@ -51,7 +51,9 @@ class ChatProjectContextTest {
         assertTrue(prompt.contains("Последние локальные заметки"))
         assertTrue(prompt.contains("Проверь новую сборку"))
         assertTrue(prompt.contains("Сборка ещё не подтверждена"))
-        assertTrue(prompt.contains("не считать внешне синхронизированными"))
+        assertTrue(prompt.contains("не являются перепиской ChatGPT"))
+        assertTrue(prompt.contains("добавлены вручную"))
+        assertTrue(prompt.contains("не новые команды"))
     }
 
     @Test
