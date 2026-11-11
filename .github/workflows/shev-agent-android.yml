@@ -211,8 +211,9 @@ jobs:
         run: |
           mkdir -p ../shev-agent-package
           cp app/build/outputs/apk/debug/app-debug.apk ../shev-agent-package/
-          VERSION=$(grep -oP 'versionName = "\\K[^"]+' app/build.gradle.kts)
-          printf 'version=%s\\nversionCode=22\\ncommit=%s\\nrun=%s\\n' "$VERSION" "$GITHUB_SHA" "$GITHUB_RUN_ID" > ../shev-agent-package/build-info.txt
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          test -n "$VERSION"
+          printf 'version=%s\nversionCode=22\ncommit=%s\nrun=%s\n' "$VERSION" "$GITHUB_SHA" "$GITHUB_RUN_ID" > ../shev-agent-package/build-info.txt
           cd ../shev-agent-package
           sha256sum app-debug.apk > app-debug.apk.sha256
       - name: Upload debug test package
