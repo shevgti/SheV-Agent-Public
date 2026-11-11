@@ -127,7 +127,7 @@ $json
         assertTrue(prompt.contains("clarifyingQuestions"))
         assertTrue(prompt.contains("triggeringExamples"))
         assertTrue(prompt.contains("When to invoke"))
-        assertTrue(prompt.contains("НЕ копируй host tool IDs"))
+        assertTrue(prompt.contains("НЕ помещай host tool IDs"))
         assertTrue(prompt.contains("claudeCodeTools"))
     }
 
