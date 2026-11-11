@@ -2,6 +2,7 @@ name: SheV Agent + SheV Chat Android
 
 on:
   push:
+    branches: [main]
     paths:
       - 'android/**'
       - '.github/workflows/shev-agent-android.yml'
