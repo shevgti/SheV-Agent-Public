@@ -185,7 +185,8 @@ jobs:
       - name: Verify release tag matches app version
         working-directory: android
         run: |
-          VERSION=$(grep -oP 'versionName = "\\K[^"]+' app/build.gradle.kts)
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          test -n "$VERSION"
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             RELEASE_TAG="${{ inputs.release_tag }}"
           elif [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
