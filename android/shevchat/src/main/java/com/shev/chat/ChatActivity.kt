@@ -51,6 +51,9 @@ import androidx.lifecycle.lifecycleScope
 import com.shev.chat.data.ChatEntryEntity
 import com.shev.chat.data.ChatHistoryDatabase
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
 private val Mint = Color(0xFF6EE7B7)
