@@ -1,11 +1,11 @@
-name: Android CI
+name: Android CI (manual fallback)
+
+# PR and mainline Android verification is handled by
+# shev-agent-android.yml, which builds both APKs, checks versionCode/signatures,
+# uploads checksums/build-info and runs the Android 16 launch smoke test.
+# Keep this workflow manual-only to avoid duplicate Gradle builds and artifacts.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "android/**"
-      - ".github/workflows/android-ci.yml"
   workflow_dispatch:
 
 permissions:
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   test-and-build:
-    name: Unit tests and debug APK
+    name: Manual Android unit tests and debug APKs
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -28,28 +28,33 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "9.5.0"
+          gradle-version: "9.7.0"
 
-      - name: Run unit tests
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ""
+
+      - name: Run all unit tests
         working-directory: android
         run: gradle --no-daemon testDebugUnitTest
 
-      - name: Assemble debug APK
+      - name: Assemble both debug APKs
         working-directory: android
         run: gradle --no-daemon assembleDebug
 
-      - name: Upload debug APK
+      - name: Upload SheV Agent debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: shev-agent-debug
+          name: shev-agent-debug-manual
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          retention-days: 14
- 
+          retention-days: 7
+
       - name: Upload SheV Chat debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: shev-chat-debug
+          name: shev-chat-debug-manual
           path: android/shevchat/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
