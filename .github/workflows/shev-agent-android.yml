@@ -44,15 +44,16 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           packages: "ndk;27.2.12479018"
-      - name: Install Rust Android target
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Codex-pinned Rust 1.95.0 Android target
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
+          components: clippy,rustfmt,rust-src
           targets: aarch64-linux-android
-      - name: Verify Android Rust target
+      - name: Verify Android Rust target for Codex toolchain
         run: |
-          rustup target add aarch64-linux-android
+          rustup target add --toolchain 1.95.0 aarch64-linux-android
           rustup show active-toolchain
-          rustup target list --installed | grep -Fxq aarch64-linux-android
+          rustup target list --installed --toolchain 1.95.0 | grep -Fxq aarch64-linux-android
       - name: Configure Android linker
         shell: bash
         run: |
