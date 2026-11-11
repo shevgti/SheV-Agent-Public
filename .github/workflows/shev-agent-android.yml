@@ -80,10 +80,15 @@ jobs:
         run: |
           mkdir -p ../shev-agent-package
           cp app/build/outputs/apk/debug/app-debug.apk ../shev-agent-package/
-          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
-          printf 'version=%s\nversionCode=22\ncommit=%s\nrun=%s\n' "$VERSION" "$GITHUB_SHA" "$GITHUB_RUN_ID" > ../shev-agent-package/build-info.txt
+          cp shevchat/build/outputs/apk/debug/shevchat-debug.apk ../shev-agent-package/shev-chat-debug.apk
+          VERSION=$(grep -oP 'versionName = "\\K[^"]+' app/build.gradle.kts)
+          CHAT_VERSION=$(grep -oP 'versionName = "\\K[^"]+' shevchat/build.gradle.kts)
+          test -n "$VERSION"
+          test -n "$CHAT_VERSION"
+          printf 'agentVersion=%s\\nchatVersion=%s\\ncommit=%s\\nrun=%s\\n' "$VERSION" "$CHAT_VERSION" "$GITHUB_SHA" "$GITHUB_RUN_ID" > ../shev-agent-package/build-info.txt
           cd ../shev-agent-package
           sha256sum app-debug.apk > app-debug.apk.sha256
+          sha256sum shev-chat-debug.apk > shev-chat-debug.apk.sha256
       - name: Upload debug test package
         uses: actions/upload-artifact@v4
         with:
