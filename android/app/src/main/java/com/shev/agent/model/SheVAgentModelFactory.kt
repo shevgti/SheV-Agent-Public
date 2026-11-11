@@ -64,6 +64,18 @@ object SheVAgentModelFactory {
             name = modelFile.name
         )
 
+    /** Agent Creator has no host tools and cannot execute generated instructions. */
+    fun createCreatorAgent(model: LiteRtLmModel): LlmAgent = LlmAgent(
+        name = "shev_agent_creator",
+        model = model,
+        instruction = Instruction(
+            "Ты — конструктор специализированных ИИ-агентов SheV. Возвращай только валидный JSON AgentManifest. " +
+                "Не вызывай инструменты: у этого агента их нет. Не назначай разрешения, сеть или side effects. " +
+                "Все паспорта остаются черновиками до проверки приложением. Отвечай только по-русски в полях паспорта."
+        ),
+        tools = emptyList()
+    )
+
     fun createAgent(model: LiteRtLmModel, tools: SheVAgentAdkTools, enabledSpecialists: Set<String> = specialists.map { it.name }.toSet(), enabledSkills: Set<String> = DEFAULT_SKILLS): LlmAgent {
         val activeSpecialists = specialists.filter { it.name in enabledSpecialists }
         val team = activeSpecialists.map { specialist ->
