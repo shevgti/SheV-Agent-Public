@@ -34,12 +34,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -51,9 +49,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.shev.chat.data.ChatEntryEntity
 import com.shev.chat.data.ChatHistoryDatabase
-import com.shev.chat.data.MemoryCheckpointStore
-import com.shev.chat.data.MemorySnapshot
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -65,20 +60,18 @@ private val Muted = Color(0xFF9CAFC5)
 
 class ChatActivity : ComponentActivity() {
     private val history by lazy { ChatHistoryDatabase.get(applicationContext) }
-    private val memoryStore by lazy { MemoryCheckpointStore(applicationContext) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             SheVChatHome(
                 database = history,
-                memoryStore = memoryStore,
                 onOpenChatGPT = { openOfficialChatGPT() },
-                onCopyContext = { project, entries, memory ->
-                    copyProjectContext(project, entries, memory)
+                onCopyContext = { project, entries ->
+                    copyProjectContext(project, entries)
                     openOfficialChatGPT()
                 },
-                onNewChat = { project, entries, memory -> startNewChat(project, entries, memory) },
+                onNewChat = { project, entries -> startNewChat(project, entries) },
                 onSaveEntry = { project, role, text ->
                     lifecycleScope.launch {
                         history.entries().insertAndPrune(
@@ -110,8 +103,8 @@ class ChatActivity : ComponentActivity() {
         }
     }
 
-    private fun startNewChat(project: String, entries: List<ChatEntryEntity>, memory: MemorySnapshot?) {
-        copyProjectContext(project, entries, memory)
+    private fun startNewChat(project: String, entries: List<ChatEntryEntity>) {
+        copyProjectContext(project, entries)
         getSharedPreferences(ChatGPTControlService.PREFS, MODE_PRIVATE)
             .edit()
             .putBoolean(ChatGPTControlService.KEY_NEW_CHAT_REQUESTED, true)
@@ -149,10 +142,9 @@ class ChatActivity : ComponentActivity() {
 @Composable
 private fun SheVChatHome(
     database: ChatHistoryDatabase,
-    memoryStore: MemoryCheckpointStore,
     onOpenChatGPT: () -> Unit,
-    onCopyContext: (String, List<ChatEntryEntity>, MemorySnapshot?) -> Unit,
-    onNewChat: (String, List<ChatEntryEntity>, MemorySnapshot?) -> Unit,
+    onCopyContext: (String, List<ChatEntryEntity>) -> Unit,
+    onNewChat: (String, List<ChatEntryEntity>) -> Unit,
     onSaveEntry: (String, String, String) -> Unit,
     onEnableAutomation: () -> Unit
 ) {
@@ -169,38 +161,6 @@ private fun SheVChatHome(
         database.entries().observeRecent(project)
     }.collectAsState(initial = emptyList())
     val orderedEntries = entries.reversed()
-    var memorySnapshot by remember(project) { mutableStateOf(memoryStore.readCached(project)) }
-    var memoryStatus by remember(project) {
-        mutableStateOf(
-            memorySnapshot?.let {
-                "Память обновлена: " + SimpleDateFormat("dd.MM HH:mm", Locale.getDefault())
-                    .format(Date(it.syncedAtEpochMillis))
-            } ?: "Кэш памяти ещё не загружен"
-        )
-    }
-    var isSyncing by remember(project) { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val refreshMemory: suspend () -> Unit = {
-        isSyncing = true
-        memoryStatus = "Синхронизирую SheV-Memory…"
-        try {
-            val fresh = memoryStore.refresh(project)
-            memorySnapshot = fresh
-            memoryStatus = "Память обновлена: " + SimpleDateFormat("dd.MM HH:mm", Locale.getDefault())
-                .format(Date(fresh.syncedAtEpochMillis))
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (error: Exception) {
-            memoryStatus = if (memorySnapshot != null) {
-                "Нет связи; использую сохранённую память"
-            } else {
-                "Память недоступна: проверь интернет"
-            }
-        } finally {
-            isSyncing = false
-        }
-    }
-    LaunchedEffect(project) { refreshMemory() }
     val scheme = darkColorScheme(
         primary = Mint,
         onPrimary = Color(0xFF06291E),
@@ -265,22 +225,7 @@ private fun SheVChatHome(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        memoryStatus,
-                        modifier = Modifier.weight(1f),
-                        color = Muted,
-                        fontSize = 10.sp,
-                        maxLines = 2
-                    )
-                    OutlinedButton(
-                        onClick = { scope.launch { refreshMemory() } },
-                        enabled = !isSyncing,
-                        shape = RoundedCornerShape(10.dp)
-                    ) { Text(if (isSyncing) "…" else "Обновить", fontSize = 10.sp) }
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Локальная история", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Локальные заметки проекта", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Spacer(Modifier.weight(1f))
                     Text("${entries.size} / 100", color = Muted, fontSize = 11.sp)
                 }
@@ -292,9 +237,9 @@ private fun SheVChatHome(
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text("История этого проекта пока пуста", fontWeight = FontWeight.SemiBold)
+                            Text("Заметок этого проекта пока нет", fontWeight = FontWeight.SemiBold)
                             Text(
-                                "Сохраняй сюда свои сообщения и ответы из ChatGPT. Записи хранятся локально на устройстве и не синхронизируются с официальным ChatGPT.",
+                                "Добавляй сюда сообщения и ответы вручную. Это локальные заметки, не переписка внутри ChatGPT.",
                                 color = Muted,
                                 fontSize = 12.sp,
                                 lineHeight = 17.sp
@@ -353,7 +298,7 @@ private fun SheVChatHome(
                             enabled = draft.isNotBlank(),
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(13.dp)
-                        ) { Text("Сохранить в истории проекта") }
+                        ) { Text("Сохранить заметку проекта") }
                     }
                 }
 
@@ -364,13 +309,13 @@ private fun SheVChatHome(
                         shape = RoundedCornerShape(12.dp)
                     ) { Text("Открыть ChatGPT", fontSize = 11.sp) }
                     Button(
-                        onClick = { onCopyContext(project, orderedEntries, memorySnapshot) },
+                        onClick = { onCopyContext(project, orderedEntries) },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     ) { Text("Контекст + ChatGPT", fontSize = 11.sp) }
                 }
                 OutlinedButton(
-                    onClick = { onNewChat(project, orderedEntries, memorySnapshot) },
+                    onClick = { onNewChat(project, orderedEntries) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) { Text("Новый чат выбранного проекта", fontSize = 12.sp) }
@@ -382,7 +327,7 @@ private fun SheVChatHome(
                 ) { Text("Настроить открытие нового чата", fontSize = 11.sp) }
 
                 Text(
-                    "SheV Chat хранит только записи, которые ты сам добавил. Он не читает переписку ChatGPT и не отправляет сообщения автоматически. Для чтения приватной SheV-Memory у ChatGPT должен быть подключён GitHub-коннектор.",
+                    "SheV Chat хранит только заметки, которые ты добавил вручную. Он не читает переписку ChatGPT и не отправляет сообщения автоматически. Приватную SheV-Memory открывай через подключённый GitHub-коннектор ChatGPT.",
                     color = Muted,
                     fontSize = 10.sp,
                     lineHeight = 14.sp
@@ -407,7 +352,7 @@ private fun ChatEntryBubble(entry: ChatEntryEntity) {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (isAssistant) "ОТВЕТ CHATGPT" else "МОЁ СООБЩЕНИЕ",
+                    if (isAssistant) "ОТВЕТ CHATGPT — ВРУЧНУЮ" else "МОЯ ЗАПИСЬ",
                     color = Mint,
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold
