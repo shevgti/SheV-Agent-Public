@@ -1,79 +1,80 @@
-# SheV Agent — no-API-key agent backend research
+# SheV Agent — no-API-key AI agent research
 
 Updated: 2026-11-10
 
-## Decision: use official Sign in with ChatGPT inside the open-source Android app
+## Current decision: embed the official Codex App Server in the Android APK
 
-OpenAI now documents a direct OAuth flow for open-source and locally hosted apps to use an eligible user's ChatGPT plan for Responses API inference. This is the best fit for SheV: no manually created API key, no Gemini, no third-party gateway, no Termux, and no separate always-on server.
+The user explicitly rejects Termux, command-line setup, manual API keys and remote server configuration. The selected architecture is to package the official OpenAI Codex App Server as an Android ARM64 native executable and launch it inside SheV's own app sandbox.
 
-Official documentation:
-- Overview: https://developers.openai.com/siwc/token-sharing-open-source
-- Registration/sign-in: https://developers.openai.com/siwc/token-sharing-open-source/sign-in
-- Accounts/sessions: https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions
-- Models/inference: https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference
-- Preview limitations: https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations
+This is preferable to calling the ChatGPT plan-sharing Responses API directly:
+- Codex App Server manages its own ChatGPT OAuth login, account session, refresh, model catalog, persistent threads, streaming events and approvals.
+- Codex is available to ChatGPT Free users with limited usage; the model and request allowance are selected by OpenAI for the signed-in account.
+- The Android app only needs an in-app **Войти через ChatGPT** button; no API key, Termux, external gateway or always-on host.
+- The App Server communicates with Kotlin through stdio JSON-RPC. No WebSocket listener is exposed.
 
-### How the route works
+Official references:
+- Codex source: https://github.com/openai/codex
+- App Server protocol: https://learn.chatgpt.com/docs/app-server
+- Codex plan availability: https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan
+- Codex App Server protocol types: https://github.com/openai/codex/tree/main/codex-rs/app-server-protocol
 
-1. SheV creates and persists an opaque `ext_agent_host_id`.
-2. First sign-in uses `client_id=dynamic_agent_client`, `agent_name_hint`, PKCE, nonce and state.
-3. The Android app starts a loopback callback on `127.0.0.1` and opens the system browser.
-4. The user signs in and explicitly consents to ChatGPT plan usage.
-5. OpenAI redirects to the exact loopback callback with an authorization code and issued `client_id`.
-6. SheV exchanges the code using PKCE; no client secret or API key is required for this open-source flow.
-7. SheV validates the ID-token signature against OpenAI's JWKS, issuer, audience, nonce and expiry, and verifies the granted `chatgpt.tokens.use.direct` scope.
-8. Access, refresh and ID tokens are encrypted locally using Android Keystore. Refresh-token rotation is handled in the app.
-9. Inference uses only the public `POST https://api.openai.com/v1/responses` endpoint with `store:false` and `stream:true`. Do not use ChatGPT `backend-api` endpoints.
-10. The app uses namespaced client-side SheV functions; every function call is validated by the app-owned tool executor.
+### Android implementation design
 
-### Hard boundaries
+1. CI cross-compiles the official `codex-app-server` Rust binary for `aarch64-linux-android` using the Android NDK.
+2. The executable is packaged in the APK as `jniLibs/arm64-v8a/libcodex_app_server.so` and extracted to Android `nativeLibraryDir`.
+3. SheV starts it with `--listen stdio:// --session-source shev_agent` using `ProcessBuilder`; the app talks JSON-RPC over stdin/stdout.
+4. `CODEX_HOME` and workspace are inside `noBackupFilesDir`, protected by Android app sandbox and device file-based encryption; no tokens are sent to a separate server.
+5. `account/login/start` opens the official ChatGPT sign-in page. The App Server owns the OAuth callback and token storage. SheV listens for `account/login/completed`, then reads account/plan and available models.
+6. SheV creates/resumes a persistent thread and streams `item/agentMessage/delta` events into the chat UI.
+7. The default Codex config is read-only with on-request approvals. The app shows explicit approval dialogs for command execution and file changes. No action is silently approved.
 
-- OpenAI documents this token-sharing route for open-source and locally hosted apps. Paid or remotely hosted products must use the separate OpenAI interest/partner route.
-- Keep the integration in the public SheV Android client and keep all OAuth tokens on the device. Do not build a shared hosted token proxy.
-- OAuth consent does not guarantee inference eligibility. The selected account, workspace, region, model and current usage limits are checked by OpenAI. A real completed Responses turn is the final proof of access.
-- ChatGPT plan usage is separate from access to ChatGPT conversation history. SheV only requests the documented inference permission.
-- On this route, Responses requires `store:false` and `stream:true`. Avoid unsupported parameters and tools listed in the Preview Limitations page. Use namespaced functions for the small local tool set.
-- On disconnect, revoke the renewable refresh session when possible, then clear local credentials. Never log or commit tokens.
+Important runtime gates:
+- A cross-build alone does not prove the binary can execute on Android. Verify it launches from `nativeLibraryDir` on an Android emulator and a physical ARM64 device.
+- Verify OAuth browser return, `account/read`, `model/list`, a real first turn, streamed deltas, cancellation and approval decisions.
+- Android sandbox behavior differs from desktop Linux. Do not claim that desktop Landlock/seccomp isolation is available on Android until verified. The process always runs under the app's Android UID; the UI must show command/path approval details.
+- Keep the App Server on stdio. Do not expose its experimental WebSocket listener on a network interface.
+- Keep tokens in app-private no-backup storage. Never log or commit auth files.
 
-## Current implementation: PR #31
+## Current implementation PR
 
-https://github.com/shevgti/SheV-Agent-Public/pull/31
+https://github.com/shevgti/SheV-Agent-Public/pull/32
 
-Branch: `feat/chatgpt-plan-oauth-android`
+Branch: `feat/codex-app-server-android-native`
 
-The current PR adds:
-- Native Android OAuth with loopback callback, PKCE, dynamic client registration, state/nonce and JWKS-backed ID-token validation.
-- Encrypted Android Keystore storage and refresh-token rotation.
-- A simple in-app **Войти через ChatGPT** flow; the API-key entry UI is removed.
-- Account-specific model discovery.
-- A direct ChatGPT plan Responses path with SSE completion/error handling and the existing bounded SheV local tools.
-- No Termux, command-line setup, remote host or API key.
+Current draft adds:
+- Kotlin JSON-RPC stdio client and process lifecycle.
+- In-app ChatGPT login, account/plan/model status and primary-chat switch.
+- Persistent thread start/resume, streamed response rendering, cancellation and command/file approval dialogs.
+- Default read-only config with on-request approvals.
+- CI probe for Android ARM64 native cross-compilation.
 
-CI and real account sign-in/inference testing are required before release.
+The binary is not yet packaged into the APK and real sign-in/inference has not yet been tested. Do not merge or publish until those gates pass.
+
+## Secondary path: direct Sign in with ChatGPT OAuth
+
+OpenAI also documents an OAuth token-sharing flow for open-source/local apps:
+- https://developers.openai.com/siwc/token-sharing-open-source
+- https://developers.openai.com/siwc/token-sharing-open-source/sign-in
+- https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference
+- https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations
+
+This direct Responses API path requires the `chatgpt.tokens.use.direct` scope and is limited to eligible ChatGPT plans (currently Plus/Pro for direct plan usage). It is not the right default for the user's ChatGPT Free account. PR #31 contains a draft implementation for eligible Plus/Pro accounts, but it is secondary and must not be presented as working for Free.
 
 ## Alternatives researched, not selected
-
-### Codex App Server
-- https://github.com/openai/codex
-- https://learn.chatgpt.com/docs/app-server
-- Strong agent runtime: persistent threads, streamed events, approvals and local tools.
-- It is a runtime, not hosted compute. It requires a host that stays running.
-- Its default transport is stdio JSONL; WebSocket is experimental/unsupported. Remote access needs authentication and TLS.
-- The official open-source SIWC route above is simpler for this Android-only client, so a separate Codex runtime is not needed for the first release.
 
 ### OpenHands Agent Canvas
 - https://github.com/OpenHands/OpenHands
 - Self-hosted orchestration/control plane for multiple coding agents and remote backends.
-- Requires a persistent host and separate model entitlement. Too heavy for the initial Android-only setup; revisit only if SheV later needs multi-agent orchestration.
+- Requires a persistent host and separate model entitlement. Too heavy for the initial Android-only setup.
 
 ### Qwen Code / qwen serve
 - https://github.com/QwenLM/qwen-code
 - Capable agent CLI with skills, subagents, MCP, SDK and an experimental HTTP/SSE daemon.
-- Current docs say free OAuth ended 2026-04-15; subscription sign-in requires Qwen Plus or Pro. Not a no-cost entitlement workaround.
+- Current docs say free OAuth ended 2026-04-15; subscription sign-in requires Qwen Plus or Pro. Not a free no-key route.
 
 ### Agent Zero
 - https://github.com/agent0ai/agent-zero
-- Interesting autonomous agent framework, but no verified model entitlement that solves the no-key requirement.
+- Alternative autonomous agent framework, but no verified model entitlement that solves the no-key requirement.
 
 ## Infrastructure facts
 

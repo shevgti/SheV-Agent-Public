@@ -102,6 +102,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var enabledAgentSkills by remember { mutableStateOf(agentTeamPrefs.getStringSet("enabled_skills", null)?.toSet() ?: SheVAgentModelFactory.DEFAULT_SKILLS) }
     var showGatewaySettings by remember { mutableStateOf(false) }
     var showOpenAISettings by remember { mutableStateOf(false) }
+    var showCodexSettings by remember { mutableStateOf(true) }
     var showGeminiSettings by remember { mutableStateOf(false) }
     var showOpenRouterSettings by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<AppUpdate?>(null) }
@@ -393,6 +394,17 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Выбор основного AI", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                             Text("Выбери, кто будет отвечать в основном чате. Активным может быть один основной провайдер.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("OpenAI Codex · полноценный AI-агент", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                if (state.useCodex) "Сейчас выбран Codex" else "Официальный вход через ChatGPT · без API-ключа и Termux",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            OutlinedButton(onClick = { showCodexSettings = !showCodexSettings }, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (showCodexSettings) "Скрыть настройки Codex" else "Подключить Codex")
+                            }
+                            if (showCodexSettings) CodexProviderPanel(viewModel)
+                            androidx.compose.material3.HorizontalDivider()
                             Text("Google Gemini · облачная модель", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text(if (state.useGemini) "Сейчас выбран Gemini" else "Для работы нужен ключ Google AI Studio.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             OutlinedButton(onClick = { showGeminiSettings = !showGeminiSettings }, modifier = Modifier.fillMaxWidth()) {
@@ -403,7 +415,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                             Text("Gemma · локально на телефоне", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text(
                                 when {
-                                    state.useGemini || state.useOpenAI || state.useOpenRouter || state.useOmniRoute -> "Сейчас выбран облачный провайдер"
+                                    state.useCodex || state.useGemini || state.useOpenAI || state.useOpenRouter || state.useOmniRoute -> "Сейчас выбран облачный провайдер"
                                     state.ready -> "Gemma запущена и выбрана для локальной работы"
                                     state.verified -> "Модель загружена и проверена"
                                     else -> "Модель ещё не загружена · размер около 2,58 ГБ"
@@ -424,7 +436,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                                 }
                             } else {
                                 Button(onClick = viewModel::selectLocalModel, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-                                    Text(if (state.ready && !state.useGemini && !state.useOpenAI && !state.useOpenRouter && !state.useOmniRoute) "Gemma выбрана" else "Выбрать Gemma")
+                                    Text(if (state.ready && !state.useCodex && !state.useGemini && !state.useOpenAI && !state.useOpenRouter && !state.useOmniRoute) "Gemma выбрана" else "Выбрать Gemma")
                                 }
                                 OutlinedButton(onClick = viewModel::deleteModel, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
                                     Text("Удалить Gemma с телефона")
@@ -751,6 +763,26 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     }
 
 
+    state.codexApproval?.let { approval ->
+        AlertDialog(
+            onDismissRequest = { viewModel.approveCodexRequest(approval.requestId, false) },
+            title = { Text(approval.title) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(if (approval.kind.contains("command")) "Codex хочет выполнить команду:" else "Codex хочет изменить файлы:")
+                    Text(approval.detail.take(2400), style = MaterialTheme.typography.bodySmall)
+                    Text("Проверь команду, рабочую папку и пути. Разрешение выдаётся только после твоего нажатия.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = {
+                Button(onClick = { viewModel.approveCodexRequest(approval.requestId, true) }) { Text("Разрешить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.approveCodexRequest(approval.requestId, false) }) { Text("Отклонить") }
+            }
+        )
+    }
+
     if (showUpdateDialog && updateInfo != null) {
         val update = updateInfo!!
         AlertDialog(
@@ -897,6 +929,19 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                             contentColor = if (fromUser) Color.White else MaterialTheme.colorScheme.onSurface
                         ) {
                             Text(message, modifier = Modifier.padding(horizontal = 15.dp, vertical = 12.dp))
+                        }
+                    }
+                }
+                state.streamingMessage?.let { streaming ->
+                    item(key = "codex-streaming") {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            ) {
+                                Text(streaming.substringAfter(":").trim(), modifier = Modifier.padding(horizontal = 15.dp, vertical = 12.dp))
+                            }
                         }
                     }
                 }

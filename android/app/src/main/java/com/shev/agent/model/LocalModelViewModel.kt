@@ -1,6 +1,7 @@
 package com.shev.agent.model
 
 import android.app.Application
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -32,6 +33,7 @@ import com.shev.agent.tools.SheVAgentAdkTools
 import java.util.UUID
 import com.google.gson.JsonParser
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,6 +42,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.collect
+
+data class CodexApproval(
+    val requestId: Long,
+    val kind: String,
+    val title: String,
+    val detail: String
+)
 
 data class LocalModelUiState(
     val verified: Boolean = false,
@@ -51,6 +63,16 @@ data class LocalModelUiState(
     val useOpenAI: Boolean = false,
     val useGemini: Boolean = false,
     val useOpenRouter: Boolean = false,
+    val useCodex: Boolean = false,
+    val codexConnecting: Boolean = false,
+    val codexConnected: Boolean = false,
+    val codexEmail: String = "",
+    val codexPlanType: String = "",
+    val codexModelId: String = "",
+    val codexRateUsedPercent: Int? = null,
+    val codexStatus: String = "Codex не подключён",
+    val codexApproval: CodexApproval? = null,
+    val streamingMessage: String? = null,
     val backendName: String? = null,
     val deviceSummary: String = "Проверяю характеристики устройства…",
     val prompt: String = "",
@@ -70,6 +92,9 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private val mutableState = MutableStateFlow(LocalModelUiState())
     val state: StateFlow<LocalModelUiState> = mutableState.asStateFlow()
     private var runtime: SheVAgentRuntime? = null
+    private var codexClient: CodexAppServerClient? = null
+    private var codexActiveThreadId: String? = null
+    private var codexActiveTurnId: String? = null
     private var downloadJob: Job? = null
     private var responseJob: Job? = null
 
@@ -78,11 +103,13 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val openAiPreferences = application.getSharedPreferences("shev_openai", Application.MODE_PRIVATE)
         val geminiPreferences = application.getSharedPreferences("shev_gemini", Application.MODE_PRIVATE)
         val openRouterPreferences = application.getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
-        val useOpenRouter = openRouterPreferences.getBoolean("use_for_primary_chat", false)
-        val useGemini = !useOpenRouter && geminiPreferences.getBoolean("use_for_primary_chat", false)
-        val useOpenAI = !useOpenRouter && !useGemini && openAiPreferences.getBoolean("use_for_primary_chat", false)
-        val useOmniRoute = !useOpenRouter && !useGemini && !useOpenAI && gatewayPreferences.getBoolean("use_for_primary_chat", false)
-        mutableState.update { it.copy(useOmniRoute = useOmniRoute, useOpenAI = useOpenAI, useGemini = useGemini, useOpenRouter = useOpenRouter) }
+        val codexPreferences = application.getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+        val useCodex = codexPreferences.getBoolean("use_for_primary_chat", false)
+        val useOpenRouter = !useCodex && openRouterPreferences.getBoolean("use_for_primary_chat", false)
+        val useGemini = !useCodex && !useOpenRouter && geminiPreferences.getBoolean("use_for_primary_chat", false)
+        val useOpenAI = !useCodex && !useOpenRouter && !useGemini && openAiPreferences.getBoolean("use_for_primary_chat", false)
+        val useOmniRoute = !useCodex && !useOpenRouter && !useGemini && !useOpenAI && gatewayPreferences.getBoolean("use_for_primary_chat", false)
+        mutableState.update { it.copy(useCodex = useCodex, useOmniRoute = useOmniRoute, useOpenAI = useOpenAI, useGemini = useGemini, useOpenRouter = useOpenRouter) }
         viewModelScope.launch(Dispatchers.IO) {
             val deviceSummary = DeviceDiagnostics.summary(getApplication())
             val available = store.findVerifiedModel() != null
@@ -112,6 +139,161 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    suspend fun connectCodex(context: Context) {
+        mutableState.update { it.copy(codexConnecting = true, codexStatus = "Запускаю встроенный Codex…", error = null) }
+        try {
+            val details = withContext(Dispatchers.IO) {
+                val client = ensureCodexClient()
+                var account = client.accountRead(true).get("account")
+                    ?.takeIf { it.isJsonObject }?.asJsonObject
+                if (account?.get("type")?.asString != "chatgpt") {
+                    val login = client.beginChatGptLogin()
+                    val loginId = login.get("loginId")?.asString
+                        ?: throw IllegalStateException("Codex не вернул идентификатор входа.")
+                    val authUrl = login.get("authUrl")?.asString
+                        ?: throw IllegalStateException("Codex не вернул ссылку входа ChatGPT.")
+                    withContext(Dispatchers.Main) { client.openAuthUrl(context, authUrl) }
+                    val completed = client.awaitLogin(loginId)
+                    if (completed.get("success")?.asBoolean != true) {
+                        throw IllegalStateException(completed.get("error")?.asString ?: "Вход через ChatGPT не завершён.")
+                    }
+                    account = client.accountRead(true).get("account")
+                        ?.takeIf { it.isJsonObject }?.asJsonObject
+                }
+                val accountDetails = account
+                    ?: throw IllegalStateException("Codex не вернул данные аккаунта ChatGPT.")
+                require(accountDetails.get("type")?.asString == "chatgpt") {
+                    "Codex не подтвердил вход через аккаунт ChatGPT."
+                }
+                val email = accountDetails.get("email")?.asString.orEmpty()
+                val planType = accountDetails.get("planType")?.asString.orEmpty()
+                val models = client.listModels().get("data")
+                    ?.takeIf { it.isJsonArray }?.asJsonArray
+                val selectedModel = models?.mapNotNull { item ->
+                    item.takeIf { it.isJsonObject }?.asJsonObject
+                }?.firstOrNull { it.get("isDefault")?.asBoolean == true }
+                    ?: models?.firstOrNull { it.isJsonObject }?.asJsonObject
+                    ?: throw IllegalStateException("Codex не вернул доступных моделей для этого аккаунта.")
+                val modelId = selectedModel.get("model")?.asString
+                    ?: selectedModel.get("id")?.asString
+                    ?: throw IllegalStateException("Codex не вернул идентификатор доступной модели.")
+                val modelName = selectedModel.get("displayName")?.asString ?: modelId
+                val usedPercent = runCatching {
+                    client.request("account/rateLimits/read")
+                        .getAsJsonObject("rateLimits")?.getAsJsonObject("primary")
+                        ?.get("usedPercent")?.asInt
+                }.getOrNull()
+                Triple(
+                    Triple(email, planType, modelId),
+                    modelName,
+                    usedPercent
+                )
+            }
+            getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+                .edit().putString("model_id", details.first.third).apply()
+            mutableState.update {
+                it.copy(
+                    codexConnected = true,
+                    codexEmail = details.first.first,
+                    codexPlanType = details.first.second,
+                    codexModelId = details.first.third,
+                    codexRateUsedPercent = details.third,
+                    codexStatus = "ChatGPT подключён · ${details.first.second.ifBlank { "план не указан" }} · ${details.second}"
+                )
+            }
+            setCodexPrimaryEnabled(true)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            mutableState.update {
+                it.copy(codexConnected = false, codexStatus = failure.message ?: "Не удалось подключить Codex.")
+            }
+        } finally {
+            mutableState.update { it.copy(codexConnecting = false) }
+        }
+    }
+
+    suspend fun disconnectCodex() {
+        mutableState.update { it.copy(codexConnecting = true) }
+        try {
+            withContext(Dispatchers.IO) {
+                val client = codexClient
+                if (client != null) {
+                    runCatching { client.logout() }
+                    client.close()
+                    codexClient = null
+                }
+                java.io.File(getApplication<Application>().noBackupFilesDir, "codex-home").deleteRecursively()
+            }
+            getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+                .edit().remove("thread_id").putBoolean("use_for_primary_chat", false).apply()
+            mutableState.update {
+                it.copy(
+                    useCodex = false,
+                    codexConnected = false,
+                    codexEmail = "",
+                    codexPlanType = "",
+                    codexRateUsedPercent = null,
+                    codexApproval = null,
+                    codexStatus = "Аккаунт ChatGPT отключён."
+                )
+            }
+        } finally {
+            mutableState.update { it.copy(codexConnecting = false) }
+        }
+    }
+
+    fun approveCodexRequest(requestId: Long, accepted: Boolean) {
+        val client = codexClient ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                client.respondToServerRequest(
+                    requestId,
+                    JsonObject().apply { addProperty("decision", if (accepted) "accept" else "decline") }
+                )
+            }.onFailure { failure ->
+                mutableState.update { it.copy(error = failure.message ?: "Не удалось отправить решение Codex.") }
+            }
+            mutableState.update { it.copy(codexApproval = null) }
+        }
+    }
+
+    private suspend fun ensureCodexClient(): CodexAppServerClient {
+        codexClient?.takeIf { it.isAlive }?.let { return it }
+        codexClient?.close()
+        val client = CodexAppServerClient(getApplication()) { code ->
+            mutableState.update {
+                it.copy(
+                    codexConnected = false,
+                    codexStatus = "Codex остановился (код $code). Повтори подключение."
+                )
+            }
+        }
+        client.start()
+        codexClient = client
+        return client
+    }
+
+    fun setCodexPrimaryEnabled(enabled: Boolean) {
+        val preferences = getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+        preferences.edit().putBoolean("use_for_primary_chat", enabled).apply()
+        if (enabled) {
+            listOf("shev_omniroute", "shev_openai", "shev_gemini", "shev_openrouter").forEach { name ->
+                getApplication<Application>().getSharedPreferences(name, Application.MODE_PRIVATE)
+                    .edit().putBoolean("use_for_primary_chat", false).apply()
+            }
+        }
+        mutableState.update {
+            it.copy(
+                useCodex = enabled,
+                useOmniRoute = if (enabled) false else it.useOmniRoute,
+                useOpenAI = if (enabled) false else it.useOpenAI,
+                useGemini = if (enabled) false else it.useGemini,
+                useOpenRouter = if (enabled) false else it.useOpenRouter
+            )
+        }
+    }
+
     fun setOmniRoutePrimaryEnabled(enabled: Boolean) {
         getApplication<Application>()
             .getSharedPreferences("shev_omniroute", Application.MODE_PRIVATE)
@@ -125,9 +307,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 .edit().putBoolean("use_for_primary_chat", false).apply()
             getApplication<Application>().getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
+            getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
         }
         mutableState.update {
             it.copy(
+                useCodex = if (enabled) false else it.useCodex,
                 useOmniRoute = enabled,
                 useOpenAI = if (enabled) false else it.useOpenAI,
                 useGemini = if (enabled) false else it.useGemini,
@@ -149,9 +334,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 .edit().putBoolean("use_for_primary_chat", false).apply()
             getApplication<Application>().getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
+            getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
         }
         mutableState.update {
             it.copy(
+                useCodex = if (enabled) false else it.useCodex,
                 useOpenAI = enabled,
                 useOmniRoute = if (enabled) false else it.useOmniRoute,
                 useGemini = if (enabled) false else it.useGemini,
@@ -164,7 +352,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         getApplication<Application>().getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
             .edit().putBoolean("use_for_primary_chat", enabled).apply()
         if (enabled) {
-            listOf("shev_gemini", "shev_openai", "shev_omniroute").forEach { name ->
+            listOf("shev_gemini", "shev_openai", "shev_omniroute", "shev_codex").forEach { name ->
                 getApplication<Application>().getSharedPreferences(name, Application.MODE_PRIVATE)
                     .edit().putBoolean("use_for_primary_chat", false).apply()
             }
@@ -172,6 +360,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         mutableState.update {
             it.copy(
                 useOpenRouter = enabled,
+                useCodex = if (enabled) false else it.useCodex,
                 useGemini = if (enabled) false else it.useGemini,
                 useOpenAI = if (enabled) false else it.useOpenAI,
                 useOmniRoute = if (enabled) false else it.useOmniRoute
@@ -189,15 +378,25 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 .edit().putBoolean("use_for_primary_chat", false).apply()
             getApplication<Application>().getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
+            getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
         }
-        mutableState.update { it.copy(useGemini = enabled, useOpenAI = if (enabled) false else it.useOpenAI, useOmniRoute = if (enabled) false else it.useOmniRoute, useOpenRouter = if (enabled) false else it.useOpenRouter) }
+        mutableState.update { it.copy(useCodex = if (enabled) false else it.useCodex, useGemini = enabled, useOpenAI = if (enabled) false else it.useOpenAI, useOmniRoute = if (enabled) false else it.useOmniRoute, useOpenRouter = if (enabled) false else it.useOpenRouter) }
     }
 
     /** Cancels the active answer so voice input can take priority. */
     fun cancelResponse() {
+        val client = codexClient
+        val threadId = codexActiveThreadId
+        val turnId = codexActiveTurnId
+        if (client != null && threadId != null && turnId != null) {
+            viewModelScope.launch(Dispatchers.IO) {
+                runCatching { client.interrupt(threadId, turnId) }
+            }
+        }
         responseJob?.cancel()
         responseJob = null
-        mutableState.update { it.copy(busy = false, error = null) }
+        mutableState.update { it.copy(busy = false, error = null, streamingMessage = null) }
     }
 
     fun setPrompt(value: String) {
@@ -230,12 +429,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
 
     /** Select the on-device Gemma backend and disable mutually exclusive cloud providers. */
     fun selectLocalModel() {
-        listOf("shev_gemini", "shev_openai", "shev_openrouter", "shev_omniroute").forEach { name ->
+        listOf("shev_gemini", "shev_openai", "shev_openrouter", "shev_omniroute", "shev_codex").forEach { name ->
             getApplication<Application>().getSharedPreferences(name, Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
         }
         mutableState.update {
-            it.copy(useGemini = false, useOpenAI = false, useOpenRouter = false, useOmniRoute = false)
+            it.copy(useCodex = false, useGemini = false, useOpenAI = false, useOpenRouter = false, useOmniRoute = false)
         }
         if (mutableState.value.verified) {
             launchAgent()
@@ -461,6 +660,10 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             return
         }
 
+        if (mutableState.value.useCodex) {
+            sendViaCodex(message)
+            return
+        }
         if (mutableState.value.useOpenRouter) {
             sendViaOpenRouter(message)
             return
@@ -665,6 +868,197 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 }
             } finally {
                 mutableState.update { it.copy(busy = false) }
+            }
+        }
+    }
+
+    /** Persistent ChatGPT agent session hosted by the official embedded Codex App Server. */
+    private fun sendViaCodex(message: String) {
+        mutableState.update {
+            it.copy(
+                prompt = "",
+                busy = true,
+                error = null,
+                streamingMessage = null,
+                messages = it.messages + "Вы: $message"
+            )
+        }
+        responseJob = viewModelScope.launch(Dispatchers.IO) {
+            val userMessageId = UUID.randomUUID().toString()
+            var collector: Job? = null
+            try {
+                val preferences = getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+                val client = ensureCodexClient()
+                val account = client.accountRead(true).get("account")
+                    ?.takeIf { it.isJsonObject }?.asJsonObject
+                require(account?.get("type")?.asString == "chatgpt") {
+                    "Сначала подключи ChatGPT в настройках Codex."
+                }
+                val savedThreadId = preferences.getString("thread_id", null)
+                val threadId = if (savedThreadId.isNullOrBlank()) {
+                    client.startThread(
+                        preferences.getString("model_id", mutableState.value.codexModelId).orEmpty()
+                    )
+                } else {
+                    runCatching { client.resumeThread(savedThreadId) }
+                        .getOrElse {
+                            client.startThread(
+                                preferences.getString("model_id", mutableState.value.codexModelId).orEmpty()
+                            )
+                        }
+                }
+                val isNewThread = savedThreadId.isNullOrBlank() || threadId != savedThreadId
+                preferences.edit().putString("thread_id", threadId).apply()
+                codexActiveThreadId = threadId
+
+                val inputText = if (isNewThread) {
+                    val history = dao.getRecentCompletedConversationMessages(CONTEXT_HISTORY_LIMIT).asReversed()
+                        .map { it.copy(content = LocalMessageCipher.decrypt(it.content)) }
+                    val summaryRead = conversationStateRepository.readSummary()
+                    ConversationContextBuilder.build(
+                        chronologicalHistory = history,
+                        currentMessage = message,
+                        rollingSummary = (summaryRead as? ConversationSummaryRead.Ready)?.plaintext,
+                        summaryThroughMessageId = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
+                    )
+                } else message
+
+                dao.appendConversationMessage(
+                    ConversationMessageEntity(
+                        id = userMessageId,
+                        role = ConversationContextBuilder.ROLE_USER,
+                        content = LocalMessageCipher.encrypt(message),
+                        status = ConversationContextBuilder.STATUS_PENDING,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+
+                val started = client.startTurn(threadId, inputText)
+                val turnId = started.getAsJsonObject("turn")?.get("id")?.asString
+                    ?: throw IllegalStateException("Codex не вернул идентификатор хода.")
+                codexActiveTurnId = turnId
+                val answer = StringBuilder()
+                val completed = CompletableDeferred<JsonObject>()
+
+                collector = launch(Dispatchers.IO) {
+                    client.events.collect { event ->
+                        val method = event.get("method")?.asString.orEmpty()
+                        val params = event.getAsJsonObject("params") ?: JsonObject()
+                        val eventThreadId = params.get("threadId")?.asString
+                        val eventTurnId = params.get("turnId")?.asString
+                            ?: params.getAsJsonObject("turn")?.get("id")?.asString
+                        if (eventThreadId != null && eventThreadId != threadId) return@collect
+                        if (eventTurnId != null && eventTurnId != turnId) return@collect
+
+                        when (method) {
+                            "item/agentMessage/delta" -> {
+                                if (eventTurnId == null || eventTurnId == turnId) {
+                                    val delta = params.get("delta")?.asString.orEmpty()
+                                    if (delta.isNotEmpty()) {
+                                        answer.append(delta)
+                                        mutableState.update {
+                                            it.copy(streamingMessage = "SheV: ${answer}")
+                                        }
+                                    }
+                                }
+                            }
+                            "item/completed" -> {
+                                val item = params.getAsJsonObject("item")
+                                if (item?.get("type")?.asString == "agentMessage" && answer.isEmpty()) {
+                                    val text = item.getAsJsonArray("content")?.mapNotNull { part ->
+                                        part.takeIf { it.isJsonObject }?.asJsonObject
+                                            ?.get("text")?.asString
+                                    }?.joinToString("").orEmpty()
+                                    if (text.isNotBlank()) answer.append(text)
+                                }
+                            }
+                            "turn/completed" -> {
+                                if (eventTurnId == turnId || params.getAsJsonObject("turn")?.get("id")?.asString == turnId) {
+                                    completed.complete(params)
+                                }
+                            }
+                            "item/commandExecution/requestApproval",
+                            "item/fileChange/requestApproval" -> {
+                                val requestId = runCatching { event.get("id")?.asLong }.getOrNull()
+                                if (requestId != null) {
+                                    val command = params.get("command")?.let { value ->
+                                        if (value.isJsonArray) value.asJsonArray.joinToString(" ") { it.asString }
+                                        else value.asString
+                                    }.orEmpty()
+                                    val detail = when (method) {
+                                        "item/commandExecution/requestApproval" -> buildString {
+                                            append(command.ifBlank { "Команда не указана" })
+                                            params.get("cwd")?.asString?.let { append("\nРабочая папка: $it") }
+                                            params.get("reason")?.asString?.let { append("\nПричина: $it") }
+                                        }
+                                        else -> params.toString()
+                                    }
+                                    mutableState.update {
+                                        it.copy(
+                                            codexApproval = CodexApproval(
+                                                requestId = requestId,
+                                                kind = method,
+                                                title = if (method.contains("command")) "Разрешить команду Codex?" else "Разрешить изменение файлов?",
+                                                detail = detail
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                val completion = withTimeout(180_000L) { completed.await() }
+                collector.cancel()
+                collector = null
+                val turn = completion.get("turn")?.takeIf { it.isJsonObject }?.asJsonObject
+                val status = turn?.get("status")?.asString.orEmpty()
+                if (status.isNotBlank() && status != "completed") {
+                    val turnError = turn?.get("error")?.let { error ->
+                        if (error.isJsonObject) error.asJsonObject.get("message")?.asString
+                        else if (error.isJsonPrimitive) error.asString
+                        else null
+                    }
+                    throw IllegalStateException(turnError ?: "Codex завершил ход со статусом $status.")
+                }
+                val finalAnswer = answer.toString().trim()
+                if (finalAnswer.isBlank()) {
+                    throw IllegalStateException("Codex завершил ход, но не вернул текстовый ответ.")
+                }
+                dao.appendConversationMessage(
+                    ConversationMessageEntity(
+                        id = UUID.randomUUID().toString(),
+                        role = ConversationContextBuilder.ROLE_ASSISTANT,
+                        content = LocalMessageCipher.encrypt(finalAnswer),
+                        status = ConversationContextBuilder.STATUS_COMPLETE,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+                dao.updateConversationMessageStatus(userMessageId, ConversationContextBuilder.STATUS_COMPLETE)
+                mutableState.update {
+                    it.copy(
+                        messages = it.messages + "SheV: $finalAnswer",
+                        streamingMessage = null,
+                        codexApproval = null,
+                        codexStatus = "Codex готов"
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                dao.updateConversationMessageStatus(userMessageId, ConversationContextBuilder.STATUS_FAILED)
+                mutableState.update {
+                    it.copy(
+                        error = failure.message ?: failure.javaClass.simpleName + ": ошибка Codex App Server.",
+                        streamingMessage = null,
+                        codexApproval = null
+                    )
+                }
+            } finally {
+                collector?.cancel()
+                codexActiveTurnId = null
+                mutableState.update { it.copy(busy = false, streamingMessage = null) }
             }
         }
     }
@@ -904,9 +1298,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     override fun onCleared() {
         val active = runtime
         runtime = null
-        if (active != null) {
+        val codex = codexClient
+        codexClient = null
+        if (active != null || codex != null) {
             CoroutineScope(Dispatchers.IO).launch {
-                try { active.close() } catch (_: Throwable) { /* best-effort native cleanup */ }
+                try { active?.close() } catch (_: Throwable) { /* best-effort native cleanup */ }
+                try { codex?.close() } catch (_: Throwable) { /* best-effort process cleanup */ }
             }
         }
         super.onCleared()

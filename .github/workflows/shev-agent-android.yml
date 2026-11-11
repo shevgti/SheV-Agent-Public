@@ -2,14 +2,20 @@ name: SheV Agent Android
 
 on:
   push:
+    branches:
+      - main
     paths:
       - 'android/**'
       - '.github/workflows/shev-agent-android.yml'
+      - '.github/workflows/codex-android-runtime.yml'
+      - '.github/workflows/publish-update.yml'
       - 'docs/AGENTS.md'
   pull_request:
     paths:
       - 'android/**'
       - '.github/workflows/shev-agent-android.yml'
+      - '.github/workflows/codex-android-runtime.yml'
+      - '.github/workflows/publish-update.yml'
       - 'docs/AGENTS.md'
   workflow_dispatch:
     inputs:
@@ -21,19 +27,142 @@ on:
 
 concurrency:
   group: shev-agent-android-v2-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
+  build-codex-runtime:
+    name: Build official Codex App Server for Android ARM64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout SheV Agent
+        uses: actions/checkout@v4
+      - name: Install Android SDK and pinned NDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "ndk;27.2.12479018"
+      - name: Install Codex-pinned Rust 1.95.0 Android target
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: clippy,rustfmt,rust-src
+          targets: aarch64-linux-android
+      - name: Verify Android Rust target for Codex toolchain
+        run: |
+          rustup target add --toolchain 1.95.0 aarch64-linux-android
+          rustup show active-toolchain
+          rustup target list --installed --toolchain 1.95.0 | grep -Fxq aarch64-linux-android
+      - name: Configure Android linker
+        shell: bash
+        run: |
+          NDK="$ANDROID_HOME/ndk/27.2.12479018"
+          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "CC_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android24-clang" >> "$GITHUB_ENV"
+          echo "CXX_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android24-clang++" >> "$GITHUB_ENV"
+          echo "AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar" >> "$GITHUB_ENV"
+          echo "RANLIB_aarch64_linux_android=$TOOLCHAIN/llvm-ranlib" >> "$GITHUB_ENV"
+          echo "TARGET_AR=$TOOLCHAIN/llvm-ar" >> "$GITHUB_ENV"
+          echo "TARGET_RANLIB=$TOOLCHAIN/llvm-ranlib" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/aarch64-linux-android24-clang" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS=-C link-arg=-Wl,-z,max-page-size=16384" >> "$GITHUB_ENV"
+      - name: Checkout pinned official Codex source
+        uses: actions/checkout@v4
+        with:
+          repository: openai/codex
+          ref: 82e6bacb9c6950d3b56cb153847fa80bdd698053
+          path: codex
+          fetch-depth: 1
+      - name: Enable vendored OpenSSL for Android target
+        shell: bash
+        run: |
+          sed -i 's/^native-tls = "0.2"$/native-tls = { version = "0.2", features = ["vendored"] }/' codex/codex-rs/http-client/Cargo.toml
+          grep -F 'native-tls = { version = "0.2", features = ["vendored"] }' codex/codex-rs/http-client/Cargo.toml
+      - name: Apply Android compatibility patch to MXC dependency
+        shell: bash
+        run: |
+          git clone https://github.com/microsoft/mxc.git mxc
+          cd mxc
+          git checkout b21120168d70befe12356411423266bfef168446
+          cd ..
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("mxc/src/mxc-sdk/src/core/mxc_engine/dispatch.rs")
+          s = p.read_text()
+          old = "    crate::mxc_engine::run::log_policy_hash(request, logger);"
+          new = """    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+          crate::mxc_engine::run::log_policy_hash(request, logger);"""
+          assert s.count(old) == 2, f"expected two run::log_policy_hash calls, found {s.count(old)}"
+          p.write_text(s.replace(old, new))
+          manifest = Path("codex/codex-rs/Cargo.toml")
+          cargo = manifest.read_text()
+          patch = '''
+          [patch."https://github.com/microsoft/mxc"]
+          mxc-sdk = { path = "../../mxc/src/mxc-sdk" }
+          '''
+          assert '[patch."https://github.com/microsoft/mxc"]' not in cargo
+          manifest.write_text(cargo + patch)
+          PY
+          grep -n -B1 -A1 'mxc_engine::run::log_policy_hash' mxc/src/mxc-sdk/src/core/mxc_engine/dispatch.rs
+
+      - name: Cache Rust Android build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: codex/codex-rs -> target
+          shared-key: codex-android-arm64-rust-1.95
+
+      - name: Build official Codex App Server for Android ARM64
+        working-directory: codex/codex-rs
+        env:
+          CARGO_PROFILE_RELEASE_STRIP: symbols
+          CARGO_PROFILE_RELEASE_LTO: "false"
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+        run: cargo build --release --target aarch64-linux-android --bin codex-app-server -p codex-app-server
+      - name: Verify and prepare Android executable
+        run: |
+          BINARY="codex/codex-rs/target/aarch64-linux-android/release/codex-app-server"
+          test -s "$BINARY"
+          file "$BINARY"
+          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -h "$BINARY" | grep -E 'Class:|Machine:'
+          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -d "$BINARY" | grep NEEDED || true
+          mkdir -p codex-runtime
+          LIBCXX="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"
+          install -m 0755 "$BINARY" codex-runtime/libcodex_app_server.so
+          install -m 0644 "$LIBCXX" codex-runtime/libc++_shared.so
+          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -l "$BINARY" | grep -q '0x4000'
+          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -l "$LIBCXX" | grep -q '0x4000'
+      - name: Upload Android ARM64 runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-app-server-android-arm64
+          path: codex-runtime/*
+          if-no-files-found: error
+          retention-days: 7
+
   build-and-unit-tests:
     name: Unit tests and debug APK
+    needs: build-codex-runtime
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Download Codex Android runtime
+        uses: actions/download-artifact@v4
+        with:
+          name: codex-app-server-android-arm64
+          path: codex-runtime
+      - name: Package Codex runtime into Android APK
+        working-directory: android
+        run: |
+          test -s ../codex-runtime/libcodex_app_server.so
+          test -s ../codex-runtime/libc++_shared.so
+          mkdir -p app/src/main/jniLibs/arm64-v8a
+          install -m 0755 ../codex-runtime/libcodex_app_server.so app/src/main/jniLibs/arm64-v8a/libcodex_app_server.so
+          install -m 0644 ../codex-runtime/libc++_shared.so app/src/main/jniLibs/arm64-v8a/libc++_shared.so
+          file app/src/main/jniLibs/arm64-v8a/libcodex_app_server.so
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -63,25 +192,69 @@ jobs:
         env:
           GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
         run: gradle testDebugUnitTest --stacktrace
+      - name: Allocate next Android versionCode
+        working-directory: android
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          gradle_file = Path("app/build.gradle.kts").read_text()
+          configured = re.search(r"getOrElse\((\d+)\)", gradle_file)
+          if not configured:
+              raise SystemExit("Cannot read baseline versionCode from app/build.gradle.kts")
+          baseline = int(configured.group(1))
+          raw = subprocess.check_output(
+              ["gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/releases?per_page=100"],
+              text=True,
+          )
+          releases = [
+              item for item in json.loads(raw)
+              if not item.get("draft") and not item.get("prerelease")
+          ]
+          if not releases:
+              raise SystemExit("No published release found; refusing to guess previous versionCode.")
+          releases.sort(key=lambda item: item.get("published_at") or item.get("created_at") or "", reverse=True)
+          match = re.search(r"(?im)^versionCode:\s*(\d+)\s*$", releases[0].get("body") or "")
+          if not match:
+              raise SystemExit("Latest published release has no versionCode; refusing unsafe APK version.")
+          previous = int(match.group(1))
+          next_code = max(baseline, previous) + 1
+          if next_code > 2_100_000_000:
+              raise SystemExit("Android versionCode limit reached.")
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"APP_VERSION_CODE={next_code}\n")
+              env.write(f"PREVIOUS_VERSION_CODE={previous}\n")
+          print(f"Previous published versionCode: {previous}")
+          print(f"Allocated versionCode: {next_code}")
+          PY
       - name: Assemble debug APK with injected versionCode
         working-directory: android
         env:
           GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
-          SHEV_VERSION_CODE: "22"
-        run: gradle -PSHEV_VERSION_CODE="$SHEV_VERSION_CODE" assembleDebug
-      - name: Verify injected APK versionCode
+        run: gradle -PSHEV_VERSION_CODE="$APP_VERSION_CODE" assembleDebug
+      - name: Verify APK contains Codex ARM64 runtime and versionCode
         working-directory: android
         run: |
           ACTUAL_CODE=$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p" | head -n 1)
-          test "$ACTUAL_CODE" = "22"
-          echo "Gradle injected versionCode verified: $ACTUAL_CODE"
+          test "$ACTUAL_CODE" = "$APP_VERSION_CODE"
+          test "$ACTUAL_CODE" -gt "$PREVIOUS_VERSION_CODE"
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "lib/arm64-v8a/libcodex_app_server.so"
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "lib/arm64-v8a/libc++_shared.so"
+          echo "Gradle versionCode verified: $ACTUAL_CODE > $PREVIOUS_VERSION_CODE"
       - name: Prepare debug test package
         working-directory: android
         run: |
           mkdir -p ../shev-agent-package
           cp app/build/outputs/apk/debug/app-debug.apk ../shev-agent-package/
           VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
-          printf 'version=%s\nversionCode=22\ncommit=%s\nrun=%s\n' "$VERSION" "$GITHUB_SHA" "$GITHUB_RUN_ID" > ../shev-agent-package/build-info.txt
+          test -n "$VERSION"
+          printf 'version=%s\nversionCode=%s\npreviousVersionCode=%s\ncommit=%s\nrun=%s\n' "$VERSION" "$APP_VERSION_CODE" "$PREVIOUS_VERSION_CODE" "$GITHUB_SHA" "$GITHUB_RUN_ID" > ../shev-agent-package/build-info.txt
           cd ../shev-agent-package
           sha256sum app-debug.apk > app-debug.apk.sha256
       - name: Upload debug test package
