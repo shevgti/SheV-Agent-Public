@@ -85,10 +85,12 @@ jobs:
 
       - name: Checkout pinned official Codex source for standalone release
         if: github.event_name != 'workflow_run'
-        run: |
-          git clone https://github.com/openai/codex.git codex
-          cd codex
-          git checkout 82e6bacb9c6950d3b56cb153847fa80bdd698053
+        uses: actions/checkout@v4
+        with:
+          repository: openai/codex
+          ref: 82e6bacb9c6950d3b56cb153847fa80bdd698053
+          path: codex
+          fetch-depth: 1
 
       - name: Build official Codex runtime for standalone release
         if: github.event_name != 'workflow_run'
