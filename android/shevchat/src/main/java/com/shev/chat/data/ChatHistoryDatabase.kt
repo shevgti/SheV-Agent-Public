@@ -11,6 +11,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 @Entity(
@@ -35,6 +36,20 @@ interface ChatEntryDao {
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(entry: ChatEntryEntity)
+
+    @Query(
+        "DELETE FROM chat_entries WHERE projectId = :projectId AND id NOT IN (" +
+            "SELECT id FROM chat_entries WHERE projectId = :projectId " +
+            "ORDER BY createdAtEpochMillis DESC, id DESC LIMIT :keep)"
+    )
+    suspend fun pruneToRecent(projectId: String, keep: Int)
+
+    @Transaction
+    suspend fun insertAndPrune(entry: ChatEntryEntity, keep: Int = 100) {
+        require(keep > 0)
+        insert(entry)
+        pruneToRecent(entry.projectId, keep)
+    }
 
     @Query("DELETE FROM chat_entries WHERE projectId = :projectId")
     suspend fun deleteProjectHistory(projectId: String)
