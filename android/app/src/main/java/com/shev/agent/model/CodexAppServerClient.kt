@@ -125,8 +125,9 @@ internal class CodexAppServerClient(
     suspend fun beginChatGptLogin(): JsonObject =
         request("account/login/start", JsonObject().apply {
             addProperty("type", "chatgpt")
-            addProperty("useHostedLoginSuccessPage", true)
             addProperty("appBrand", "chatgpt")
+            addProperty("codexStreamlinedLogin", true)
+            addProperty("useHostedLoginSuccessPage", true)
         })
 
     suspend fun awaitLogin(loginId: String, timeoutMillis: Long = LOGIN_TIMEOUT_MILLIS): JsonObject =
