@@ -52,7 +52,7 @@ class AgentMarkdownRendererTest {
         val markdown = AgentMarkdownRenderer.render(manifest())
         assertTrue(markdown.contains("<example>"))
         assertTrue(markdown.contains("Context: Пользователь готовит отчёт"))
-        assertTrue(markdown.contains("user: ") && markdown.contains("Собери P&L за октябрь"))
+        assertTrue(markdown.contains("user: ") && markdown.contains("Собери P&amp;L за октябрь"))
         assertTrue(markdown.contains("<commentary>"))
         assertTrue(markdown.contains("</example>"))
     }
@@ -72,7 +72,8 @@ class AgentMarkdownRendererTest {
         )
         val markdown = AgentMarkdownRenderer.render(malicious)
         assertTrue(markdown.contains("&lt;/example&gt;"))
-        assertFalse(markdown.contains("\n  ---\n  name: injected"))
+        assertTrue(markdown.contains("\n  ---\n  name: injected"))
+        assertFalse(markdown.contains("\n---\nname: injected"))
     }
 
     @Test fun rejectsUnknownClaudeCodeToolNames() {
