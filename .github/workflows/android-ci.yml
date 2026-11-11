@@ -51,3 +51,11 @@ jobs:
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
+ 
+      - name: Upload SheV Chat debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: shev-chat-debug
+          path: android/shevchat/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
