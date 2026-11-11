@@ -1,5 +1,7 @@
 package com.shev.chat
 
+import com.shev.chat.data.ChatEntryEntity
+
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -23,6 +25,33 @@ class ChatProjectContextTest {
         val prompt = ChatProjectContext.build("ФотоПорядок")
         assertTrue(prompt.contains("не читает историю ChatGPT"))
         assertTrue(prompt.contains("не отправляет сообщение автоматически"))
+    }
+
+    @Test
+    fun recentManualHistoryIsIncludedAndClearlyMarkedAsLocal() {
+        val entries = listOf(
+            ChatEntryEntity(
+                id = "1",
+                projectId = "ФотоПорядок",
+                role = "USER",
+                content = "Проверь новую сборку и не теряй checkpoint.",
+                createdAtEpochMillis = 100L
+            ),
+            ChatEntryEntity(
+                id = "2",
+                projectId = "ФотоПорядок",
+                role = "ASSISTANT",
+                content = "Сборка ещё не подтверждена.",
+                createdAtEpochMillis = 200L
+            )
+        )
+
+        val prompt = ChatProjectContext.build("ФотоПорядок", entries)
+
+        assertTrue(prompt.contains("Последние записи локальной истории"))
+        assertTrue(prompt.contains("Проверь новую сборку"))
+        assertTrue(prompt.contains("Сборка ещё не подтверждена"))
+        assertTrue(prompt.contains("не считать внешне синхронизированными"))
     }
 
     @Test
