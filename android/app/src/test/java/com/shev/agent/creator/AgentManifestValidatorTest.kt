@@ -1,0 +1,140 @@
+package com.shev.agent.creator
+
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class AgentManifestValidatorTest {
+    private fun validManifest() = AgentManifest(
+        id = "android-researcher",
+        name = "Исследователь Android",
+        purpose = "Сравнивать Android-библиотеки по совместимости и лицензиям",
+        role = "Технический исследователь",
+        instructions = "Проверяй официальные источники и фиксируй доказательства.",
+        process = "Определи версии, проверь официальные документы, сравни ограничения и зафиксируй вывод.",
+        outputFormat = "Таблица сравнения с версией, лицензией, совместимостью и источниками.",
+        triggers = listOf("Сравни библиотеки", "Проверь лицензию"),
+        inputSchema = """{"type":"object","properties":{},"required":[]}""",
+        outputSchema = """{"type":"object","properties":{},"required":[]}""",
+        allowedToolIds = listOf("agent.inspect_tools"),
+        memoryReadScopes = emptyList(),
+        memoryWriteScopes = emptyList(),
+        maxSteps = 8, timeoutSeconds = 120, maxModelCalls = 4,
+        networkPolicy = "OFFLINE", sideEffectPolicy = "DRAFT_ONLY",
+        verificationStrategy = "Повторно проверь ссылки и версии.",
+        evaluationCases = listOf("Обычный запрос", "Неоднозначная версия"),
+        limitations = listOf("Нет сетевого доступа по умолчанию"),
+        description = "Use this agent when Android research is needed. Typical triggers include library review and license checks. See \"When to invoke\" in the agent body for worked scenarios.",
+        triggeringExamples = listOf(
+            AgentTriggerExample("Нужно сравнить библиотеки", "Сравни библиотеки", "Проверю совместимость и лицензии.", "Нужен технический исследователь.", "Я использую агента android-researcher."),
+            AgentTriggerExample("Перед внедрением", "Проверь лицензию", "Сверю официальный источник.", "Требуется проверка лицензии.", "Я использую агента android-researcher.")
+        )
+    )
+
+    @Test fun acceptsValidManifestWithinAllowlist() {
+        assertTrue(AgentManifestValidator(setOf("agent.inspect_tools")).validate(validManifest()).accepted)
+    }
+    @Test fun rejectsToolOutsideAllowlist() {
+        assertFalse(AgentManifestValidator(setOf("agent.inspect_tools"))
+            .validate(validManifest().copy(allowedToolIds = listOf("arbitrary.shell"))).accepted)
+    }
+    @Test fun rejectsDuplicateAgentId() {
+        val result = AgentManifestValidator(setOf("agent.inspect_tools"))
+            .validate(validManifest(), setOf("android-researcher"))
+        assertFalse(result.accepted)
+        assertTrue(result.rejection == AgentManifestRejection.INVALID_ID)
+    }
+    @Test fun rejectsUnsafeExecutionPolicy() {
+        assertFalse(AgentManifestValidator(setOf("agent.inspect_tools"))
+            .validate(validManifest().copy(sideEffectPolicy = "EXECUTE")).accepted)
+    }
+    @Test fun rejectsTooFewTriggers() {
+        assertFalse(AgentManifestValidator(setOf("agent.inspect_tools"))
+            .validate(validManifest().copy(triggers = listOf("Один триггер"))).accepted)
+    }
+    @Test fun parserExtractsJsonFromModelCodeFence() {
+        val manifest = validManifest()
+        val json = com.google.gson.Gson().toJson(manifest)
+        val parsed = AgentManifestParser.parse("""Ответ:
+```json
+$json
+```""")
+        assertTrue(parsed.id == manifest.id)
+        assertTrue(parsed.allowedToolIds == manifest.allowedToolIds)
+    }
+
+    @Test fun creatorForcesDraftEvenIfModelRequestsActivation() = runBlocking {
+        val requestedActive = com.google.gson.Gson().toJson(validManifest().copy(status = AgentManifest.STATUS_ACTIVE))
+        val result = AgentCreator().createDraft(
+            userRequest = "Создай исследователя",
+            knownToolIds = setOf("agent.inspect_tools"),
+            existingAgentIds = emptySet(),
+            generate = { requestedActive }
+        )
+        assertTrue(result is AgentCreationResult.Created)
+        assertEquals(AgentManifest.STATUS_DRAFT, (result as AgentCreationResult.Created).manifest.status)
+    }
+
+    @Test fun creatorReturnsClarifyingQuestionsBeforeCreatingDraft() = runBlocking {
+        val output = com.google.gson.Gson().toJson(
+            validManifest().copy(clarifyingQuestions = listOf("Какой период отчёта нужен?"))
+        )
+        val result = AgentCreator().createDraft(
+            userRequest = "Создай финансового агента",
+            knownToolIds = setOf("agent.inspect_tools"),
+            existingAgentIds = emptySet(),
+            generate = { output }
+        )
+        assertTrue(result is AgentCreationResult.NeedsClarification)
+        assertEquals(
+            listOf("Какой период отчёта нужен?"),
+            (result as AgentCreationResult.NeedsClarification).questions
+        )
+    }
+
+    @Test fun creatorIncludesExistingAgentInventory() = runBlocking {
+        var receivedPrompt = ""
+        val output = com.google.gson.Gson().toJson(validManifest())
+        AgentCreator().createDraft(
+            userRequest = "Создай другого специалиста",
+            knownToolIds = setOf("agent.inspect_tools"),
+            existingAgentIds = emptySet(),
+            generate = { receivedPrompt = it; output },
+            existingAgentSummaries = listOf("android-researcher: Исследователь Android")
+        )
+        assertTrue(receivedPrompt.contains("Исследователь Android"))
+    }
+
+    @Test fun rejectsMissingAnthropicWorkedExamples() {
+        val result = AgentManifestValidator(setOf("agent.inspect_tools"))
+            .validate(validManifest().copy(triggeringExamples = emptyList()))
+        assertFalse(result.accepted)
+        assertEquals(AgentManifestRejection.INVALID_EXAMPLES, result.rejection)
+    }
+
+    @Test fun rejectsInvalidAnthropicModelAndColor() {
+        val validator = AgentManifestValidator(setOf("agent.inspect_tools"))
+        assertEquals(AgentManifestRejection.INVALID_MODEL,
+            validator.validate(validManifest().copy(model = "gpt-unknown")).rejection)
+        assertEquals(AgentManifestRejection.INVALID_COLOR,
+            validator.validate(validManifest().copy(color = "purple")).rejection)
+    }
+
+    @Test fun promptContainsAnthropicFrontmatterAndWorkedExampleContract() {
+        val prompt = AgentCreatorPromptBuilder.build("Нужен исследователь", setOf("agent.inspect_tools"))
+        assertTrue(prompt.contains("clarifyingQuestions"))
+        assertTrue(prompt.contains("triggeringExamples"))
+        assertTrue(prompt.contains("When to invoke"))
+        assertTrue(prompt.contains("НЕ помещай host tool IDs"))
+        assertTrue(prompt.contains("claudeCodeTools"))
+    }
+
+    @Test fun promptContainsAllowlistAndUserTask() {
+        val prompt = AgentCreatorPromptBuilder.build("Нужен исследователь", setOf("agent.inspect_tools"))
+        assertTrue(prompt.contains("Нужен исследователь"))
+        assertTrue(prompt.contains("agent.inspect_tools"))
+        assertTrue(prompt.contains("DRAFT_ONLY"))
+    }
+}

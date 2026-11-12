@@ -1289,6 +1289,49 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    /** Tool IDs are sourced only from the host-side registry. */
+    fun availableAgentToolIds(): Set<String> = setOf(
+        SheVAgentAdkTools.TOOL_ID,
+        SheVAgentAdkTools.CURRENT_TIME_TOOL_ID,
+        SheVAgentAdkTools.CREATE_TASK_DRAFT_ID
+    )
+
+    /** Runs a bounded tool-free creator turn; it cannot execute or approve generated agents. */
+    suspend fun generateAgentCreatorOutputFromPrompt(creatorPrompt: String): String {
+        require(creatorPrompt.isNotBlank()) { "Пустой запрос конструктора." }
+        val active = runtime ?: throw IllegalStateException(
+            "Локальная модель не запущена. Сначала запусти SheV Agent."
+        )
+        if (mutableState.value.busy) {
+            throw IllegalStateException("Модель уже выполняет другую задачу.")
+        }
+        mutableState.update { it.copy(busy = true, error = null) }
+        try {
+            return withContext(Dispatchers.IO) {
+                val response = StringBuilder()
+                var modelError: String? = null
+                withTimeout(120_000L) {
+                    active.runCreator(creatorPrompt).collect { event: Event ->
+                        val answer = event.content?.parts.orEmpty()
+                            .mapNotNull { it.text }
+                            .filter { it.isNotBlank() }
+                            .joinToString("")
+                        if (!event.partial && answer.isNotBlank()) response.append(answer)
+                        if (!event.partial && !event.errorMessage.isNullOrBlank()) {
+                            modelError = event.errorMessage
+                        }
+                    }
+                }
+                modelError?.let { throw IllegalStateException("Ошибка локальной модели: $it") }
+                response.toString().trim().also {
+                    if (it.isBlank()) throw IllegalStateException("Модель не вернула паспорт агента.")
+                }
+            }
+        } finally {
+            mutableState.update { it.copy(busy = false) }
+        }
+    }
+
     private fun formatMessage(message: ConversationMessageEntity): String {
         val speaker = if (message.role == ConversationContextBuilder.ROLE_USER) "Вы" else "SheV"
         val suffix = if (message.status != ConversationContextBuilder.STATUS_COMPLETE) " (не завершено)" else ""

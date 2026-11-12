@@ -121,4 +121,13 @@ interface AgentDao {
 
     @Query("UPDATE conversation_messages SET status = :status WHERE id = :id")
     suspend fun updateConversationMessageStatus(id: String, status: String)
+
+    @Query("SELECT * FROM agent_definitions ORDER BY updatedAtEpochMillis DESC")
+    fun observeAgentDefinitions(): Flow<List<AgentDefinitionEntity>>
+
+    @Query("SELECT * FROM agent_definitions WHERE agentId = :agentId LIMIT 1")
+    suspend fun getAgentDefinition(agentId: String): AgentDefinitionEntity?
+
+    @Upsert
+    suspend fun saveAgentDefinition(definition: AgentDefinitionEntity)
 }

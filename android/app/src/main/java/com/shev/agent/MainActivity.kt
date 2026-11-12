@@ -9,21 +9,40 @@ import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.ViewModelProvider
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import com.shev.agent.creator.AgentCreatorScreen
+import com.shev.agent.data.SheVAgentDatabase
 import com.shev.agent.data.SheVAgentDatabaseProvider
 import com.shev.agent.model.LocalModelPanel
 import com.shev.agent.model.LocalModelViewModel
+import com.shev.agent.tools.GitHubAuthCard
+import com.shev.agent.tools.ToolWorkshopScreen
 import com.shev.agent.update.UpdateCheckWorker
 
 /**
- * SheV Agent starts directly in the conversation.
- * Projects, task dashboards, memory browsers and tool catalogs are intentionally
- * kept out of the first screen; they are not part of the initial chat experience.
+ * The specialised-agent factory is the default screen. The primary chat and
+ * safe tool workshop remain available as separate bottom-navigation destinations.
  */
 class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher =
@@ -48,8 +67,8 @@ class MainActivity : ComponentActivity() {
         window.decorView.systemUiVisibility = 0
         // Create the high-importance update channel before requesting notification permission.
         UpdateCheckWorker.ensureNotificationChannel(applicationContext)
-        // Keep database initialization so the encrypted conversation history remains available.
-        SheVAgentDatabaseProvider.get(applicationContext)
+        // One Room database stores encrypted conversation history and declarative agent drafts.
+        val database = SheVAgentDatabaseProvider.get(applicationContext)
         val chatViewModel = ViewModelProvider(this)[LocalModelViewModel::class.java]
         setContent {
             val palette = darkColorScheme(
@@ -69,7 +88,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    LocalModelPanel(chatViewModel)
+                    SheVAgentApp(database, chatViewModel)
                 }
             }
         }
@@ -122,5 +141,49 @@ class MainActivity : ComponentActivity() {
         const val PERMISSIONS_PREFS = "shev_agent_permissions"
         const val KEY_NOTIFICATION_PROMPTED = "notification_prompt_completed"
         const val KEY_MICROPHONE_PROMPTED = "microphone_prompt_completed"
+    }
+}
+
+private enum class SheVAgentTab(val label: String, val glyph: String) {
+    CREATOR("Создатель", "✧"),
+    CHAT("Чат", "◉"),
+    TOOLS("Инструменты", "⚙")
+}
+
+@Composable
+private fun SheVAgentApp(
+    database: SheVAgentDatabase,
+    chatViewModel: LocalModelViewModel
+) {
+    var tab by rememberSaveable { mutableStateOf(SheVAgentTab.CREATOR) }
+    Scaffold(
+        bottomBar = {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                SheVAgentTab.values().forEach { item ->
+                    NavigationBarItem(
+                        selected = tab == item,
+                        onClick = { tab = item },
+                        icon = { Text(item.glyph, style = MaterialTheme.typography.titleLarge) },
+                        label = { Text(item.label, maxLines = 1) }
+                    )
+                }
+            }
+        }
+    ) { inset ->
+        when (tab) {
+            SheVAgentTab.CREATOR -> Box(Modifier.fillMaxSize().padding(inset)) {
+                AgentCreatorScreen(database.agentDao(), chatViewModel)
+            }
+            SheVAgentTab.CHAT -> Box(Modifier.fillMaxSize().padding(inset)) {
+                LocalModelPanel(chatViewModel)
+            }
+            SheVAgentTab.TOOLS -> Column(
+                Modifier.fillMaxSize().padding(inset).verticalScroll(rememberScrollState()).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                GitHubAuthCard()
+                ToolWorkshopScreen()
+            }
+        }
     }
 }

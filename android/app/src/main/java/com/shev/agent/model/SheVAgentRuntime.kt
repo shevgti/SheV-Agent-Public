@@ -24,9 +24,11 @@ internal object SheVAgentSession {
     const val APP_NAME = "SheVAgent"
     const val USER_ID = "local-user"
     const val SESSION_ID = "main-session"
+    const val CREATOR_SESSION_ID = "creator-session"
 
     suspend fun initialize(sessionService: InMemorySessionService) {
         sessionService.createSession(SessionKey(APP_NAME, USER_ID, SESSION_ID))
+        sessionService.createSession(SessionKey(APP_NAME, USER_ID, CREATOR_SESSION_ID))
     }
 }
 
@@ -34,6 +36,7 @@ internal object SheVAgentSession {
 class SheVAgentRuntime private constructor(
     private val model: LiteRtLmModel,
     private val runner: InMemoryRunner,
+    private val creatorRunner: InMemoryRunner,
     val backendName: String
 ) : Closeable {
     private val closed = AtomicBoolean(false)
@@ -49,17 +52,30 @@ class SheVAgentRuntime private constructor(
         )
     }
 
+    /** Tool-free creator runner: generated manifests cannot invoke host actions. */
+    fun runCreator(text: String): Flow<Event> {
+        check(!closed.get()) { "SheV Agent runtime is closed." }
+        require(text.isNotBlank())
+        return creatorRunner.runAsync(
+            userId = SheVAgentSession.USER_ID,
+            sessionId = SheVAgentSession.CREATOR_SESSION_ID,
+            newMessage = Content(role = Role.USER, parts = listOf(Part(text = text))),
+            runConfig = RunConfig(maxLlmCalls = MAX_CREATOR_LLM_CALLS)
+        )
+    }
+
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         try {
             runner.close()
         } finally {
-            model.close()
+            try { creatorRunner.close() } finally { model.close() }
         }
     }
 
     companion object {
         private const val MAX_LLM_CALLS = 8
+        private const val MAX_CREATOR_LLM_CALLS = 4
 
         /**
          * Prefer the Adreno GPU. If native initialization fails, retry once on CPU.
@@ -83,6 +99,7 @@ class SheVAgentRuntime private constructor(
             for ((backendName, backend) in attempts) {
                 var model: LiteRtLmModel? = null
                 var runner: InMemoryRunner? = null
+                var creatorRunner: InMemoryRunner? = null
                 var initialized = false
                 try {
                     val activeModel = SheVAgentModelFactory.createModel(modelFile, context.cacheDir, backend)
@@ -104,13 +121,16 @@ class SheVAgentRuntime private constructor(
                         sessionService = sessionService
                     )
                     runner = activeRunner
-                    return@withContext SheVAgentRuntime(activeModel, activeRunner, backendName)
+                    val activeCreatorRunner = InMemoryRunner(
+                        agent = SheVAgentModelFactory.createCreatorAgent(activeModel),
+                        appName = SheVAgentSession.APP_NAME,
+                        sessionService = sessionService
+                    )
+                    creatorRunner = activeCreatorRunner
+                    return@withContext SheVAgentRuntime(activeModel, activeRunner, activeCreatorRunner, backendName)
                 } catch (cancelled: CancellationException) {
-                    try {
-                        runner?.close()
-                    } catch (_: Throwable) {
-                        // Preserve cancellation.
-                    }
+                    try { runner?.close() } catch (_: Throwable) { /* Preserve cancellation. */ }
+                    try { creatorRunner?.close() } catch (_: Throwable) { /* Preserve cancellation. */ }
                     if (initialized) {
                         try {
                             model?.close()
@@ -121,11 +141,8 @@ class SheVAgentRuntime private constructor(
                     throw cancelled
                 } catch (error: Throwable) {
                     lastFailure = error
-                    try {
-                        runner?.close()
-                    } catch (_: Throwable) {
-                        // Preserve the backend initialization error.
-                    }
+                    try { runner?.close() } catch (_: Throwable) { /* Preserve backend error. */ }
+                    try { creatorRunner?.close() } catch (_: Throwable) { /* Preserve backend error. */ }
                     // LiteRT-LM requires close() only after initialize() completed successfully.
                     if (initialized) {
                         try {
