@@ -1,9 +1,11 @@
 package com.shev.agent.creator
 
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 
 /** Renders the portable Claude Code subagent file format; native host permissions are never exported. */
 object AgentMarkdownRenderer {
+    private val exampleJson = GsonBuilder().disableHtmlEscaping().create()
     fun validate(manifest: AgentManifest): AgentManifestValidation {
         if (!manifest.id.matches(Regex("[a-z0-9][a-z0-9-]{1,48}[a-z0-9]")) || manifest.id.length !in 3..50)
             return reject(AgentManifestRejection.INVALID_ID, "Agent name must be 3–50 lowercase letters, numbers or hyphens.")
@@ -51,12 +53,12 @@ object AgentMarkdownRenderer {
             manifest.triggeringExamples.forEach { example ->
                 append("\n<example>")
                 append("\nContext: ").append(xmlText(example.context))
-                append("\nuser: ").append(xmlText(Gson().toJson(example.user)))
-                append("\nassistant: ").append(xmlText(Gson().toJson(example.assistant)))
+                append("\nuser: ").append(xmlText(exampleJson.toJson(example.user)))
+                append("\nassistant: ").append(xmlText(exampleJson.toJson(example.assistant)))
                 append("\n<commentary>")
                 append("\n").append(xmlText(example.commentary))
                 append("\n</commentary>")
-                append("\nassistant: ").append(xmlText(Gson().toJson(example.invocation)))
+                append("\nassistant: ").append(xmlText(exampleJson.toJson(example.invocation)))
                 append("\n</example>")
             }
         }
