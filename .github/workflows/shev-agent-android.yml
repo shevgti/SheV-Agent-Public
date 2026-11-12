@@ -168,7 +168,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) }}
     needs: build-and-unit-tests
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -203,8 +203,8 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          disable-animations: true
-          emulator-boot-timeout: 900
+          disable-animations: false
+          emulator-boot-timeout: 1200
           script: |
             # Wait for Package Manager to become responsive; emulator boot can finish before system services settle.
             for attempt in 1 2 3 4 5; do
@@ -215,6 +215,7 @@ jobs:
               sleep 10
             done
             adb shell cmd package list packages >/dev/null
+            adb shell getprop sys.boot_completed
             # Avoid adb's streaming install path, which intermittently fails with Broken pipe on API 36.
             adb install --no-streaming -r test-package/shevchat-debug.apk
             adb shell am start -n com.shev.chat/.ChatActivity
