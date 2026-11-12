@@ -58,6 +58,35 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
         }
         item {
             Card(shape = RoundedCornerShape(22.dp)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Откуда берётся ИИ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "ВАЖНО: текущий конструктор создаёт паспорта через локальную LiteRT-LM модель на телефоне. Он пока НЕ использует Codex App Server, OpenRouter, Gemini или OpenAI API, даже если они подключены для основного чата.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        when {
+                            modelState.ready -> "Источник конструктора: локальная модель · запущена"
+                            modelState.verified -> "Источник конструктора: локальная модель · файл установлен, но модель не запущена"
+                            else -> "Источник конструктора: локальная модель · модель ещё не установлена"
+                        },
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (modelState.ready) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text("Системные инструменты, реально разрешённые конструктору:", fontWeight = FontWeight.SemiBold)
+                    Text("• agent.inspect_tools — просмотр зарегистрированного каталога инструментов")
+                    Text("• agent.current_local_time — получение местного времени")
+                    Text("• agent.create_task_draft — создание черновика поручения")
+                    Text(
+                        "Это не полный набор возможностей Android и не инструменты внешних сервисов. Созданные специалисты пока не получают эти инструменты и не запускаются. Для каждого доступа нужны отдельная реализация, разрешение и проверка.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+        item {
+            Card(shape = RoundedCornerShape(22.dp)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Создать нового агента", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(
