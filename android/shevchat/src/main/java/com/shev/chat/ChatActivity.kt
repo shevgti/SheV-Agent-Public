@@ -64,6 +64,7 @@ class ChatActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        acceptSharedChatGPTMessage(intent)
         setContent {
             SheVChatHome(
                 database = history,
@@ -90,6 +91,52 @@ class ChatActivity : ComponentActivity() {
                 onEnableAutomation = { openAccessibilitySettings() }
             )
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        acceptSharedChatGPTMessage(intent)
+    }
+
+    /**
+     * Android's Sharesheet is the supported handoff path: the user explicitly
+     * chooses SheV Chat from ChatGPT's Share menu. We only receive the text
+     * ChatGPT itself shares; we cannot read its private conversation history.
+     */
+    private fun acceptSharedChatGPTMessage(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_SEND ||
+            intent.type != "text/plain"
+        ) return
+
+        val sharedText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)
+            ?.toString()
+            ?.trim()
+            .orEmpty()
+        if (sharedText.isBlank()) return
+
+        val project = getSharedPreferences("shev_chat_projects", MODE_PRIVATE)
+            .getString("selected_project", "ФотоПорядок")
+            ?: "ФотоПорядок"
+
+        lifecycleScope.launch {
+            history.entries().insertAndPrune(
+                ChatEntryEntity(
+                    id = UUID.randomUUID().toString(),
+                    projectId = project,
+                    role = ROLE_ASSISTANT,
+                    content = sharedText,
+                    createdAtEpochMillis = System.currentTimeMillis()
+                )
+            )
+            Toast.makeText(
+                this@ChatActivity,
+                "Сообщение из ChatGPT добавлено в SheV Chat · $project",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+        // Prevent accidental duplicate import if Android recreates the Activity.
+        setIntent(Intent(this, ChatActivity::class.java))
     }
 
     private fun openOfficialChatGPT() {
