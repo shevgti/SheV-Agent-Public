@@ -13,14 +13,18 @@ class SheVAgentAdkTools(
     private val executor: AgentToolExecutor,
     private val executionContext: AgentToolExecutionContext,
     /** Non-null for generated specialists; null is reserved for existing host-owned callers. */
-    private val agentAllowedToolIds: Set<String>? = null
+    agentAllowedToolIds: Set<String>? = null
 ) {
+    // Freeze the approved IDs when this adapter/session is created. A mutable caller-owned set
+    // must not be able to add permissions while the specialist is running.
+    private val approvedAgentToolIds: Set<String>? = agentAllowedToolIds?.toSet()
+
     private fun execute(request: AgentToolRequest): AgentToolExecutionResult =
-        agentAllowedToolIds?.let { executor.executeForAgent(it, request, executionContext) }
+        approvedAgentToolIds?.let { executor.executeForAgent(it, request, executionContext) }
             ?: executor.execute(request, executionContext)
 
     private suspend fun executeSuspending(request: AgentToolRequest): AgentToolExecutionResult =
-        agentAllowedToolIds?.let { executor.executeSuspendingForAgent(it, request, executionContext) }
+        approvedAgentToolIds?.let { executor.executeSuspendingForAgent(it, request, executionContext) }
             ?: executor.executeSuspending(request, executionContext)
 
     @Tool(
