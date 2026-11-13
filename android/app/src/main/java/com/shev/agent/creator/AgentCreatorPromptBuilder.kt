@@ -31,7 +31,7 @@ object AgentCreatorPromptBuilder {
             - instructions должны содержать обязанности, процесс, стандарты качества, формат результата и обработку ошибок.
             - id: уникальный lowercase-kebab-case; model: inherit; color: blue/cyan/green/yellow/magenta/red.
             - allowedToolIds — только точные ID из HOST TOOLS. Обычно оставляй пустым.
-            - claudeCodeTools — только Read/Write при необходимости; не путай их с HOST TOOLS.
+            - НЕ помещай host tool IDs в claudeCodeTools. claudeCodeTools — только Read/Write при необходимости; это другая система.
             - memoryReadScopes и memoryWriteScopes всегда []; networkPolicy="OFFLINE"; sideEffectPolicy="DRAFT_ONLY".
             - Не запрашивай секреты, shell, произвольный код, скрытую сеть или обход подтверждений.
             - Паспорт описывает специалиста, но не выдаёт ему разрешения и не запускает его.
