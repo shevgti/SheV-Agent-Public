@@ -92,6 +92,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private val mutableState = MutableStateFlow(LocalModelUiState())
     val state: StateFlow<LocalModelUiState> = mutableState.asStateFlow()
     private var runtime: SheVAgentRuntime? = null
+    private var toolExecutor: AgentToolExecutor? = null
     private var codexClient: CodexAppServerClient? = null
     private var codexActiveThreadId: String? = null
     private var codexActiveTurnId: String? = null
@@ -584,10 +585,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 )
                 runtime = SheVAgentRuntime.load(getApplication(), store, tools)
+                toolExecutor = executor
                 mutableState.update { it.copy(ready = true, backendName = runtime?.backendName) }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Throwable) {
+                toolExecutor = null
                 mutableState.update {
                     it.copy(error = failure.message ?: failure.javaClass.simpleName + ": не удалось запустить модель.")
                 }
@@ -1289,12 +1292,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    /** Tool IDs are sourced only from the host-side registry. */
-    fun availableAgentToolIds(): Set<String> = setOf(
-        SheVAgentAdkTools.TOOL_ID,
-        SheVAgentAdkTools.CURRENT_TIME_TOOL_ID,
-        SheVAgentAdkTools.CREATE_TASK_DRAFT_ID
-    )
+    /** Only descriptors backed by real, schema-validated executor handlers are exposed. */
+    fun availableAgentTools(): List<AgentToolDescriptor> = toolExecutor?.availableTools().orEmpty()
+
+    fun availableAgentToolIds(): Set<String> =
+        availableAgentTools().mapTo(linkedSetOf()) { it.id }
 
     /** Runs a bounded tool-free creator turn; it cannot execute or approve generated agents. */
     suspend fun generateAgentCreatorOutputFromPrompt(creatorPrompt: String): String {
@@ -1341,6 +1343,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     override fun onCleared() {
         val active = runtime
         runtime = null
+        toolExecutor = null
         val codex = codexClient
         codexClient = null
         if (active != null || codex != null) {
