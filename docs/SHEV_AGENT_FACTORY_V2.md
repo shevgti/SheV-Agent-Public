@@ -133,3 +133,25 @@ Still NOT implemented:
 - run event/audit persistence and multi-agent orchestration.
 
 This is a real first execution path for pure reasoning specialists, not the completed factory. CI and device-level model execution must pass before claiming the feature works on a phone.
+
+
+## F2 implementation update — executor allowlist primitive (2026-11-13)
+
+Added to the host executor:
+- `executeForAgent(agentAllowedToolIds, request, context)`
+- `executeSuspendingForAgent(agentAllowedToolIds, request, context)`
+- Both reject a tool ID not present in the agent's approved run allowlist snapshot with `AGENT_ALLOWLIST_DENIED` before looking up or invoking the handler.
+- If the tool is allowlisted, the existing registry, schema, capability, scoped-grant and approval checks still run unchanged.
+- Four tests cover denied unselected tool despite a global capability grant, empty allowlist, selected tool continuing through normal checks, and suspend-handler denial.
+
+Important boundary: this is the executor enforcement primitive and its unit tests are authored; it is NOT yet wired into the generated-specialist ADK runtime or a user-facing tool-selection/grant flow. `AgentRunPolicy` still deliberately rejects tool-bearing specialists. Do not advertise tool-using specialists as available until the runtime routes every ADK invocation through these per-agent methods and a user-approved capability context.
+
+Commits:
+- `eadd2c5f1b1804b99b06c9d6ae3b24d72c3ccbcb` — tests first.
+- `bcad2b9571080f76fb06e5125b9d27727811b8d2` — executor implementation.
+- `$(toolWrite.result.commit_sha)` — comment precision.
+
+Verification:
+- Diff reviewed for the two commits.
+- Unit tests not yet executed; no successful CI result is available for the latest head.
+- Prior run #525 / `43459869410` was cancelled during the ARM64 Rust build when later commits updated the PR branch. This is cancellation, not a compiler/test failure.
