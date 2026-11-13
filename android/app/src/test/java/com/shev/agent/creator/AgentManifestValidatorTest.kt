@@ -131,6 +131,34 @@ $json
         assertTrue(prompt.contains("claudeCodeTools"))
     }
 
+    @Test fun creatorBuildsWorkedExamplesOnHostWhenModelOmitsThem() = runBlocking {
+        val modelOutput = com.google.gson.Gson().toJson(
+            validManifest().copy(
+                description = "",
+                triggeringExamples = emptyList()
+            )
+        )
+        val result = AgentCreator().createDraft(
+            userRequest = "Погода в городах мира",
+            knownToolIds = setOf("agent.inspect_tools"),
+            existingAgentIds = emptySet(),
+            generate = { modelOutput }
+        )
+        assertTrue(result is AgentCreationResult.Created)
+        val created = (result as AgentCreationResult.Created).manifest
+        assertEquals(2, created.triggeringExamples.size)
+        assertTrue(created.triggeringExamples.all { it.assistant.isNotBlank() && it.invocation.isNotBlank() })
+        assertTrue(created.description.isBlank())
+        assertTrue(AgentMarkdownRenderer.render(created).contains("Examples:"))
+    }
+
+    @Test fun creatorPromptDoesNotAskSmallModelToGenerateNestedWorkedExamples() {
+        val prompt = AgentCreatorPromptBuilder.build("Погода в городах мира", emptySet())
+        assertTrue(prompt.contains("Не генерируй triggeringExamples"))
+        assertTrue(prompt.contains("\\"triggeringExamples\\": []"))
+        assertTrue(prompt.contains("\\"description\\": \\"\\""))
+    }
+
     @Test fun promptContainsAllowlistAndUserTask() {
         val prompt = AgentCreatorPromptBuilder.build("Нужен исследователь", setOf("agent.inspect_tools"))
         assertTrue(prompt.contains("Нужен исследователь"))
