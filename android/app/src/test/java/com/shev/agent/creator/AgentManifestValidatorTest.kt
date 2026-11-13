@@ -209,4 +209,27 @@ $json
         assertEquals("INVALID_MODEL_OUTPUT", (result as AgentCreationResult.Rejected).reason)
     }
 
+
+    @Test fun creatorPromptFitsSmallModelBudgetAndCapsInventories() {
+        val prompt = AgentCreatorPromptBuilder.build(
+            userRequest = "техник",
+            knownToolIds = (1..200).map { "tool.$it" }.toSet(),
+            existingAgents = (1..100).map { "agent-$it: " + "x".repeat(300) }
+        )
+        assertTrue("Creator prompt should remain compact for a 4k-token model", prompt.length < 10_000)
+        assertTrue(prompt.contains("tool.1"))
+        assertFalse(prompt.contains("tool.200"))
+        assertFalse(prompt.contains("agent-100"))
+    }
+
+    @Test fun creatorRejectsOverlongUserRequestBeforePromptConstruction() {
+        val tooLong = "x".repeat(AgentCreatorPromptBuilder.MAX_REQUEST_CHARS + 1)
+        try {
+            AgentCreatorPromptBuilder.build(tooLong, emptySet())
+            throw AssertionError("Expected an overlong request to be rejected")
+        } catch (_: IllegalArgumentException) {
+            // Expected: prevent user input alone from exhausting the model context.
+        }
+    }
+
 }
