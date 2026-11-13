@@ -11,14 +11,24 @@ import com.google.gson.Gson
  */
 class SheVAgentAdkTools(
     private val executor: AgentToolExecutor,
-    private val executionContext: AgentToolExecutionContext
+    private val executionContext: AgentToolExecutionContext,
+    /** Non-null for generated specialists; null is reserved for existing host-owned callers. */
+    private val agentAllowedToolIds: Set<String>? = null
 ) {
+    private fun execute(request: AgentToolRequest): AgentToolExecutionResult =
+        agentAllowedToolIds?.let { executor.executeForAgent(it, request, executionContext) }
+            ?: executor.execute(request, executionContext)
+
+    private suspend fun executeSuspending(request: AgentToolRequest): AgentToolExecutionResult =
+        agentAllowedToolIds?.let { executor.executeSuspendingForAgent(it, request, executionContext) }
+            ?: executor.executeSuspending(request, executionContext)
+
     @Tool(
         name = "inspect_available_agent_tools",
         description = "Lists locally registered SheV Agent tools that are safe to inspect."
     )
     fun inspectAvailableTools(): Map<String, String> {
-        val execution = executor.execute(
+        val execution = execute(
             AgentToolRequest(
                 toolId = TOOL_ID,
                 capability = AgentCapability.ANALYZE_DATA,
@@ -48,7 +58,7 @@ class SheVAgentAdkTools(
     suspend fun createTaskDraft(
         @Param("Краткое описание поручения, которое пользователь явно попросил сохранить.") title: String
     ): Map<String, String> {
-        val execution = executor.executeSuspending(
+        val execution = executeSuspending(
             AgentToolRequest(
                 toolId = CREATE_TASK_DRAFT_ID,
                 capability = AgentCapability.CREATE_DRAFT,
