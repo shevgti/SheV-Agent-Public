@@ -18,6 +18,8 @@ import com.shev.agent.data.RoomAgentTaskAuthorizationVerifier
 import com.shev.agent.data.RoomAgentTaskRepository
 import com.shev.agent.data.LocalMessageCipher
 import com.shev.agent.data.SheVAgentDatabaseProvider
+import com.shev.agent.creator.AgentManifestParser
+import com.shev.agent.creator.AgentRunPolicy
 import com.shev.agent.tools.AgentTool
 import com.shev.agent.tools.LocalTimeTool
 import com.shev.agent.tools.SuspendingAgentTool
@@ -1297,6 +1299,24 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
 
     fun availableAgentToolIds(): Set<String> =
         availableAgentTools().mapTo(linkedSetOf()) { it.id }
+
+    /** Runs only an explicitly approved, offline, tool-free specialist definition. */
+    suspend fun runApprovedSpecialist(manifestJson: String, input: String): String {
+        require(input.isNotBlank()) { "Опиши задачу для специалиста." }
+        val manifest = AgentManifestParser.parse(manifestJson)
+        val decision = AgentRunPolicy.evaluate(manifest)
+        check(decision.allowed) { decision.reason ?: "Запуск специалиста запрещён политикой." }
+        val active = runtime ?: throw IllegalStateException("Сначала запусти локальную модель SheV.")
+        if (mutableState.value.busy) {
+            throw IllegalStateException("Модель уже выполняет другую задачу.")
+        }
+        mutableState.update { it.copy(busy = true, error = null) }
+        try {
+            return active.runSpecialist(manifest, input)
+        } finally {
+            mutableState.update { it.copy(busy = false) }
+        }
+    }
 
     /** Runs a bounded tool-free creator turn; it cannot execute or approve generated agents. */
     suspend fun generateAgentCreatorOutputFromPrompt(creatorPrompt: String): String {
