@@ -12,7 +12,6 @@ import com.google.gson.Gson
 class SheVAgentAdkTools(
     private val executor: AgentToolExecutor,
     private val executionContext: AgentToolExecutionContext,
-    private val weatherTool: OpenMeteoWeatherTool = OpenMeteoWeatherTool(),
     /** Non-null for generated specialists; null is reserved for existing host-owned callers. */
     agentAllowedToolIds: Set<String>? = null
 ) {
