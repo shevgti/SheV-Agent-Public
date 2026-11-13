@@ -37,4 +37,39 @@ class SheVAgentAdkToolsTest {
         assertEquals("AGENT_ALLOWLIST_DENIED", result["reason"])
         assertFalse(called)
     }
+
+    @Test fun adapterSnapshotsAllowlistSoLaterMutationCannotGrantNewTools() {
+        val registry = AgentToolRegistry()
+        registry.register(
+            AgentToolDescriptor(
+                SheVAgentAdkTools.TOOL_ID,
+                "Каталог инструментов",
+                "Показывает доступные инструменты",
+                setOf(AgentCapability.ANALYZE_DATA),
+                ToolInputSchema(listOf(ToolInputField("query", ToolInputType.STRING, required = false)))
+            )
+        )
+        var called = false
+        val executor = AgentToolExecutor(
+            registry,
+            mapOf(SheVAgentAdkTools.TOOL_ID to AgentTool {
+                called = true
+                AgentToolResult(true, "unexpected")
+            })
+        )
+        val mutableGrants = mutableSetOf(SheVAgentAdkTools.TOOL_ID)
+        val adapter = SheVAgentAdkTools(
+            executor = executor,
+            executionContext = AgentToolExecutionContext(setOf(AgentCapability.ANALYZE_DATA)),
+            agentAllowedToolIds = mutableGrants
+        )
+        mutableGrants.clear()
+
+        val result = adapter.inspectAvailableTools()
+
+        assertEquals("denied", result["status"])
+        assertEquals("AGENT_ALLOWLIST_DENIED", result["reason"])
+        assertFalse(called)
+    }
+
 }
