@@ -22,12 +22,13 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.shev.agent.BuildConfig
 import com.shev.agent.MainActivity
+import com.shev.agent.updates.ReleaseUpdater
 import java.util.concurrent.TimeUnit
 
 internal class UpdateCheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         return try {
-            val update = AppUpdater.check(BuildConfig.VERSION_CODE) ?: return Result.success()
+            val update = ReleaseUpdater.check(BuildConfig.VERSION_CODE) ?: return Result.success()
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return Result.success()
@@ -48,7 +49,7 @@ internal class UpdateCheckWorker(context: Context, params: WorkerParameters) : C
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle("Доступно обновление SheV Agent")
-            .setContentText("Новая версия ${update.versionName}. Нажми, чтобы открыть чат и установить её.")
+            .setContentText("Новая версия ${update.version}. Нажми, чтобы открыть чат и установить её.")
             .setStyle(NotificationCompat.BigTextStyle().bigText("Новая версия SheV Agent ${update.versionName} доступна. Открой приложение, чтобы скачать и установить обновление."))
             .setContentIntent(pending)
             .setAutoCancel(true)
