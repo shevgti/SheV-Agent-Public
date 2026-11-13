@@ -155,3 +155,15 @@ Verification:
 - Diff reviewed for the two commits.
 - Unit tests not yet executed; no successful CI result is available for the latest head.
 - Prior run #525 / `43459869410` was cancelled during the ARM64 Rust build when later commits updated the PR branch. This is cancellation, not a compiler/test failure.
+
+
+### F2 follow-up — ADK adapter accepts the agent allowlist (2026-11-13)
+
+- `SheVAgentAdkTools` now accepts an optional `agentAllowedToolIds` snapshot.
+- When supplied, all three annotated ADK functions route through `AgentToolExecutor.executeForAgent` / `executeSuspendingForAgent`; none of those adapter entry points bypasses the allowlist.
+- A non-null allowlist is intended for generated specialists. The null default is retained only for existing host-owned callers to preserve their current behavior.
+- Added a unit test that calls the real ADK adapter with an empty allowlist and confirms the registered handler is not invoked and the adapter reports `AGENT_ALLOWLIST_DENIED`.
+- This is still not end-to-end specialist tool execution: the specialist runtime currently passes `tools = emptyList()`, `AgentRunPolicy` rejects tool-bearing manifests, and there is no user-facing tool grant flow. Do not relax those restrictions yet.
+- Test fixture was corrected to use a valid optional-field schema; `ToolInputSchema` intentionally rejects empty field lists.
+- Latest commits: `14f2d4d9be835e0dd8a59fcf468e650f50c8e002` (adapter routing), `283bdfe78031778f8e58e2bd95f9c1d828ad51e6` (route all three ADK entry points), `9b11fa1320b20e85566720faaacc3e20db119cf9` (valid test schema).
+- CI remains unverified for the latest head; the previous #525 run was cancelled and no replacement run is currently visible through the connected GitHub workflow-run query.
