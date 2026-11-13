@@ -47,7 +47,7 @@ object AgentCreatorPromptBuilder {
               "name": "Технический специалист",
               "purpose": "Измеримая цель",
               "role": "Узкая экспертная роль",
-              "description": "Use this agent when ... See \"When to invoke\" in the agent body for examples.",
+              "description": "",
               "model": "inherit",
               "color": "blue",
               "instructions": "Обязанности; процесс; критерии качества; формат результата; обработка ошибок.",
