@@ -90,7 +90,7 @@ class SheVAgentRuntime private constructor(
             val sessionId = "specialist-${manifest.id}-${UUID.randomUUID()}"
             sessionService.createSession(SessionKey(SheVAgentSession.APP_NAME, SheVAgentSession.USER_ID, sessionId))
             val specialist = LlmAgent(
-                name = "specialist_${manifest.id.replace('-', '_')}",
+                name = "spec_${manifest.id.replace('-', '_').take(56)}",
                 model = model,
                 description = manifest.purpose,
                 instruction = Instruction(
