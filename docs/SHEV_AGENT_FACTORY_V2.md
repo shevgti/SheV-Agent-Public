@@ -177,3 +177,6 @@ Verification:
 - Test-first commit: `9cb2e582c981797a28ba5457f01c1ccd6d9f74f1`; implementation commit: `066505b23cd0ad9dcffae187e0b2a271b04fc8b8`.
 - Diff reviewed. Tests are authored but not yet executed; no successful CI result for this change is available.
 - The existing exact-head run #533 (`43461225559`) is still building ARM64 Codex App Server from an earlier PR head; steps through Rust toolchain, Android linker, dependency patch and cache succeeded, while the native Cargo build remains in progress. It does not verify these latest Kotlin changes.
+
+
+CI status correction (2026-11-13 19:23 +03): run #533 (`43461225559`) has now been cancelled after branch updates. The ARM64 Cargo build step was cancelled; the executable verification/upload steps were skipped, and both the Unit tests/debug APK job and optional API 36 instrumentation job were cancelled. This is NOT evidence of a compiler or Kotlin test failure, but it also provides NO verification of the latest allowlist snapshot commits. A fresh run on the latest PR head is required.
