@@ -62,6 +62,12 @@ class AgentToolExecutor(
         }
     }
 
+    /** Tools advertised to agent designers must have a schema and a real executable handler. */
+    fun availableTools(): List<AgentToolDescriptor> = registry.list().filter { descriptor ->
+        descriptor.inputSchema != null &&
+            (descriptor.id in handlers || descriptor.id in suspendingHandlers)
+    }
+
     fun execute(
         request: AgentToolRequest,
         context: AgentToolExecutionContext
