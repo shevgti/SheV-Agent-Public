@@ -492,7 +492,7 @@ class AgentToolExecutorTest {
             scopeType = GrantScopeType.PROJECT,
             scopeValue = "repo:SheV-Agent-Public",
             createdAtMillis = 1,
-            expiresAtMillis = 1
+            expiresAtMillis = 2
         )
         val result = setup().execute(
             AgentToolRequest(
