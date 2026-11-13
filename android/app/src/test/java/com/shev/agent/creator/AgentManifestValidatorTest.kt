@@ -137,4 +137,38 @@ $json
         assertTrue(prompt.contains("agent.inspect_tools"))
         assertTrue(prompt.contains("DRAFT_ONLY"))
     }
+
+    @Test fun approvedOfflineToolFreeSpecialistCanRun() {
+        val decision = AgentRunPolicy.evaluate(
+            validManifest().copy(status = AgentManifest.STATUS_APPROVED)
+        )
+        assertTrue(decision.allowed)
+    }
+
+    @Test fun draftSpecialistCannotRun() {
+        val decision = AgentRunPolicy.evaluate(validManifest())
+        assertFalse(decision.allowed)
+    }
+
+    @Test fun specialistWithRequestedToolsCannotRunBeforeBindingExists() {
+        val decision = AgentRunPolicy.evaluate(
+            validManifest().copy(
+                status = AgentManifest.STATUS_APPROVED,
+                allowedToolIds = listOf("agent.inspect_tools")
+            )
+        )
+        assertFalse(decision.allowed)
+    }
+
+    @Test fun specialistWithNetworkOrSideEffectsCannotRun() {
+        val network = AgentRunPolicy.evaluate(
+            validManifest().copy(status = AgentManifest.STATUS_APPROVED, networkPolicy = "ONLINE")
+        )
+        val sideEffect = AgentRunPolicy.evaluate(
+            validManifest().copy(status = AgentManifest.STATUS_APPROVED, sideEffectPolicy = "EXECUTE")
+        )
+        assertFalse(network.allowed)
+        assertFalse(sideEffect.allowed)
+    }
+
 }
