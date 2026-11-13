@@ -149,7 +149,6 @@ Important boundary: this is the executor enforcement primitive and its unit test
 Commits:
 - `eadd2c5f1b1804b99b06c9d6ae3b24d72c3ccbcb` — tests first.
 - `bcad2b9571080f76fb06e5125b9d27727811b8d2` — executor implementation.
-- `$(toolWrite.result.commit_sha)` — comment precision.
 
 Verification:
 - Diff reviewed for the two commits.
@@ -180,3 +179,13 @@ Verification:
 
 
 CI status correction (2026-11-13 19:23 +03): run #533 (`43461225559`) has now been cancelled after branch updates. The ARM64 Cargo build step was cancelled; the executable verification/upload steps were skipped, and both the Unit tests/debug APK job and optional API 36 instrumentation job were cancelled. This is NOT evidence of a compiler or Kotlin test failure, but it also provides NO verification of the latest allowlist snapshot commits. A fresh run on the latest PR head is required.
+
+
+## Verification update — current CI attempt (2026-11-13 19:25 +03)
+
+- PR #35 head and feature branch are identical at `a8599ab47fbd0e39f20dbac2dbfa1696f0231cb4`.
+- A new run #537 (`43462155893`) is now IN_PROGRESS for this head.
+- The ARM64 Codex job has completed setup, Android SDK/NDK installation, pinned Rust target, linker setup, official source checkout, vendored OpenSSL and MXC compatibility patch. Cache step is currently in progress; native Cargo build and Kotlin/unit APK job have not yet completed.
+- Previous run #533 (`43461225559`) is cancelled after branch updates. It is not a compiler failure and is not a successful verification.
+- Source review confirms specialist invocation is still manual, local, tool-free, and checks APPROVED status, OFFLINE, DRAFT_ONLY, no memory scopes, manifest validation, bounded input, bounded model calls, timeout and output. Per-agent tool use remains disabled in runtime.
+- No APK/device success claim until run #537 completes and artifacts are inspected.
