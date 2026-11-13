@@ -37,7 +37,7 @@ data class AgentToolExecutionContext(
 
 enum class AgentToolExecutionStatus {
     COMPLETED, TOOL_NOT_FOUND, CAPABILITY_NOT_DECLARED,
-    ACCESS_DENIED, APPROVAL_REQUIRED, HANDLER_NOT_REGISTERED,
+    ACCESS_DENIED, APPROVAL_REQUIRED, AGENT_ALLOWLIST_DENIED, HANDLER_NOT_REGISTERED,
     INPUT_TOO_LARGE, INPUT_SCHEMA_NOT_REGISTERED, INVALID_INPUT, HANDLER_FAILED
 }
 
@@ -60,6 +60,40 @@ class AgentToolExecutor(
         require(maxInputChars in 1..MAX_ALLOWED_INPUT_CHARS) {
             "Лимит входных данных должен быть от 1 до $MAX_ALLOWED_INPUT_CHARS символов"
         }
+    }
+
+    /** Tools advertised to agent designers must have a schema and a real executable handler. */
+    fun availableTools(): List<AgentToolDescriptor> = registry.list().filter { descriptor ->
+        descriptor.inputSchema != null &&
+            (descriptor.id in handlers || descriptor.id in suspendingHandlers)
+    }
+
+    /**
+     * Executes a tool only when its ID is explicitly present in this agent's approved run allowlist snapshot.
+     * The allowlist is checked before registry lookup; capability grants and per-action approvals
+     * are still independently enforced by [execute].
+     */
+    fun executeForAgent(
+        agentAllowedToolIds: Set<String>,
+        request: AgentToolRequest,
+        context: AgentToolExecutionContext
+    ): AgentToolExecutionResult {
+        if (request.toolId !in agentAllowedToolIds) {
+            return AgentToolExecutionResult(AgentToolExecutionStatus.AGENT_ALLOWLIST_DENIED)
+        }
+        return execute(request, context)
+    }
+
+    /** Suspend counterpart with the same per-agent allowlist boundary. */
+    suspend fun executeSuspendingForAgent(
+        agentAllowedToolIds: Set<String>,
+        request: AgentToolRequest,
+        context: AgentToolExecutionContext
+    ): AgentToolExecutionResult {
+        if (request.toolId !in agentAllowedToolIds) {
+            return AgentToolExecutionResult(AgentToolExecutionStatus.AGENT_ALLOWLIST_DENIED)
+        }
+        return executeSuspending(request, context)
     }
 
     fun execute(

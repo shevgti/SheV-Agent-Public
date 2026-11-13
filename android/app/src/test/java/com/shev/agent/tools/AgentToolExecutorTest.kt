@@ -340,4 +340,106 @@ class AgentToolExecutorTest {
         assertFalse(called)
     }
 
+
+    @Test fun availableToolsExcludesDescriptorsWithoutHandlersOrSchemas() {
+        val registry = AgentToolRegistry()
+        val schema = ToolInputSchema(listOf(ToolInputField("text", ToolInputType.STRING)))
+        registry.register(AgentToolDescriptor("local.ready", "Готовый", "Есть обработчик", setOf(AgentCapability.ANALYZE_DATA), schema))
+        registry.register(AgentToolDescriptor("local.unbound", "Без обработчика", "Только описание", setOf(AgentCapability.ANALYZE_DATA), schema))
+        registry.register(AgentToolDescriptor("local.no-schema", "Без схемы", "Не может пройти проверку входа", setOf(AgentCapability.ANALYZE_DATA)))
+        val executor = AgentToolExecutor(
+            registry,
+            mapOf("local.ready" to AgentTool { AgentToolResult(true, "ok") })
+        )
+        assertEquals(listOf("local.ready"), executor.availableTools().map { it.id })
+    }
+
+    @Test fun availableToolsIncludesRegisteredSuspendingHandlers() {
+        val registry = AgentToolRegistry()
+        registry.register(
+            AgentToolDescriptor(
+                "local.async",
+                "Асинхронный",
+                "Есть suspend-обработчик",
+                setOf(AgentCapability.CREATE_DRAFT),
+                ToolInputSchema(listOf(ToolInputField("title", ToolInputType.STRING)))
+            )
+        )
+        val executor = AgentToolExecutor(
+            registry,
+            emptyMap(),
+            suspendingHandlers = mapOf("local.async" to SuspendingAgentTool {
+                AgentToolResult(true, "ok")
+            })
+        )
+        assertEquals(listOf("local.async"), executor.availableTools().map { it.id })
+    }
+
+
+    @Test fun agentAllowlistBlocksToolEvenWhenGlobalCapabilityIsGranted() {
+        var called = false
+        val executor = setup(handler = AgentTool {
+            called = true
+            AgentToolResult(true, "unexpected")
+        })
+        val result = executor.executeForAgent(
+            agentAllowedToolIds = setOf("local.other"),
+            request = AgentToolRequest("local.echo", AgentCapability.ANALYZE_DATA, """{"text":"hello"}"""),
+            context = lowRiskContext()
+        )
+        assertEquals(AgentToolExecutionStatus.AGENT_ALLOWLIST_DENIED, result.status)
+        assertFalse(called)
+    }
+
+    @Test fun agentAllowlistAllowsOnlySelectedToolThroughExistingCapabilityChecks() {
+        val result = setup().executeForAgent(
+            agentAllowedToolIds = setOf("local.echo"),
+            request = AgentToolRequest("local.echo", AgentCapability.ANALYZE_DATA, """{"text":"hello"}"""),
+            context = lowRiskContext()
+        )
+        assertEquals(AgentToolExecutionStatus.COMPLETED, result.status)
+        assertEquals("""ok:{"text":"hello"}""", result.result?.output)
+    }
+
+    @Test fun emptyAgentAllowlistDeniesEveryTool() {
+        var called = false
+        val executor = setup(handler = AgentTool {
+            called = true
+            AgentToolResult(true, "unexpected")
+        })
+        val result = executor.executeForAgent(
+            agentAllowedToolIds = emptySet(),
+            request = AgentToolRequest("local.echo", AgentCapability.ANALYZE_DATA, """{"text":"hello"}"""),
+            context = lowRiskContext()
+        )
+        assertEquals(AgentToolExecutionStatus.AGENT_ALLOWLIST_DENIED, result.status)
+        assertFalse(called)
+    }
+
+    @Test fun suspendingExecutionAlsoEnforcesAgentAllowlist() = kotlinx.coroutines.runBlocking {
+        val registry = AgentToolRegistry()
+        registry.register(
+            AgentToolDescriptor(
+                "local.suspend", "Асинхронный", "Тест allowlist",
+                setOf(AgentCapability.CREATE_DRAFT),
+                ToolInputSchema(listOf(ToolInputField("title", ToolInputType.STRING)))
+            )
+        )
+        var called = false
+        val executor = AgentToolExecutor(
+            registry, emptyMap(),
+            suspendingHandlers = mapOf("local.suspend" to SuspendingAgentTool {
+                called = true
+                AgentToolResult(true, "unexpected")
+            })
+        )
+        val result = executor.executeSuspendingForAgent(
+            agentAllowedToolIds = setOf("local.other"),
+            request = AgentToolRequest("local.suspend", AgentCapability.CREATE_DRAFT, """{"title":"x"}"""),
+            context = AgentToolExecutionContext(setOf(AgentCapability.CREATE_DRAFT))
+        )
+        assertEquals(AgentToolExecutionStatus.AGENT_ALLOWLIST_DENIED, result.status)
+        assertFalse(called)
+    }
+
 }

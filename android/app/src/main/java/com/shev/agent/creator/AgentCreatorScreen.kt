@@ -58,6 +58,47 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
         }
         item {
             Card(shape = RoundedCornerShape(22.dp)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Откуда берётся ИИ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "ВАЖНО: текущий конструктор создаёт паспорта через локальную LiteRT-LM модель на телефоне. Он пока НЕ использует Codex App Server, OpenRouter, Gemini или OpenAI API, даже если они подключены для основного чата.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        when {
+                            modelState.ready -> "Источник конструктора: локальная модель · запущена"
+                            modelState.verified -> "Источник конструктора: локальная модель · файл установлен, но модель не запущена"
+                            else -> "Источник конструктора: локальная модель · модель ещё не установлена"
+                        },
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (modelState.ready) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text("Инструменты с реальными обработчиками:", fontWeight = FontWeight.SemiBold)
+                    val availableTools = modelViewModel.availableAgentTools()
+                    if (availableTools.isEmpty()) {
+                        Text(
+                            "Каталог появится после успешного запуска локального исполнителя.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        availableTools.forEach { tool ->
+                            Text(
+                                "• ${tool.title} (${tool.id}) — ${tool.description}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                    Text(
+                        "Сам конструктор работает без инструментов. Список выше — каталог реально работающих адаптеров приложения, но привязка инструментов к отдельным специалистам пока не реализована. Поэтому первый запуск специалистов ограничен локальным офлайн-режимом без инструментов и побочных действий.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+        item {
+            Card(shape = RoundedCornerShape(22.dp)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Создать нового агента", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(
@@ -77,7 +118,8 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                                 status = "Локальная модель проектирует агента…"
                                 scope.launch {
                                     try {
-                                        val knownTools = modelViewModel.availableAgentToolIds()
+                                        // F4 first slice is intentionally tool-free; host adapters are not yet bound per agent.
+                                        val knownTools = emptySet<String>()
                                         val creation = AgentCreator().createDraft(
                                             userRequest = request,
                                             knownToolIds = knownTools,
@@ -165,30 +207,35 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
             Text("Пока нет созданных агентов. Первый паспорт появится здесь после проектирования.")
         }
         items(definitions, key = { it.agentId }) { definition ->
-            AgentDefinitionCard(definition) {
-                scope.launch {
-                    try {
-                        val approvedManifest = AgentManifestParser.parse(definition.manifestJson)
-                            .copy(status = AgentManifest.STATUS_APPROVED)
-                        dao.saveAgentDefinition(
-                            definition.copy(
-                                manifestJson = Gson().toJson(approvedManifest),
-                                status = AgentManifest.STATUS_APPROVED,
-                                updatedAtEpochMillis = System.currentTimeMillis()
+            AgentDefinitionCard(
+                definition = definition,
+                canRun = modelState.ready,
+                onApprove = {
+                    scope.launch {
+                        try {
+                            val approvedManifest = AgentManifestParser.parse(definition.manifestJson)
+                                .copy(status = AgentManifest.STATUS_APPROVED)
+                            dao.saveAgentDefinition(
+                                definition.copy(
+                                    manifestJson = Gson().toJson(approvedManifest),
+                                    status = AgentManifest.STATUS_APPROVED,
+                                    updatedAtEpochMillis = System.currentTimeMillis()
+                                )
                             )
-                        )
-                        status = "Паспорт одобрен тобой. Агент пока не активирован и не выполняет действия."
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (failure: Exception) {
-                        status = "Не удалось одобрить паспорт: ${failure.message ?: "ошибка"}"
+                            status = "Паспорт одобрен. Специалиста можно запускать вручную в ограниченном офлайн-режиме без инструментов."
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            status = "Не удалось одобрить паспорт: ${failure.message ?: "ошибка"}"
+                        }
                     }
-                }
-            }
+                },
+                onRun = { input -> modelViewModel.runApprovedSpecialist(definition.manifestJson, input) }
+            )
         }
         item {
             Text(
-                "Безопасность: создание паспорта не активирует агента. Исполнение специализированных агентов, выдача им инструментов и изменение данных будут подключаться отдельным проверяемым этапом. До этого момента ни один созданный паспорт не может выполнять действия.",
+                "Безопасность: одобрение не включает постоянную автономную работу. Сейчас одобренного специалиста можно запускать только вручную, локально и без инструментов, сети, файлового доступа или изменения данных. Привязка инструментов, evaluator и постоянная активация будут отдельными этапами с повторной проверкой разрешений.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -197,9 +244,19 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
 }
 
 @Composable
-private fun AgentDefinitionCard(definition: AgentDefinitionEntity, onApprove: () -> Unit) {
+private fun AgentDefinitionCard(
+    definition: AgentDefinitionEntity,
+    canRun: Boolean,
+    onApprove: () -> Unit,
+    onRun: suspend (String) -> String
+) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var exportStatus by remember(definition.agentId) { mutableStateOf<String?>(null) }
+    var runInput by remember(definition.agentId) { mutableStateOf("") }
+    var runOutput by remember(definition.agentId) { mutableStateOf<String?>(null) }
+    var runError by remember(definition.agentId) { mutableStateOf<String?>(null) }
+    var running by remember(definition.agentId) { mutableStateOf(false) }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/markdown")) { uri ->
         if (uri == null) {
             exportStatus = "Экспорт отменён. Черновик сохранён в приложении."
@@ -242,7 +299,56 @@ private fun AgentDefinitionCard(definition: AgentDefinitionEntity, onApprove: ()
             if (definition.status == AgentManifest.STATUS_DRAFT) {
                 Button(onClick = onApprove) { Text("Одобрить паспорт") }
             } else {
-                Text("Ожидает подключения безопасного runtime.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Статус: одобрен · запуск только вручную", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+            if (manifest != null && definition.status == AgentManifest.STATUS_APPROVED) {
+                val runDecision = AgentRunPolicy.evaluate(manifest)
+                if (!runDecision.allowed) {
+                    Text(
+                        runDecision.reason ?: "Запуск недоступен.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = runInput,
+                        onValueChange = { runInput = it; runError = null },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        maxLines = 5,
+                        label = { Text("Задача для специалиста") },
+                        placeholder = { Text("Опиши конкретную задачу…") },
+                        enabled = !running
+                    )
+                    Button(
+                        enabled = canRun && !running && runInput.isNotBlank(),
+                        onClick = {
+                            running = true
+                            runOutput = null
+                            runError = null
+                            scope.launch {
+                                try {
+                                    runOutput = onRun(runInput.trim())
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (failure: Exception) {
+                                    runError = failure.message ?: "Не удалось выполнить задачу."
+                                } finally {
+                                    running = false
+                                }
+                            }
+                        }
+                    ) { Text(if (running) "Выполняю…" else "Запустить специалиста") }
+                    if (!canRun) {
+                        Text("Сначала запусти локальную модель SheV.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (running) CircularProgressIndicator()
+                    runError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    runOutput?.let {
+                        Text("Результат запуска", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text(it, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
         }
     }

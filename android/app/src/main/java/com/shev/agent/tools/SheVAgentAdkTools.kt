@@ -11,20 +11,33 @@ import com.google.gson.Gson
  */
 class SheVAgentAdkTools(
     private val executor: AgentToolExecutor,
-    private val executionContext: AgentToolExecutionContext
+    private val executionContext: AgentToolExecutionContext,
+    /** Non-null for generated specialists; null is reserved for existing host-owned callers. */
+    agentAllowedToolIds: Set<String>? = null
 ) {
+    // Freeze the approved IDs when this adapter/session is created. A mutable caller-owned set
+    // must not be able to add permissions while the specialist is running.
+    private val approvedAgentToolIds: Set<String>? = agentAllowedToolIds?.toSet()
+
+    private fun execute(request: AgentToolRequest): AgentToolExecutionResult =
+        approvedAgentToolIds?.let { executor.executeForAgent(it, request, executionContext) }
+            ?: executor.execute(request, executionContext)
+
+    private suspend fun executeSuspending(request: AgentToolRequest): AgentToolExecutionResult =
+        approvedAgentToolIds?.let { executor.executeSuspendingForAgent(it, request, executionContext) }
+            ?: executor.executeSuspending(request, executionContext)
+
     @Tool(
         name = "inspect_available_agent_tools",
         description = "Lists locally registered SheV Agent tools that are safe to inspect."
     )
     fun inspectAvailableTools(): Map<String, String> {
-        val execution = executor.execute(
+        val execution = execute(
             AgentToolRequest(
                 toolId = TOOL_ID,
                 capability = AgentCapability.ANALYZE_DATA,
                 input = "{}"
-            ),
-            executionContext
+            )
         )
         val result = execution.result
         return if (execution.status == AgentToolExecutionStatus.COMPLETED && result?.success == true) {
@@ -48,13 +61,12 @@ class SheVAgentAdkTools(
     suspend fun createTaskDraft(
         @Param("Краткое описание поручения, которое пользователь явно попросил сохранить.") title: String
     ): Map<String, String> {
-        val execution = executor.executeSuspending(
+        val execution = executeSuspending(
             AgentToolRequest(
                 toolId = CREATE_TASK_DRAFT_ID,
                 capability = AgentCapability.CREATE_DRAFT,
                 input = Gson().toJson(mapOf("title" to title))
-            ),
-            executionContext
+            )
         )
         val result = execution.result
         return if (execution.status == AgentToolExecutionStatus.COMPLETED && result?.success == true) {
@@ -75,13 +87,12 @@ class SheVAgentAdkTools(
     fun getCurrentLocalTime(
         @Param("Передай строку now, чтобы получить точное текущее местное время устройства.") query: String
     ): Map<String, String> {
-        val execution = executor.execute(
+        val execution = execute(
             AgentToolRequest(
                 toolId = CURRENT_TIME_TOOL_ID,
                 capability = AgentCapability.ANALYZE_DATA,
                 input = Gson().toJson(mapOf("query" to query))
-            ),
-            executionContext
+            )
         )
         val result = execution.result
         return if (execution.status == AgentToolExecutionStatus.COMPLETED && result?.success == true) {
