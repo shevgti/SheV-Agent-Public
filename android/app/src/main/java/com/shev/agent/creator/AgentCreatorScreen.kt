@@ -34,6 +34,7 @@ import com.google.gson.Gson
 import com.shev.agent.data.AgentDao
 import com.shev.agent.data.AgentDefinitionEntity
 import com.shev.agent.model.LocalModelViewModel
+import com.shev.agent.updates.ReleaseUpdateCard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -56,6 +57,9 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                 "SheV Agent проектирует специализированных агентов по заданию, проверяет их паспорт и сохраняет паспорта локально.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+        item {
+            ReleaseUpdateCard()
         }
         item {
             Card(shape = RoundedCornerShape(22.dp)) {
