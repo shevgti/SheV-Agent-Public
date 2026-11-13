@@ -5,6 +5,7 @@ import com.google.adk.kt.sessions.SessionKey
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 class SheVAgentSessionTest {
@@ -24,5 +25,14 @@ class SheVAgentSessionTest {
 
         assertNotNull(session)
         assertEquals(SheVAgentSession.SESSION_ID, session?.key?.id)
+    }
+    @Test
+    fun creatorAttemptsAlwaysReceiveIndependentEmptySessions() {
+        val firstAttempt = SheVAgentSession.newCreatorSessionId()
+        val repairAttempt = SheVAgentSession.newCreatorSessionId()
+
+        assertNotEquals(firstAttempt, repairAttempt)
+        assert(firstAttempt.startsWith("creator-"))
+        assert(repairAttempt.startsWith("creator-"))
     }
 }

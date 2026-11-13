@@ -30,12 +30,11 @@ internal object SheVAgentSession {
     const val APP_NAME = "SheVAgent"
     const val USER_ID = "local-user"
     const val SESSION_ID = "main-session"
-    const val CREATOR_SESSION_ID = "creator-session"
-
     suspend fun initialize(sessionService: InMemorySessionService) {
         sessionService.createSession(SessionKey(APP_NAME, USER_ID, SESSION_ID))
-        sessionService.createSession(SessionKey(APP_NAME, USER_ID, CREATOR_SESSION_ID))
     }
+
+    fun newCreatorSessionId(): String = "creator-${UUID.randomUUID()}"
 }
 
 /** Owns the native model and ADK runner. */
@@ -43,6 +42,7 @@ class SheVAgentRuntime private constructor(
     private val model: LiteRtLmModel,
     private val runner: InMemoryRunner,
     private val creatorRunner: InMemoryRunner,
+    private val sessionService: InMemorySessionService,
     val backendName: String
 ) : Closeable {
     private val closed = AtomicBoolean(false)
@@ -59,12 +59,19 @@ class SheVAgentRuntime private constructor(
     }
 
     /** Tool-free creator runner: generated manifests cannot invoke host actions. */
-    fun runCreator(text: String): Flow<Event> {
+    suspend fun runCreator(text: String): Flow<Event> {
         check(!closed.get()) { "SheV Agent runtime is closed." }
         require(text.isNotBlank())
+        // Each generation attempt gets an empty session. The creator's repair retry
+        // must not append to the first attempt's KV/cache state, which may have
+        // consumed nearly all native context capacity.
+        val sessionId = SheVAgentSession.newCreatorSessionId()
+        sessionService.createSession(
+            SessionKey(SheVAgentSession.APP_NAME, SheVAgentSession.USER_ID, sessionId)
+        )
         return creatorRunner.runAsync(
             userId = SheVAgentSession.USER_ID,
-            sessionId = SheVAgentSession.CREATOR_SESSION_ID,
+            sessionId = sessionId,
             newMessage = Content(role = Role.USER, parts = listOf(Part(text = text))),
             runConfig = RunConfig(maxLlmCalls = MAX_CREATOR_LLM_CALLS)
         )
@@ -212,7 +219,7 @@ class SheVAgentRuntime private constructor(
                         sessionService = sessionService
                     )
                     creatorRunner = activeCreatorRunner
-                    return@withContext SheVAgentRuntime(activeModel, activeRunner, activeCreatorRunner, backendName)
+                    return@withContext SheVAgentRuntime(activeModel, activeRunner, activeCreatorRunner, sessionService, backendName)
                 } catch (cancelled: CancellationException) {
                     try { runner?.close() } catch (_: Throwable) { /* Preserve cancellation. */ }
                     try { creatorRunner?.close() } catch (_: Throwable) { /* Preserve cancellation. */ }
