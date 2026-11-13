@@ -340,4 +340,39 @@ class AgentToolExecutorTest {
         assertFalse(called)
     }
 
+
+    @Test fun availableToolsExcludesDescriptorsWithoutHandlersOrSchemas() {
+        val registry = AgentToolRegistry()
+        val schema = ToolInputSchema(listOf(ToolInputField("text", ToolInputType.STRING)))
+        registry.register(AgentToolDescriptor("local.ready", "Готовый", "Есть обработчик", setOf(AgentCapability.ANALYZE_DATA), schema))
+        registry.register(AgentToolDescriptor("local.unbound", "Без обработчика", "Только описание", setOf(AgentCapability.ANALYZE_DATA), schema))
+        registry.register(AgentToolDescriptor("local.no-schema", "Без схемы", "Не может пройти проверку входа", setOf(AgentCapability.ANALYZE_DATA)))
+        val executor = AgentToolExecutor(
+            registry,
+            mapOf("local.ready" to AgentTool { AgentToolResult(true, "ok") })
+        )
+        assertEquals(listOf("local.ready"), executor.availableTools().map { it.id })
+    }
+
+    @Test fun availableToolsIncludesRegisteredSuspendingHandlers() {
+        val registry = AgentToolRegistry()
+        registry.register(
+            AgentToolDescriptor(
+                "local.async",
+                "Асинхронный",
+                "Есть suspend-обработчик",
+                setOf(AgentCapability.CREATE_DRAFT),
+                ToolInputSchema(listOf(ToolInputField("title", ToolInputType.STRING)))
+            )
+        )
+        val executor = AgentToolExecutor(
+            registry,
+            emptyMap(),
+            suspendingHandlers = mapOf("local.async" to SuspendingAgentTool {
+                AgentToolResult(true, "ok")
+            })
+        )
+        assertEquals(listOf("local.async"), executor.availableTools().map { it.id })
+    }
+
 }
