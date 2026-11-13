@@ -6,6 +6,7 @@ import com.shev.agent.CapabilityPolicy
 import com.shev.agent.ScopedCapabilityGrant
 import com.shev.agent.PersistentGrantPolicy
 import com.shev.agent.PersistentGrantDecision
+import java.util.Collections
 
 data class AgentToolRequest(
     val toolId: String,
@@ -28,12 +29,31 @@ fun interface SuspendingAgentTool {
     suspend fun execute(input: String): AgentToolResult
 }
 
-data class AgentToolExecutionContext(
-    val grantedCapabilities: Set<AgentCapability>,
-    val explicitlyApprovedCapabilities: Set<AgentCapability> = emptySet(),
-    val persistentGrants: List<ScopedCapabilityGrant> = emptyList(),
-    val nowMillis: Long = System.currentTimeMillis()
-)
+/**
+ * Immutable permission snapshot for one agent session.
+ *
+ * Collections are defensively copied and wrapped so a caller cannot mutate grants or
+ * approvals after the ADK adapter has been created. A fixed clock is injectable for
+ * deterministic tests; production calls use the current time at each tool invocation.
+ *
+ * Persistent-grant revocation must be reflected by constructing a fresh session context
+ * from the authoritative grant store; this snapshot is not a live grant database.
+ */
+class AgentToolExecutionContext(
+    grantedCapabilities: Set<AgentCapability>,
+    explicitlyApprovedCapabilities: Set<AgentCapability> = emptySet(),
+    persistentGrants: List<ScopedCapabilityGrant> = emptyList(),
+    val nowMillis: Long? = null
+) {
+    val grantedCapabilities: Set<AgentCapability> =
+        Collections.unmodifiableSet(LinkedHashSet(grantedCapabilities))
+    val explicitlyApprovedCapabilities: Set<AgentCapability> =
+        Collections.unmodifiableSet(LinkedHashSet(explicitlyApprovedCapabilities))
+    val persistentGrants: List<ScopedCapabilityGrant> =
+        Collections.unmodifiableList(ArrayList(persistentGrants))
+
+    fun currentTimeMillis(): Long = nowMillis ?: System.currentTimeMillis()
+}
 
 enum class AgentToolExecutionStatus {
     COMPLETED, TOOL_NOT_FOUND, CAPABILITY_NOT_DECLARED,
@@ -109,7 +129,7 @@ class AgentToolExecutor(
 
         val persistentGrantMatches = request.resourceTarget?.let { target ->
             PersistentGrantPolicy.decide(
-                request.capability, target, context.persistentGrants, context.nowMillis
+                request.capability, target, context.persistentGrants, context.currentTimeMillis()
             ) == PersistentGrantDecision.ALLOW
         } ?: false
         val hasGrant = request.capability in context.grantedCapabilities || persistentGrantMatches
@@ -166,7 +186,7 @@ class AgentToolExecutor(
 
         val persistentGrantMatches = request.resourceTarget?.let { target ->
             PersistentGrantPolicy.decide(
-                request.capability, target, context.persistentGrants, context.nowMillis
+                request.capability, target, context.persistentGrants, context.currentTimeMillis()
             ) == PersistentGrantDecision.ALLOW
         } ?: false
         val hasGrant = request.capability in context.grantedCapabilities || persistentGrantMatches
