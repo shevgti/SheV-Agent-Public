@@ -33,8 +33,7 @@ class SheVAgentAdkTools(
                 toolId = TOOL_ID,
                 capability = AgentCapability.ANALYZE_DATA,
                 input = "{}"
-            ),
-            executionContext
+            )
         )
         val result = execution.result
         return if (execution.status == AgentToolExecutionStatus.COMPLETED && result?.success == true) {
@@ -63,8 +62,7 @@ class SheVAgentAdkTools(
                 toolId = CREATE_TASK_DRAFT_ID,
                 capability = AgentCapability.CREATE_DRAFT,
                 input = Gson().toJson(mapOf("title" to title))
-            ),
-            executionContext
+            )
         )
         val result = execution.result
         return if (execution.status == AgentToolExecutionStatus.COMPLETED && result?.success == true) {
@@ -85,13 +83,12 @@ class SheVAgentAdkTools(
     fun getCurrentLocalTime(
         @Param("Передай строку now, чтобы получить точное текущее местное время устройства.") query: String
     ): Map<String, String> {
-        val execution = executor.execute(
+        val execution = execute(
             AgentToolRequest(
                 toolId = CURRENT_TIME_TOOL_ID,
                 capability = AgentCapability.ANALYZE_DATA,
                 input = Gson().toJson(mapOf("query" to query))
-            ),
-            executionContext
+            )
         )
         val result = execution.result
         return if (execution.status == AgentToolExecutionStatus.COMPLETED && result?.success == true) {
