@@ -11,14 +11,14 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-data class ReleaseInfo(val version: String, val apkUrl: String, val checksumUrl: String)
+data class ReleaseInfo(val version: String, val versionCode: Int, val apkUrl: String, val checksumUrl: String)
 
 object ReleaseUpdater {
     const val RELEASE_REPOSITORY = "shevgti/SheV-Agent-Public"
     private const val APK_ASSET = "app-debug.apk"
     private const val CHECKSUM_ASSET = "app-debug.apk.sha256"
 
-    suspend fun check(currentVersion: String): ReleaseInfo? = withContext(Dispatchers.IO) {
+    suspend fun check(currentVersionCode: Int): ReleaseInfo? = withContext(Dispatchers.IO) {
         val connection = (URL("https://api.github.com/repos/$RELEASE_REPOSITORY/releases/latest")
             .openConnection() as HttpURLConnection).apply {
             connectTimeout = 10_000
@@ -30,8 +30,12 @@ object ReleaseUpdater {
             if (connection.responseCode == 404) return@withContext null
             check(connection.responseCode in 200..299) { "GitHub: HTTP ${connection.responseCode}" }
             val release = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+            if (release.optBoolean("draft") || release.optBoolean("prerelease")) return@withContext null
             val version = release.optString("tag_name").removePrefix("v")
-            if (version.isBlank() || compareVersions(version, currentVersion) <= 0) return@withContext null
+            val versionCode = Regex("""(?im)^\s*versionCode:\s*(\d+)\s*$""")
+                .find(release.optString("body"))?.groupValues?.get(1)?.toIntOrNull()
+                ?: error("В релизе отсутствует проверенный versionCode")
+            if (version.isBlank() || versionCode <= currentVersionCode) return@withContext null
             val assets = release.getJSONArray("assets")
             var apk: String? = null
             var checksum: String? = null
@@ -43,7 +47,7 @@ object ReleaseUpdater {
                 }
             }
             if (apk.isNullOrBlank() || checksum.isNullOrBlank()) error("В релизе отсутствует APK или SHA-256")
-            ReleaseInfo(version, apk!!, checksum!!)
+            ReleaseInfo(version, versionCode, apk!!, checksum!!)
         } finally {
             connection.disconnect()
         }
@@ -197,15 +201,6 @@ object ReleaseUpdater {
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
-    private fun compareVersions(left: String, right: String): Int {
-        val a = left.split('.').map { it.toIntOrNull() ?: 0 }
-        val b = right.split('.').map { it.toIntOrNull() ?: 0 }
-        for (i in 0 until maxOf(a.size, b.size)) {
-            val result = a.getOrElse(i) { 0 }.compareTo(b.getOrElse(i) { 0 })
-            if (result != 0) return result
-        }
-        return 0
-    }
 
     private const val MAX_REDIRECTS = 5
     private const val DOWNLOAD_ATTEMPTS = 3
