@@ -57,13 +57,14 @@ class SheVAgentAdkToolsTest {
                 AgentToolResult(true, "unexpected")
             })
         )
-        val mutableGrants = mutableSetOf(SheVAgentAdkTools.TOOL_ID)
+        val mutableGrants = mutableSetOf<String>()
         val adapter = SheVAgentAdkTools(
             executor = executor,
             executionContext = AgentToolExecutionContext(setOf(AgentCapability.ANALYZE_DATA)),
             agentAllowedToolIds = mutableGrants
         )
-        mutableGrants.clear()
+        // Adding an ID after adapter creation must not grant a new tool to this session.
+        mutableGrants.add(SheVAgentAdkTools.TOOL_ID)
 
         val result = adapter.inspectAvailableTools()
 
