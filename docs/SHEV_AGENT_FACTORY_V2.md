@@ -167,3 +167,13 @@ Verification:
 - Test fixture was corrected to use a valid optional-field schema; `ToolInputSchema` intentionally rejects empty field lists.
 - Latest commits: `14f2d4d9be835e0dd8a59fcf468e650f50c8e002` (adapter routing), `283bdfe78031778f8e58e2bd95f9c1d828ad51e6` (route all three ADK entry points), `9b11fa1320b20e85566720faaacc3e20db119cf9` (valid test schema).
 - CI remains unverified for the latest head; the previous #525 run was cancelled and no replacement run is currently visible through the connected GitHub workflow-run query.
+
+
+### F2 security hardening — immutable adapter allowlist snapshot (2026-11-13)
+
+- Added a regression test that passes a mutable tool-ID set to `SheVAgentAdkTools`, clears that caller-owned set after adapter construction, and asserts the tool remains denied and its handler is never invoked.
+- The adapter now copies the supplied IDs with `toSet()` at construction and uses only that private snapshot for all synchronous and suspending ADK calls.
+- This closes a time-of-check/time-of-use permission escalation path where caller mutation could otherwise grant a new tool during a live session.
+- Test-first commit: `9cb2e582c981797a28ba5457f01c1ccd6d9f74f1`; implementation commit: `066505b23cd0ad9dcffae187e0b2a271b04fc8b8`.
+- Diff reviewed. Tests are authored but not yet executed; no successful CI result for this change is available.
+- The existing exact-head run #533 (`43461225559`) is still building ARM64 Codex App Server from an earlier PR head; steps through Rust toolchain, Android linker, dependency patch and cache succeeded, while the native Cargo build remains in progress. It does not verify these latest Kotlin changes.
