@@ -12,6 +12,7 @@ import com.google.gson.Gson
 class SheVAgentAdkTools(
     private val executor: AgentToolExecutor,
     private val executionContext: AgentToolExecutionContext,
+    private val weatherTool: OpenMeteoWeatherTool = OpenMeteoWeatherTool(),
     /** Non-null for generated specialists; null is reserved for existing host-owned callers. */
     agentAllowedToolIds: Set<String>? = null
 ) {
@@ -102,9 +103,37 @@ class SheVAgentAdkTools(
         }
     }
 
+
+    @Tool(
+        name = "get_current_weather",
+        description = "Получает актуальную погоду в указанном городе через публичный онлайн-сервис. Вызывай для вопросов о текущей погоде и прогнозе на сегодня. Передай только название города; не выдумывай погодные данные."
+    )
+    suspend fun getCurrentWeather(
+        @Param("Название города на русском или английском языке, например Мытищи.") city: String
+    ): Map<String, String> {
+        val execution = executeSuspending(
+            AgentToolRequest(
+                toolId = WEATHER_TOOL_ID,
+                capability = AgentCapability.READ_REMOTE_DATA,
+                input = Gson().toJson(mapOf("city" to city))
+            )
+        )
+        val result = execution.result
+        return if (execution.status == AgentToolExecutionStatus.COMPLETED && result?.success == true) {
+            mapOf("status" to "ok", "weather" to result.output)
+        } else {
+            mapOf(
+                "status" to "unavailable",
+                "reason" to execution.status.name,
+                "message" to (result?.errorCode ?: "Не удалось получить погоду.")
+            )
+        }
+    }
+
     companion object {
         const val TOOL_ID = "agent.inspect_tools"
         const val CURRENT_TIME_TOOL_ID = "agent.current_local_time"
         const val CREATE_TASK_DRAFT_ID = "agent.create_task_draft"
+        const val WEATHER_TOOL_ID = "agent.current_weather"
     }
 }
