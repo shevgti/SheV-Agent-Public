@@ -113,3 +113,23 @@ No screen should say "agent created" when only a manifest or Markdown file exist
 
 ## Missing source material
 The Instagram tutorial video referenced in prior conversations is not currently present in the accessible files for this task. The redesign above is grounded in the actual repository source and existing architecture docs, not a claim that the exact video was re-read. If the exact clip is reattached, compare its workflow and tool stack against this contract before finalizing.
+
+
+## F4 implementation update — first constrained runtime slice (2026-11-13)
+
+Implemented on the existing feature branch:
+- An explicitly approved specialist can now be run manually from its card.
+- The runtime creates an isolated ADK session and a specialist runner that reuses the already-loaded LiteRT-LM model; it does not load a second copy of the model.
+- The first runtime is deliberately tool-free, offline, and side-effect-free. The model receives only the manifest role/instructions/process/output format and the user's task.
+- Input is capped at 8,000 characters, output at 16,000 characters, model calls at the manifest's bounded limit, and timeout at 10–600 seconds.
+- The run policy revalidates the manifest and rejects DRAFT, tool-bearing, network-enabled, or side-effect-enabled agents.
+- The UI makes clear that approval does not create a permanently active autonomous agent. Each run is a manual invocation.
+
+Still NOT implemented:
+- per-agent tool binding/allowlist enforcement;
+- behavioral evaluator of generated specialists;
+- immutable version snapshots and rollback;
+- persistent ACTIVE/PAUSED runtime registry;
+- run event/audit persistence and multi-agent orchestration.
+
+This is a real first execution path for pure reasoning specialists, not the completed factory. CI and device-level model execution must pass before claiming the feature works on a phone.
