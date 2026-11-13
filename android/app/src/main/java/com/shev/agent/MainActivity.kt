@@ -21,6 +21,9 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Card
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.remember
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
@@ -38,6 +41,7 @@ import com.shev.agent.model.LocalModelPanel
 import com.shev.agent.model.LocalModelViewModel
 import com.shev.agent.tools.GitHubAuthCard
 import com.shev.agent.tools.ToolWorkshopScreen
+import com.shev.agent.updates.ReleaseUpdateCard
 import com.shev.agent.update.UpdateCheckWorker
 
 /**
@@ -147,7 +151,7 @@ class MainActivity : ComponentActivity() {
 private enum class SheVAgentTab(val label: String, val glyph: String) {
     CREATOR("Создатель", "✧"),
     CHAT("Чат", "◉"),
-    TOOLS("Инструменты", "⚙")
+    TOOLS("Настройки", "⚙")
 }
 
 @Composable
@@ -177,12 +181,42 @@ private fun SheVAgentApp(
             SheVAgentTab.CHAT -> Box(Modifier.fillMaxSize().padding(inset)) {
                 LocalModelPanel(chatViewModel)
             }
-            SheVAgentTab.TOOLS -> Column(
-                Modifier.fillMaxSize().padding(inset).verticalScroll(rememberScrollState()).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                GitHubAuthCard()
-                ToolWorkshopScreen()
+            SheVAgentTab.TOOLS -> SettingsScreen(
+                modifier = Modifier.fillMaxSize().padding(inset)
+            )
+        }
+    }
+}
+
+
+@Composable
+private fun SettingsScreen(modifier: Modifier = Modifier) {
+    var showGitHub by rememberSaveable { mutableStateOf(false) }
+    var showWorkshop by rememberSaveable { mutableStateOf(false) }
+    Column(
+        modifier.verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text("Настройки", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            "Обновление приложения и дополнительные подключения.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        ReleaseUpdateCard()
+        Card {
+            Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                TextButton(onClick = { showGitHub = !showGitHub }) {
+                    Text(if (showGitHub) "Скрыть подключение GitHub" else "Подключение GitHub")
+                }
+                if (showGitHub) GitHubAuthCard()
+            }
+        }
+        Card {
+            Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                TextButton(onClick = { showWorkshop = !showWorkshop }) {
+                    Text(if (showWorkshop) "Скрыть мастерскую инструментов" else "Дополнительно: мастерская инструментов")
+                }
+                if (showWorkshop) ToolWorkshopScreen()
             }
         }
     }
