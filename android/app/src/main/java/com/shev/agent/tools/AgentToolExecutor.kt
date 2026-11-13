@@ -69,7 +69,7 @@ class AgentToolExecutor(
     }
 
     /**
-     * Executes a tool only when its ID is explicitly present in this agent's immutable run allowlist.
+     * Executes a tool only when its ID is explicitly present in this agent's approved run allowlist snapshot.
      * The allowlist is checked before registry lookup; capability grants and per-action approvals
      * are still independently enforced by [execute].
      */
