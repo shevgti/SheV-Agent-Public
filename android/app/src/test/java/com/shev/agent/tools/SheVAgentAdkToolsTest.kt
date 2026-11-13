@@ -14,7 +14,7 @@ class SheVAgentAdkToolsTest {
                 "Каталог инструментов",
                 "Показывает доступные инструменты",
                 setOf(AgentCapability.ANALYZE_DATA),
-                ToolInputSchema(emptyList())
+                ToolInputSchema(listOf(ToolInputField("query", ToolInputType.STRING, required = false)))
             )
         )
         var called = false
