@@ -73,12 +73,24 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                         fontWeight = FontWeight.SemiBold,
                         color = if (modelState.ready) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Text("Системные инструменты, реально разрешённые конструктору:", fontWeight = FontWeight.SemiBold)
-                    Text("• agent.inspect_tools — просмотр зарегистрированного каталога инструментов")
-                    Text("• agent.current_local_time — получение местного времени")
-                    Text("• agent.create_task_draft — создание черновика поручения")
+                    Text("Инструменты с реальными обработчиками:", fontWeight = FontWeight.SemiBold)
+                    val availableTools = modelViewModel.availableAgentTools()
+                    if (availableTools.isEmpty()) {
+                        Text(
+                            "Каталог появится после успешного запуска локального исполнителя.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        availableTools.forEach { tool ->
+                            Text(
+                                "• ${tool.title} (${tool.id}) — ${tool.description}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
                     Text(
-                        "Это не полный набор возможностей Android и не инструменты внешних сервисов. Созданные специалисты пока не получают эти инструменты и не запускаются. Для каждого доступа нужны отдельная реализация, разрешение и проверка.",
+                        "Сам конструктор работает без инструментов. Здесь показаны только инструменты приложения, для которых зарегистрированы схема и исполняемый обработчик. Это ещё не означает, что созданный специалист может ими пользоваться: runtime специалистов и индивидуальные разрешения пока не подключены.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
