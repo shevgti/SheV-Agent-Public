@@ -171,4 +171,42 @@ $json
         assertFalse(sideEffect.allowed)
     }
 
+
+    @Test fun creatorRetriesOnceWhenModelReturnsMalformedJson() = runBlocking {
+        val valid = com.google.gson.Gson().toJson(validManifest())
+        var calls = 0
+        val result = AgentCreator().createDraft(
+            userRequest = "Изучи мой телефон",
+            knownToolIds = setOf("agent.inspect_tools"),
+            existingAgentIds = emptySet(),
+            generate = { prompt ->
+                calls += 1
+                if (calls == 1) """{"triggeringExamples":[{"user":"неэкранированная "кавычка"}]}"""
+                else {
+                    assertTrue(prompt.contains("Исправь синтаксис JSON"))
+                    assertTrue(prompt.contains("Некорректный ответ"))
+                    valid
+                }
+            }
+        )
+        assertEquals(2, calls)
+        assertTrue(result is AgentCreationResult.Created)
+    }
+
+    @Test fun creatorRejectsMalformedJsonAfterSingleRepairAttempt() = runBlocking {
+        var calls = 0
+        val result = AgentCreator().createDraft(
+            userRequest = "Изучи мой телефон",
+            knownToolIds = emptySet(),
+            existingAgentIds = emptySet(),
+            generate = {
+                calls += 1
+                """{"triggeringExamples":[{"user":"broken "quote"}]}"""
+            }
+        )
+        assertEquals(2, calls)
+        assertTrue(result is AgentCreationResult.Rejected)
+        assertEquals("INVALID_MODEL_OUTPUT", (result as AgentCreationResult.Rejected).reason)
+    }
+
 }
