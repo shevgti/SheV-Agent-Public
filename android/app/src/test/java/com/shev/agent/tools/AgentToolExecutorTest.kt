@@ -442,4 +442,71 @@ class AgentToolExecutorTest {
         assertFalse(called)
     }
 
+
+    @Test fun executionContextDefensivelyCopiesMutablePermissionCollections() {
+        val granted = mutableSetOf(AgentCapability.ANALYZE_DATA)
+        val approved = mutableSetOf(AgentCapability.WRITE_PROJECT_FILES)
+        val grants = mutableListOf<ScopedCapabilityGrant>()
+        val context = AgentToolExecutionContext(granted, approved, grants)
+
+        granted.clear()
+        approved.clear()
+        grants += ScopedCapabilityGrant(
+            grantId = "late-grant",
+            capability = AgentCapability.DELETE_OR_OVERWRITE_DATA,
+            scopeType = GrantScopeType.PROJECT,
+            scopeValue = "repo:unexpected",
+            createdAtMillis = 1,
+            expiresAtMillis = null
+        )
+
+        assertTrue(AgentCapability.ANALYZE_DATA in context.grantedCapabilities)
+        assertTrue(AgentCapability.WRITE_PROJECT_FILES in context.explicitlyApprovedCapabilities)
+        assertTrue(context.persistentGrants.isEmpty())
+    }
+
+    @Test fun executionContextPermissionSnapshotsCannotBeMutatedThroughCasts() {
+        val context = AgentToolExecutionContext(
+            setOf(AgentCapability.ANALYZE_DATA),
+            setOf(AgentCapability.WRITE_PROJECT_FILES)
+        )
+
+        try {
+            (context.grantedCapabilities as MutableSet).clear()
+            fail("Granted capabilities must be immutable")
+        } catch (_: UnsupportedOperationException) {
+            // Expected: the execution context exposes an immutable snapshot.
+        }
+        try {
+            (context.explicitlyApprovedCapabilities as MutableSet).clear()
+            fail("Explicit approvals must be immutable")
+        } catch (_: UnsupportedOperationException) {
+            // Expected: the execution context exposes an immutable snapshot.
+        }
+    }
+
+    @Test fun persistentGrantExpiryUsesCurrentTimeWhenNoFixedTestClockIsProvided() {
+        val grant = ScopedCapabilityGrant(
+            grantId = "already-expired",
+            capability = AgentCapability.WRITE_PROJECT_FILES,
+            scopeType = GrantScopeType.PROJECT,
+            scopeValue = "repo:SheV-Agent-Public",
+            createdAtMillis = 1,
+            expiresAtMillis = 1
+        )
+        val result = setup().execute(
+            AgentToolRequest(
+                "local.echo",
+                AgentCapability.WRITE_PROJECT_FILES,
+                """{"text":"change"}""",
+                "repo:SheV-Agent-Public"
+            ),
+            AgentToolExecutionContext(
+                grantedCapabilities = emptySet(),
+                persistentGrants = listOf(grant)
+            )
+        )
+        assertEquals(AgentToolExecutionStatus.ACCESS_DENIED, result.status)
+    }
+
 }
