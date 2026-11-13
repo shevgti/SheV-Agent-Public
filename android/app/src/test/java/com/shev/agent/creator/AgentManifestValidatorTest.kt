@@ -126,7 +126,7 @@ $json
         val prompt = AgentCreatorPromptBuilder.build("Нужен исследователь", setOf("agent.inspect_tools"))
         assertTrue(prompt.contains("clarifyingQuestions"))
         assertTrue(prompt.contains("triggeringExamples"))
-        assertTrue(prompt.contains("When to invoke"))
+        assertTrue(prompt.contains("description"))
         assertTrue(prompt.contains("НЕ помещай host tool IDs"))
         assertTrue(prompt.contains("claudeCodeTools"))
     }
