@@ -1421,7 +1421,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     suspend fun runApprovedSpecialist(manifestJson: String, input: String): String {
         require(input.isNotBlank()) { "Опиши задачу для специалиста." }
         val manifest = AgentManifestParser.parse(manifestJson)
-        val decision = AgentRunPolicy.evaluate(manifest)
+        val decision = AgentRunPolicy.evaluate(manifest, availableAgentToolIds())
         check(decision.allowed) { decision.reason ?: "Запуск специалиста запрещён политикой." }
         val active = runtime ?: throw IllegalStateException("Сначала запусти локальную модель SheV.")
         if (mutableState.value.busy) {
