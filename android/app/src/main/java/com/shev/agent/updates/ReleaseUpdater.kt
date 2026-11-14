@@ -23,31 +23,16 @@ object ReleaseUpdater {
             .openConnection() as HttpURLConnection).apply {
             connectTimeout = 10_000
             readTimeout = 15_000
+            useCaches = false
             setRequestProperty("Accept", "application/vnd.github+json")
+            setRequestProperty("User-Agent", "SheV-Agent-Android")
             setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+            setRequestProperty("Cache-Control", "no-cache")
         }
         try {
-            if (connection.responseCode == 404) return@withContext null
             check(connection.responseCode in 200..299) { "GitHub: HTTP ${connection.responseCode}" }
             val release = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-            if (release.optBoolean("draft") || release.optBoolean("prerelease")) return@withContext null
-            val version = release.optString("tag_name").removePrefix("v")
-            val versionCode = Regex("""(?im)^\s*versionCode:\s*(\d+)\s*$""")
-                .find(release.optString("body"))?.groupValues?.get(1)?.toIntOrNull()
-                ?: error("В релизе отсутствует проверенный versionCode")
-            if (version.isBlank() || versionCode <= currentVersionCode) return@withContext null
-            val assets = release.getJSONArray("assets")
-            var apk: String? = null
-            var checksum: String? = null
-            for (i in 0 until assets.length()) {
-                val asset = assets.getJSONObject(i)
-                when (asset.optString("name")) {
-                    APK_ASSET -> apk = asset.optString("browser_download_url")
-                    CHECKSUM_ASSET -> checksum = asset.optString("browser_download_url")
-                }
-            }
-            if (apk.isNullOrBlank() || checksum.isNullOrBlank()) error("В релизе отсутствует APK или SHA-256")
-            ReleaseInfo(version, versionCode, apk!!, checksum!!)
+            ReleaseManifestParser.parse(release, currentVersionCode)
         } finally {
             connection.disconnect()
         }
