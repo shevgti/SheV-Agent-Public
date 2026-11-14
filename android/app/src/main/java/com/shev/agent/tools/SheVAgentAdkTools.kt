@@ -104,6 +104,29 @@ class SheVAgentAdkTools(
 
 
     @Tool(
+        name = "search_web",
+        description = "Ищет актуальную информацию в публичном интернете и возвращает до пяти заголовков, ссылок и сниппетов. Не утверждай, что прочитал полные страницы."
+    )
+    suspend fun searchWeb(
+        @Param("Поисковый запрос на русском или английском языке, от 2 до 200 символов.") query: String
+    ): Map<String, String> {
+        val execution = executeSuspending(
+            AgentToolRequest(
+                toolId = WEB_SEARCH_TOOL_ID,
+                capability = AgentCapability.READ_REMOTE_DATA,
+                input = Gson().toJson(mapOf("query" to query))
+            )
+        )
+        val result = execution.result
+        return if (execution.status == AgentToolExecutionStatus.COMPLETED && result?.success == true) {
+            mapOf("status" to "ok", "results" to result.output)
+        } else {
+            mapOf("status" to "unavailable", "reason" to execution.status.name,
+                "message" to (result?.errorCode ?: "Поиск не выполнен."))
+        }
+    }
+
+    @Tool(
         name = "get_current_weather",
         description = "Получает актуальную погоду в указанном городе через публичный онлайн-сервис. Вызывай для вопросов о текущей погоде и прогнозе на сегодня. Передай только название города; не выдумывай погодные данные."
     )
@@ -134,5 +157,6 @@ class SheVAgentAdkTools(
         const val CURRENT_TIME_TOOL_ID = "agent.current_local_time"
         const val CREATE_TASK_DRAFT_ID = "agent.create_task_draft"
         const val WEATHER_TOOL_ID = "agent.current_weather"
+        const val WEB_SEARCH_TOOL_ID = "agent.web_search"
     }
 }
