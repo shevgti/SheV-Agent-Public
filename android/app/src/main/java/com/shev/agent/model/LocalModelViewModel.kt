@@ -494,7 +494,6 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             try {
                 val tools = createAgentToolHost()
                 runtime = SheVAgentRuntime.load(getApplication(), store, tools)
-                toolExecutor = executor
                 mutableState.update { it.copy(ready = true, backendName = runtime?.backendName) }
             } catch (cancelled: CancellationException) {
                 throw cancelled
