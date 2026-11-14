@@ -41,6 +41,7 @@ object AgentCreatorPromptBuilder {
             - memoryReadScopes и memoryWriteScopes всегда []; networkPolicy="OFFLINE"; sideEffectPolicy="DRAFT_ONLY".
             - Не запрашивай секреты, shell, произвольный код, скрытую сеть или обход подтверждений.
             - Паспорт описывает специалиста, но не выдаёт ему разрешения и не запускает его.
+            - inputSchema и outputSchema должны быть JSON-объектами прямо внутри паспорта, НЕ строками с вложенным JSON. Используй простые схемы без регулярных выражений и обратных слешей; достаточно type, properties и required.
 
             СОХРАНЁННЫЕ СПЕЦИАЛИСТЫ: $existing
             HOST TOOLS (только allowlist): $tools
@@ -61,8 +62,8 @@ object AgentCreatorPromptBuilder {
               "outputFormat": "Структура ответа.",
               "triggers": ["Сценарий 1", "Сценарий 2"],
               "triggeringExamples": [],
-              "inputSchema": "{\"type\":\"object\",\"properties\":{},\"required\":[]}",
-              "outputSchema": "{\"type\":\"object\",\"properties\":{},\"required\":[]}",
+              "inputSchema": {"type":"object","properties":{},"required":[]},
+              "outputSchema": {"type":"object","properties":{},"required":[]},
               "allowedToolIds": [],
               "claudeCodeTools": [],
               "memoryReadScopes": [],
