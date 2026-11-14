@@ -225,7 +225,7 @@ $json
         assertTrue(prompt.contains("clarifyingQuestions"))
         assertTrue(prompt.contains("triggeringExamples"))
         assertTrue(prompt.contains("description"))
-        assertTrue(prompt.contains("HOST TOOLS (не используй"))
+        assertTrue(prompt.contains("HOST TOOLS (можешь выбрать только из этих ID"))
         assertTrue(prompt.contains("claudeCodeTools"))
     }
 
@@ -277,13 +277,29 @@ $json
     }
 
     @Test fun specialistWithRequestedToolsCannotRunBeforeBindingExists() {
-        val decision = AgentRunPolicy.evaluate(
-            validManifest().copy(
-                status = AgentManifest.STATUS_APPROVED,
-                allowedToolIds = listOf("agent.inspect_tools")
-            )
+        val manifest = validManifest().copy(
+            status = AgentManifest.STATUS_APPROVED,
+            allowedToolIds = listOf("agent.inspect_tools")
         )
-        assertFalse(decision.allowed)
+        assertFalse(AgentRunPolicy.evaluate(manifest).allowed)
+        assertTrue(AgentRunPolicy.evaluate(manifest, setOf("agent.inspect_tools")).allowed)
+    }
+
+    @Test fun specialistMayUseRegisteredReadOnlyNetworkToolsOnlyWithReadOnlyPolicy() {
+        val manifest = validManifest().copy(
+            status = AgentManifest.STATUS_APPROVED,
+            allowedToolIds = listOf("agent.web_search"),
+            networkPolicy = "READ_ONLY"
+        )
+        assertTrue(AgentRunPolicy.evaluate(manifest, setOf("agent.web_search")).allowed)
+        assertFalse(AgentRunPolicy.evaluate(
+            manifest.copy(networkPolicy = "OFFLINE"),
+            setOf("agent.web_search")
+        ).allowed)
+        assertFalse(AgentRunPolicy.evaluate(
+            manifest,
+            setOf("agent.inspect_tools")
+        ).allowed)
     }
 
     @Test fun specialistWithNetworkOrSideEffectsCannotRun() {
