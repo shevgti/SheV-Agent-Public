@@ -92,7 +92,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                         }
                     }
                     Text(
-                        "Сам конструктор работает без инструментов. Список выше — каталог реально работающих адаптеров приложения, но привязка инструментов к отдельным специалистам пока не реализована. Поэтому первый запуск специалистов ограничен локальным офлайн-режимом без инструментов и побочных действий.",
+                        "Сам конструктор работает без инструментов. Список выше — каталог инструментов с реальными обработчиками. При создании паспорта модель может выбрать только эти инструменты; после твоего одобрения специалист получит только выбранный allowlist.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -120,8 +120,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                                 status = "Локальная модель проектирует агента…"
                                 scope.launch {
                                     try {
-                                        // F4 first slice is intentionally tool-free; host adapters are not yet bound per agent.
-                                        val knownTools = emptySet<String>()
+                                        val knownTools = modelViewModel.availableAgentToolIds()
                                         val creation = AgentCreator().createDraft(
                                             userRequest = request,
                                             knownToolIds = knownTools,
@@ -235,7 +234,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                                     updatedAtEpochMillis = System.currentTimeMillis()
                                 )
                             )
-                            status = "Паспорт одобрен. Специалиста можно запускать вручную в ограниченном офлайн-режиме без инструментов."
+                            status = "Паспорт одобрен. Специалист запускается вручную и получает только перечисленные в паспорте инструменты."
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (failure: Exception) {
@@ -248,7 +247,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
         }
         item {
             Text(
-                "Безопасность: одобрение не включает постоянную автономную работу. Сейчас одобренного специалиста можно запускать только вручную, локально и без инструментов, сети, файлового доступа или изменения данных. Привязка инструментов, evaluator и постоянная активация будут отдельными этапами с повторной проверкой разрешений.",
+                "Безопасность: одобрение не включает постоянную автономную работу. Специалист запускается вручную; сетевые инструменты допускаются только при READ_ONLY, все вызовы проходят через индивидуальный allowlist и CapabilityPolicy. Произвольного файлового доступа и изменения данных нет; опасные операции требуют отдельного подтверждения.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
