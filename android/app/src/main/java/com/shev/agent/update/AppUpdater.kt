@@ -76,7 +76,7 @@ internal object AppUpdater {
     suspend fun downloadToCache(
         context: Context,
         update: AppUpdate,
-        onProgress: (Long, Long) -> Unit = { _, _ -> }
+        onProgress: ((Long, Long) -> Unit)? = null
     ): File = withContext(Dispatchers.IO) {
         val directory = File(context.cacheDir, "updates").apply {
             if (!exists() && !mkdirs()) error("Не удалось создать папку обновления")
@@ -87,7 +87,7 @@ internal object AppUpdater {
         if (apk.isFile && apk.length() > 0L &&
             prefs.getInt(KEY_VERSION_CODE, 0) == update.versionCode
         ) {
-            withContext(Dispatchers.Main) { onProgress(apk.length(), apk.length()) }
+            onProgress?.let { callback -> withContext(Dispatchers.Main) { callback(apk.length(), apk.length()) } }
             return@withContext apk
         }
 
@@ -113,7 +113,7 @@ internal object AppUpdater {
                             output.write(buffer, 0, count)
                             if (downloaded - lastReported >= 256 * 1024) {
                                 lastReported = downloaded
-                                withContext(Dispatchers.Main) { onProgress(downloaded, expectedLength) }
+                                onProgress?.let { callback -> withContext(Dispatchers.Main) { callback(downloaded, expectedLength) } }
                             }
                         }
                     }
@@ -138,7 +138,7 @@ internal object AppUpdater {
 
             if (apk.exists() && !apk.delete()) error("Не удалось заменить предыдущий APK.")
             if (!partial.renameTo(apk)) error("Не удалось сохранить скачанный APK.")
-            withContext(Dispatchers.Main) { onProgress(apk.length(), apk.length()) }
+            onProgress?.let { callback -> withContext(Dispatchers.Main) { callback(apk.length(), apk.length()) } }
             prefs.edit()
                 .putInt(KEY_VERSION_CODE, update.versionCode)
                 .putString(KEY_VERSION_NAME, update.versionName)
