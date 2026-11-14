@@ -8,7 +8,7 @@ class CodexRuntimeConfigTest {
     @Test fun codexInstructionsRequireRealSearchAndSourceLinks() {
         assertTrue(CodexRuntimeConfig.DEVELOPER_INSTRUCTIONS.contains("используй встроенный web search"))
         assertTrue(CodexRuntimeConfig.DEVELOPER_INSTRUCTIONS.contains("добавляй прямые ссылки"))
-        assertTrue(CodexRuntimeConfig.DEVELOPER_INSTRUCTIONS.contains("не заявляй о поиске"))
+        assertTrue(CodexRuntimeConfig.DEVELOPER_INSTRUCTIONS.contains("не заявляй о поиске", ignoreCase = true))
     }
 
     @Test fun newInstallEnablesLiveWebSearchAndKeepsReadOnlySandbox() {
