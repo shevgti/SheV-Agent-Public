@@ -127,7 +127,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
-                            enabled = !busy && !modelState.busy && request.isNotBlank() && if (useChatGptForCreator) modelState.codexConnected else modelState.ready,
+                            enabled = !busy && !modelState.busy && request.isNotBlank() && (if (useChatGptForCreator) modelState.codexConnected else modelState.ready),
                             onClick = {
                                 busy = true
                                 status = if (useChatGptForCreator) "ChatGPT / Codex проектирует агента…" else "Локальная модель проектирует агента…"
