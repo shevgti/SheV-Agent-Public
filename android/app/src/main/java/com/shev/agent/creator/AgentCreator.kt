@@ -17,12 +17,13 @@ class AgentCreator {
         existingAgentIds: Set<String>,
         generate: suspend (String) -> String,
         existingAgentSummaries: List<String> = emptyList(),
+        knownToolDescriptions: List<String> = emptyList(),
         forceComplete: Boolean = false
     ): AgentCreationResult {
         if (userRequest.isBlank() || userRequest.length > AgentCreatorPromptBuilder.MAX_REQUEST_CHARS) {
             return AgentCreationResult.Rejected("INVALID_REQUEST", "Запрос пустой или превышает допустимый размер.")
         }
-        val prompt = AgentCreatorPromptBuilder.build(userRequest, knownToolIds, existingAgentSummaries, forceComplete)
+        val prompt = AgentCreatorPromptBuilder.build(userRequest, knownToolIds, existingAgentSummaries, knownToolDescriptions, forceComplete)
         val output = try {
             generate(prompt)
         } catch (cancelled: CancellationException) {
@@ -41,7 +42,7 @@ class AgentCreator {
                 appendLine("Не продолжай старый текст и не цитируй его. Не добавляй пояснений.")
                 appendLine("Причина первой ошибки: ${firstFailure.message ?: "неизвестная ошибка"}")
                 appendLine()
-                append(AgentCreatorPromptBuilder.build(userRequest, knownToolIds, existingAgentSummaries, forceComplete = true))
+                append(AgentCreatorPromptBuilder.build(userRequest, knownToolIds, existingAgentSummaries, knownToolDescriptions, forceComplete = true))
             }
             val repaired = try {
                 generate(repairPrompt)
