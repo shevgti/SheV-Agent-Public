@@ -5,8 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
@@ -45,8 +43,8 @@ fun AgentSkillLibraryScreen(
         if (skills.isEmpty()) {
             Text("Пока навыков нет. Попроси SheV изучить полезную повторяемую задачу и сохранить найденный способ.")
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(skills, key = { it.skillId }) { skill ->
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                skills.forEach { skill ->
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
