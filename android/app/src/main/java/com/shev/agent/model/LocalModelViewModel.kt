@@ -531,6 +531,17 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     )
                     register(
                         AgentToolDescriptor(
+                            id = SheVAgentAdkTools.WEB_SEARCH_TOOL_ID,
+                            title = "Поиск в интернете",
+                            description = "Ищет публичную веб-выдачу по запросу",
+                            capabilities = setOf(AgentCapability.READ_REMOTE_DATA),
+                            inputSchema = ToolInputSchema(
+                                listOf(ToolInputField("query", ToolInputType.STRING, required = true, maxLength = 200))
+                            )
+                        )
+                    )
+                    register(
+                        AgentToolDescriptor(
                             id = SheVAgentAdkTools.CREATE_TASK_DRAFT_ID,
                             title = "Создать черновик поручения",
                             description = "Сохраняет локальное поручение в ожидании подтверждения; ничего не выполняет",
@@ -605,7 +616,24 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                                     AgentToolResult(false, failure.message ?: "Не удалось получить погоду.", "WEATHER_UNAVAILABLE")
                                 }
                             }
+                        },
+                        SheVAgentAdkTools.WEB_SEARCH_TOOL_ID to SuspendingAgentTool { input ->
+                            val query = runCatching {
+                                JsonParser.parseString(input).asJsonObject.get("query")?.asString
+                            }.getOrNull()
+                            if (query.isNullOrBlank()) {
+                                AgentToolResult(false, "Укажи поисковый запрос.", "QUERY_REQUIRED")
+                            } else {
+                                try {
+                                    AgentToolResult(true, PublicWebSearchTool().search(query))
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (failure: Exception) {
+                                    AgentToolResult(false, failure.message ?: "Не удалось выполнить поиск.", "WEB_SEARCH_UNAVAILABLE")
+                                }
+                            }
                         }
+
                     )
                 )
                 val tools = SheVAgentAdkTools(
