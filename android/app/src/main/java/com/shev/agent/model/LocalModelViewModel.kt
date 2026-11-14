@@ -492,212 +492,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         mutableState.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
             try {
-                val registry = AgentToolRegistry().apply {
-                    register(
-                        AgentToolDescriptor(
-                            id = SheVAgentAdkTools.TOOL_ID,
-                            title = "Просмотр инструментов",
-                            description = "Показывает список локально зарегистрированных инструментов",
-                            capabilities = setOf(AgentCapability.ANALYZE_DATA),
-                            inputSchema = ToolInputSchema(
-                                listOf(ToolInputField("query", ToolInputType.STRING, required = false, maxLength = 32))
-                            )
-                        )
-                    )
-                    register(
-                        AgentToolDescriptor(
-                            id = SheVAgentAdkTools.CURRENT_TIME_TOOL_ID,
-                            title = "Текущее местное время",
-                            description = "Возвращает фактические дату, время и часовой пояс устройства",
-                            capabilities = setOf(AgentCapability.ANALYZE_DATA),
-                            inputSchema = ToolInputSchema(
-                                listOf(ToolInputField(
-                                    "query",
-                                    ToolInputType.STRING,
-                                    required = true,
-                                    maxLength = 8,
-                                    allowedValues = setOf("now")
-                                ))
-                            )
-                        )
-                    )
-                    register(
-                        AgentToolDescriptor(
-                            id = SheVAgentAdkTools.WEATHER_TOOL_ID,
-                            title = "Получить актуальную погоду",
-                            description = "Получает текущую погоду в указанном городе из публичного онлайн-сервиса Open-Meteo",
-                            capabilities = setOf(AgentCapability.READ_REMOTE_DATA),
-                            inputSchema = ToolInputSchema(
-                                listOf(ToolInputField("city", ToolInputType.STRING, required = true, maxLength = 100))
-                            )
-                        )
-                    )
-                    register(
-                        AgentToolDescriptor(
-                            id = SheVAgentAdkTools.WEB_SEARCH_TOOL_ID,
-                            title = "Поиск в интернете",
-                            description = "Ищет публичную веб-выдачу по запросу",
-                            capabilities = setOf(AgentCapability.READ_REMOTE_DATA),
-                            inputSchema = ToolInputSchema(
-                                listOf(ToolInputField("query", ToolInputType.STRING, required = true, maxLength = 200))
-                            )
-                        )
-                    )
-                    register(
-                        AgentToolDescriptor(
-                            id = SheVAgentAdkTools.CREATE_TASK_DRAFT_ID,
-                            title = "Создать черновик поручения",
-                            description = "Сохраняет локальное поручение в ожидании подтверждения; ничего не выполняет",
-                            capabilities = setOf(AgentCapability.CREATE_DRAFT),
-                            inputSchema = ToolInputSchema(
-                                listOf(ToolInputField("title", ToolInputType.STRING, required = true, maxLength = 2_000))
-                            )
-                        )
-                    )
-                    register(
-                        AgentToolDescriptor(
-                            id = SheVAgentAdkTools.SAVE_SKILL_DRAFT_TOOL_ID,
-                            title = "Сохранить черновик навыка",
-                            description = "Сохраняет повторно используемую инструкцию в библиотеку SheV; не активирует её",
-                            capabilities = setOf(AgentCapability.CREATE_DRAFT),
-                            inputSchema = ToolInputSchema(
-                                listOf(
-                                    ToolInputField("title", ToolInputType.STRING, required = true, maxLength = 120),
-                                    ToolInputField("summary", ToolInputType.STRING, required = true, maxLength = 1_000),
-                                    ToolInputField("instructions", ToolInputType.STRING, required = true, maxLength = 8_000),
-                                    ToolInputField("keywords", ToolInputType.STRING, required = false, maxLength = 1_000),
-                                    ToolInputField("sourceUrls", ToolInputType.STRING, required = false, maxLength = 4_000)
-                                )
-                            )
-                        )
-                    )
-                }
-                val taskDraftHandler = SuspendingAgentTool { input ->
-                    val title = runCatching {
-                        JsonParser.parseString(input).asJsonObject.get("title")?.asString
-                    }.getOrNull()
-                    if (title.isNullOrBlank()) {
-                        AgentToolResult(false, "Пустое или некорректное поручение.", "INVALID_TITLE")
-                    } else {
-                        val now = System.currentTimeMillis()
-                        // Stable for one minute: a retried tool call cannot create duplicate drafts.
-                        val requestBucket = now / 60_000L
-                        val requestSeed = "shev-task-draft-v1:$requestBucket:$title"
-                        val taskId = UUID.nameUUIDFromBytes(requestSeed.toByteArray()).toString()
-                        val eventId = UUID.nameUUIDFromBytes("event:$taskId".toByteArray()).toString()
-                        when (val result = taskRepository.createDraft(
-                            AgentTaskDraftRequest(
-                                taskId = taskId,
-                                title = title,
-                                eventId = eventId,
-                                idempotencyKey = "task-create:$taskId",
-                                occurredAtEpochMillis = now
-                            )
-                        )) {
-                            is AgentTaskDraftResult.Created -> AgentToolResult(
-                                true,
-                                "Черновик поручения «${result.state.task.title}» сохранён. Он ожидает подтверждения во вкладке «Память». Никакое действие не запускалось."
-                            )
-                            is AgentTaskDraftResult.Replayed -> AgentToolResult(
-                                true,
-                                "Это поручение уже сохранено и ожидает подтверждения во вкладке «Память». Повторная запись не создана."
-                            )
-                            AgentTaskDraftResult.InvalidRequest -> AgentToolResult(false, "Поручение не сохранено: некорректный запрос.", "INVALID_REQUEST")
-                            AgentTaskDraftResult.Conflict -> AgentToolResult(false, "Поручение не сохранено: обнаружен конфликт записи.", "CONFLICT")
-                            AgentTaskDraftResult.NotFound -> AgentToolResult(false, "Поручение не найдено после записи.", "NOT_FOUND")
-                        }
-                    }
-                }
-                val skillDraftHandler = SuspendingAgentTool { input ->
-                    val payload = runCatching { JsonParser.parseString(input).asJsonObject }.getOrNull()
-                    val title = payload?.get("title")?.takeIf { it.isJsonPrimitive }?.asString
-                    val summary = payload?.get("summary")?.takeIf { it.isJsonPrimitive }?.asString
-                    val instructions = payload?.get("instructions")?.takeIf { it.isJsonPrimitive }?.asString
-                    if (title.isNullOrBlank() || summary.isNullOrBlank() || instructions.isNullOrBlank()) {
-                        AgentToolResult(false, "Для навыка нужны название, назначение и инструкция.", "INVALID_SKILL")
-                    } else {
-                        try {
-                            val skillId = "skill-" + UUID.nameUUIDFromBytes(
-                                title.trim().lowercase(java.util.Locale.ROOT).toByteArray(Charsets.UTF_8)
-                            ).toString()
-                            val saved = skillLibrary.saveDraft(
-                                skillId = skillId,
-                                title = title,
-                                summary = summary,
-                                instructions = instructions,
-                                keywords = payload.get("keywords")?.asString.orEmpty().split(',').map(String::trim).filter(String::isNotBlank),
-                                sourceUrls = payload.get("sourceUrls")?.asString.orEmpty().lines().map(String::trim).filter(String::isNotBlank),
-                                verificationNotes = "Черновик создан главным агентом; ожидает проверки пользователя."
-                            )
-                            AgentToolResult(true, "Черновик навыка «${saved.title}» v${saved.version} сохранён. Он не активирован и не будет влиять на ответы до проверки пользователем.")
-                        } catch (failure: IllegalArgumentException) {
-                            AgentToolResult(false, failure.message ?: "Навык не прошёл проверку.", "INVALID_SKILL")
-                        } catch (failure: Exception) {
-                            AgentToolResult(false, failure.message ?: "Не удалось сохранить навык.", "SKILL_SAVE_FAILED")
-                        }
-                    }
-                }
-                val currentTimeHandler = AgentTool { _ ->
-                    AgentToolResult(true, LocalTimeTool().readCurrentTime())
-                }
-                val executor = AgentToolExecutor(
-                    registry,
-                    mapOf(
-                        SheVAgentAdkTools.TOOL_ID to AgentTool {
-                            AgentToolResult(true, registry.list().joinToString { it.id })
-                        },
-                        SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to currentTimeHandler
-                    ),
-                    suspendingHandlers = mapOf(
-                        SheVAgentAdkTools.CREATE_TASK_DRAFT_ID to taskDraftHandler,
-                        SheVAgentAdkTools.SAVE_SKILL_DRAFT_TOOL_ID to skillDraftHandler,
-                        SheVAgentAdkTools.WEATHER_TOOL_ID to SuspendingAgentTool { input ->
-                            val city = runCatching {
-                                JsonParser.parseString(input).asJsonObject.get("city")?.asString
-                            }.getOrNull()
-                            if (city.isNullOrBlank()) {
-                                AgentToolResult(false, "Укажи город.", "CITY_REQUIRED")
-                            } else {
-                                try {
-                                    AgentToolResult(true, OpenMeteoWeatherTool().currentWeather(city))
-                                } catch (cancelled: CancellationException) {
-                                    throw cancelled
-                                } catch (failure: Exception) {
-                                    AgentToolResult(false, failure.message ?: "Не удалось получить погоду.", "WEATHER_UNAVAILABLE")
-                                }
-                            }
-                        },
-                        SheVAgentAdkTools.WEB_SEARCH_TOOL_ID to SuspendingAgentTool { input ->
-                            val query = runCatching {
-                                JsonParser.parseString(input).asJsonObject.get("query")?.asString
-                            }.getOrNull()
-                            if (query.isNullOrBlank()) {
-                                AgentToolResult(false, "Укажи поисковый запрос.", "QUERY_REQUIRED")
-                            } else {
-                                try {
-                                    AgentToolResult(true, PublicWebSearchTool().search(query))
-                                } catch (cancelled: CancellationException) {
-                                    throw cancelled
-                                } catch (failure: Exception) {
-                                    AgentToolResult(false, failure.message ?: "Не удалось выполнить поиск.", "WEB_SEARCH_UNAVAILABLE")
-                                }
-                            }
-                        }
-
-                    )
-                )
-                val tools = SheVAgentAdkTools(
-                    executor,
-                    AgentToolExecutionContext(
-                        grantedCapabilities = setOf(
-                            AgentCapability.ANALYZE_DATA,
-                            AgentCapability.CREATE_DRAFT,
-                            AgentCapability.READ_REMOTE_DATA
-                        ),
-                        explicitlyApprovedCapabilities = setOf(AgentCapability.READ_REMOTE_DATA)
-                    ),
-                    skillLibrary = skillLibrary
-                )
+                val tools = createAgentToolHost()
                 runtime = SheVAgentRuntime.load(getApplication(), store, tools)
                 toolExecutor = executor
                 mutableState.update { it.copy(ready = true, backendName = runtime?.backendName) }
@@ -1412,6 +1207,223 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /** Only descriptors backed by real, schema-validated executor handlers are exposed. */
+    /** Builds the real tool registry independently of the optional on-device LLM runtime. */
+    private fun createAgentToolHost(): SheVAgentAdkTools {
+        val registry = AgentToolRegistry().apply {
+            register(
+                AgentToolDescriptor(
+                    id = SheVAgentAdkTools.TOOL_ID,
+                    title = "Просмотр инструментов",
+                    description = "Показывает список локально зарегистрированных инструментов",
+                    capabilities = setOf(AgentCapability.ANALYZE_DATA),
+                    inputSchema = ToolInputSchema(
+                        listOf(ToolInputField("query", ToolInputType.STRING, required = false, maxLength = 32))
+                    )
+                )
+            )
+            register(
+                AgentToolDescriptor(
+                    id = SheVAgentAdkTools.CURRENT_TIME_TOOL_ID,
+                    title = "Текущее местное время",
+                    description = "Возвращает фактические дату, время и часовой пояс устройства",
+                    capabilities = setOf(AgentCapability.ANALYZE_DATA),
+                    inputSchema = ToolInputSchema(
+                        listOf(ToolInputField(
+                            "query",
+                            ToolInputType.STRING,
+                            required = true,
+                            maxLength = 8,
+                            allowedValues = setOf("now")
+                        ))
+                    )
+                )
+            )
+            register(
+                AgentToolDescriptor(
+                    id = SheVAgentAdkTools.WEATHER_TOOL_ID,
+                    title = "Получить актуальную погоду",
+                    description = "Получает текущую погоду в указанном городе из публичного онлайн-сервиса Open-Meteo",
+                    capabilities = setOf(AgentCapability.READ_REMOTE_DATA),
+                    inputSchema = ToolInputSchema(
+                        listOf(ToolInputField("city", ToolInputType.STRING, required = true, maxLength = 100))
+                    )
+                )
+            )
+            register(
+                AgentToolDescriptor(
+                    id = SheVAgentAdkTools.WEB_SEARCH_TOOL_ID,
+                    title = "Поиск в интернете",
+                    description = "Ищет публичную веб-выдачу по запросу",
+                    capabilities = setOf(AgentCapability.READ_REMOTE_DATA),
+                    inputSchema = ToolInputSchema(
+                        listOf(ToolInputField("query", ToolInputType.STRING, required = true, maxLength = 200))
+                    )
+                )
+            )
+            register(
+                AgentToolDescriptor(
+                    id = SheVAgentAdkTools.CREATE_TASK_DRAFT_ID,
+                    title = "Создать черновик поручения",
+                    description = "Сохраняет локальное поручение в ожидании подтверждения; ничего не выполняет",
+                    capabilities = setOf(AgentCapability.CREATE_DRAFT),
+                    inputSchema = ToolInputSchema(
+                        listOf(ToolInputField("title", ToolInputType.STRING, required = true, maxLength = 2_000))
+                    )
+                )
+            )
+            register(
+                AgentToolDescriptor(
+                    id = SheVAgentAdkTools.SAVE_SKILL_DRAFT_TOOL_ID,
+                    title = "Сохранить черновик навыка",
+                    description = "Сохраняет повторно используемую инструкцию в библиотеку SheV; не активирует её",
+                    capabilities = setOf(AgentCapability.CREATE_DRAFT),
+                    inputSchema = ToolInputSchema(
+                        listOf(
+                            ToolInputField("title", ToolInputType.STRING, required = true, maxLength = 120),
+                            ToolInputField("summary", ToolInputType.STRING, required = true, maxLength = 1_000),
+                            ToolInputField("instructions", ToolInputType.STRING, required = true, maxLength = 8_000),
+                            ToolInputField("keywords", ToolInputType.STRING, required = false, maxLength = 1_000),
+                            ToolInputField("sourceUrls", ToolInputType.STRING, required = false, maxLength = 4_000)
+                        )
+                    )
+                )
+            )
+        }
+        val taskDraftHandler = SuspendingAgentTool { input ->
+            val title = runCatching {
+                JsonParser.parseString(input).asJsonObject.get("title")?.asString
+            }.getOrNull()
+            if (title.isNullOrBlank()) {
+                AgentToolResult(false, "Пустое или некорректное поручение.", "INVALID_TITLE")
+            } else {
+                val now = System.currentTimeMillis()
+                // Stable for one minute: a retried tool call cannot create duplicate drafts.
+                val requestBucket = now / 60_000L
+                val requestSeed = "shev-task-draft-v1:$requestBucket:$title"
+                val taskId = UUID.nameUUIDFromBytes(requestSeed.toByteArray()).toString()
+                val eventId = UUID.nameUUIDFromBytes("event:$taskId".toByteArray()).toString()
+                when (val result = taskRepository.createDraft(
+                    AgentTaskDraftRequest(
+                        taskId = taskId,
+                        title = title,
+                        eventId = eventId,
+                        idempotencyKey = "task-create:$taskId",
+                        occurredAtEpochMillis = now
+                    )
+                )) {
+                    is AgentTaskDraftResult.Created -> AgentToolResult(
+                        true,
+                        "Черновик поручения «${result.state.task.title}» сохранён. Он ожидает подтверждения во вкладке «Память». Никакое действие не запускалось."
+                    )
+                    is AgentTaskDraftResult.Replayed -> AgentToolResult(
+                        true,
+                        "Это поручение уже сохранено и ожидает подтверждения во вкладке «Память». Повторная запись не создана."
+                    )
+                    AgentTaskDraftResult.InvalidRequest -> AgentToolResult(false, "Поручение не сохранено: некорректный запрос.", "INVALID_REQUEST")
+                    AgentTaskDraftResult.Conflict -> AgentToolResult(false, "Поручение не сохранено: обнаружен конфликт записи.", "CONFLICT")
+                    AgentTaskDraftResult.NotFound -> AgentToolResult(false, "Поручение не найдено после записи.", "NOT_FOUND")
+                }
+            }
+        }
+        val skillDraftHandler = SuspendingAgentTool { input ->
+            val payload = runCatching { JsonParser.parseString(input).asJsonObject }.getOrNull()
+            val title = payload?.get("title")?.takeIf { it.isJsonPrimitive }?.asString
+            val summary = payload?.get("summary")?.takeIf { it.isJsonPrimitive }?.asString
+            val instructions = payload?.get("instructions")?.takeIf { it.isJsonPrimitive }?.asString
+            if (title.isNullOrBlank() || summary.isNullOrBlank() || instructions.isNullOrBlank()) {
+                AgentToolResult(false, "Для навыка нужны название, назначение и инструкция.", "INVALID_SKILL")
+            } else {
+                try {
+                    val skillId = "skill-" + UUID.nameUUIDFromBytes(
+                        title.trim().lowercase(java.util.Locale.ROOT).toByteArray(Charsets.UTF_8)
+                    ).toString()
+                    val saved = skillLibrary.saveDraft(
+                        skillId = skillId,
+                        title = title,
+                        summary = summary,
+                        instructions = instructions,
+                        keywords = payload.get("keywords")?.asString.orEmpty().split(',').map(String::trim).filter(String::isNotBlank),
+                        sourceUrls = payload.get("sourceUrls")?.asString.orEmpty().lines().map(String::trim).filter(String::isNotBlank),
+                        verificationNotes = "Черновик создан главным агентом; ожидает проверки пользователя."
+                    )
+                    AgentToolResult(true, "Черновик навыка «${saved.title}» v${saved.version} сохранён. Он не активирован и не будет влиять на ответы до проверки пользователем.")
+                } catch (failure: IllegalArgumentException) {
+                    AgentToolResult(false, failure.message ?: "Навык не прошёл проверку.", "INVALID_SKILL")
+                } catch (failure: Exception) {
+                    AgentToolResult(false, failure.message ?: "Не удалось сохранить навык.", "SKILL_SAVE_FAILED")
+                }
+            }
+        }
+        val currentTimeHandler = AgentTool { _ ->
+            AgentToolResult(true, LocalTimeTool().readCurrentTime())
+        }
+        val executor = AgentToolExecutor(
+            registry,
+            mapOf(
+                SheVAgentAdkTools.TOOL_ID to AgentTool {
+                    AgentToolResult(true, registry.list().joinToString { it.id })
+                },
+                SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to currentTimeHandler
+            ),
+            suspendingHandlers = mapOf(
+                SheVAgentAdkTools.CREATE_TASK_DRAFT_ID to taskDraftHandler,
+                SheVAgentAdkTools.SAVE_SKILL_DRAFT_TOOL_ID to skillDraftHandler,
+                SheVAgentAdkTools.WEATHER_TOOL_ID to SuspendingAgentTool { input ->
+                    val city = runCatching {
+                        JsonParser.parseString(input).asJsonObject.get("city")?.asString
+                    }.getOrNull()
+                    if (city.isNullOrBlank()) {
+                        AgentToolResult(false, "Укажи город.", "CITY_REQUIRED")
+                    } else {
+                        try {
+                            AgentToolResult(true, OpenMeteoWeatherTool().currentWeather(city))
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            AgentToolResult(false, failure.message ?: "Не удалось получить погоду.", "WEATHER_UNAVAILABLE")
+                        }
+                    }
+                },
+                SheVAgentAdkTools.WEB_SEARCH_TOOL_ID to SuspendingAgentTool { input ->
+                    val query = runCatching {
+                        JsonParser.parseString(input).asJsonObject.get("query")?.asString
+                    }.getOrNull()
+                    if (query.isNullOrBlank()) {
+                        AgentToolResult(false, "Укажи поисковый запрос.", "QUERY_REQUIRED")
+                    } else {
+                        try {
+                            AgentToolResult(true, PublicWebSearchTool().search(query))
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            AgentToolResult(false, failure.message ?: "Не удалось выполнить поиск.", "WEB_SEARCH_UNAVAILABLE")
+                        }
+                    }
+                }
+
+            )
+        )
+        val tools = SheVAgentAdkTools(
+            executor,
+            AgentToolExecutionContext(
+                grantedCapabilities = setOf(
+                    AgentCapability.ANALYZE_DATA,
+                    AgentCapability.CREATE_DRAFT,
+                    AgentCapability.READ_REMOTE_DATA
+                ),
+                explicitlyApprovedCapabilities = setOf(AgentCapability.READ_REMOTE_DATA)
+            ),
+            skillLibrary = skillLibrary
+        )
+        toolExecutor = executor
+        return tools
+    }
+
+    /** Allows ChatGPT/Codex to inspect the same host tools without downloading a local model. */
+    fun prepareAgentToolCatalog() {
+        if (toolExecutor == null) createAgentToolHost()
+    }
+
     fun availableAgentTools(): List<AgentToolDescriptor> = toolExecutor?.availableTools().orEmpty()
 
     fun availableAgentToolIds(): Set<String> =
