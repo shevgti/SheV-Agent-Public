@@ -6,14 +6,14 @@ import org.junit.Test
 
 class PublicWebSearchToolTest {
     @Test
-    fun rejectsTooShortQueryBeforeNetworkAccess() = runBlocking {
+    fun rejectsTooShortQueryBeforeNetworkAccess() {
         assertThrows(IllegalArgumentException::class.java) {
             runBlocking { PublicWebSearchTool().search(" ") }
         }
     }
 
     @Test
-    fun rejectsTooLongQueryBeforeNetworkAccess() = runBlocking {
+    fun rejectsTooLongQueryBeforeNetworkAccess() {
         assertThrows(IllegalArgumentException::class.java) {
             runBlocking { PublicWebSearchTool().search("x".repeat(201)) }
         }
