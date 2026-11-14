@@ -45,6 +45,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
     var request by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Опиши специалиста, которого нужно создать.") }
     var busy by remember { mutableStateOf(false) }
+    var clarificationPending by remember { mutableStateOf(false) }
 
     LazyColumn(
         Modifier.fillMaxSize().padding(18.dp),
@@ -126,12 +127,14 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                                             knownToolIds = knownTools,
                                             existingAgentIds = definitions.map { it.agentId }.toSet(),
                                             generate = { prompt -> modelViewModel.generateAgentCreatorOutputFromPrompt(prompt) },
-                                            existingAgentSummaries = definitions.map { "${it.agentId}: ${it.name} — ${it.purpose}" }
+                                            existingAgentSummaries = definitions.map { "${it.agentId}: ${it.name} — ${it.purpose}" },
+                                            forceComplete = clarificationPending
                                         )
                                         if (creation is AgentCreationResult.NeedsClarification) {
                                             val questions = creation.questions.mapIndexed { index, question -> (index + 1).toString() + ". " + question }.joinToString("\n")
-                                            status = "Нужно уточнить перед созданием:\n" + questions
-                                            request = request.trim() + "\n\nОтветы на уточнения:\n"
+                                            clarificationPending = true
+                                            status = "Последнее уточнение. Ответь в поле выше или оставь его пустым: при следующей попытке я создам паспорт с разумными настройками по умолчанию. Повторных вопросов не будет.\n" + questions
+                                            request = request.trim() + "\n\nОтветы на уточнения (необязательно; можно оставить пустыми):\n"
                                             return@launch
                                         }
                                         val manifest = when (creation) {
@@ -157,6 +160,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                                         )
                                         status = "Паспорт создан, проверен и сохранён как черновик. Он ещё не получил доступ к инструментам."
                                         request = ""
+                                        clarificationPending = false
                                     } catch (cancelled: CancellationException) {
                                         throw cancelled
                                     } catch (failure: Exception) {
@@ -166,11 +170,12 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                                     }
                                 }
                             }
-                        ) { Text(if (busy) "Создаю…" else "Спроектировать агента") }
+                        ) { Text(if (busy) "Создаю…" else if (clarificationPending) "Создать агента" else "Спроектировать агента") }
                         OutlinedButton(
                             enabled = !busy && !modelState.busy,
                             onClick = {
                                 request = ""
+                                clarificationPending = false
                                 status = "Опиши специалиста, которого нужно создать."
                             }
                         ) { Text("Обновить задание") }
