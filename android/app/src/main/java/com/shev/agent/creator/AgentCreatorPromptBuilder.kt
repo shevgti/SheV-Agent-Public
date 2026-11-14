@@ -10,7 +10,8 @@ object AgentCreatorPromptBuilder {
     fun build(
         userRequest: String,
         knownToolIds: Set<String>,
-        existingAgents: List<String> = emptyList()
+        existingAgents: List<String> = emptyList(),
+        forceComplete: Boolean = false
     ): String {
         require(userRequest.isNotBlank()) { "Опиши задачу будущего агента." }
         require(userRequest.length <= MAX_REQUEST_CHARS) { "Описание слишком длинное (максимум 2000 символов)." }
@@ -19,6 +20,11 @@ object AgentCreatorPromptBuilder {
         val existing = existingAgents.take(MAX_EXISTING_AGENTS)
             .joinToString("; ") { it.take(100) }.ifBlank { "(нет)" }
         val requestJson = Gson().toJson(userRequest.trim())
+        val clarificationRule = if (forceComplete) {
+            "- Это финальная попытка: НЕ задавай вопросов и НЕ возвращай clarifyingQuestions. Сам выбери безопасные разумные значения по умолчанию для необязательных деталей и заполни полный паспорт."
+        } else {
+            "- Если без уточнения нельзя выбрать роль или границы задачи, верни не более 1–3 вопросов в clarifyingQuestions; остальные поля заполни пустыми значениями. Это единственный раунд уточнений."
+        }
 
         return """
             Ты — конструктор специалистов SheV Agent. Создай паспорт одного узкого, полезного специалиста.
@@ -26,7 +32,7 @@ object AgentCreatorPromptBuilder {
 
             ПРАВИЛА:
             - Пиши по-русски, конкретно и без повторов. Не выдумывай факты и недостающие данные.
-            - Если без уточнения нельзя выбрать роль или границы задачи, верни 1–3 вопроса в clarifyingQuestions; остальные поля заполни пустыми значениями.
+            $clarificationRule
             - Создай экспертную роль с измеримой целью и 2–4 сценариями triggers. Не генерируй triggeringExamples и description: оставь triggeringExamples пустым массивом [], description пустой строкой. Примеры и description безопасно сформирует приложение из проверенных полей паспорта.
             - instructions должны содержать обязанности, процесс, стандарты качества, формат результата и обработку ошибок.
             - id: уникальный lowercase-kebab-case; model: inherit; color: blue/cyan/green/yellow/magenta/red.
