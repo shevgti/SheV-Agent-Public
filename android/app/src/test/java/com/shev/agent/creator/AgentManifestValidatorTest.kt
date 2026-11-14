@@ -85,6 +85,36 @@ class AgentManifestValidatorTest {
         assertTrue(com.google.gson.JsonParser.parseString(parsed.outputSchema).isJsonObject)
     }
 
+
+    @Test fun parserDefaultsMissingStatusToDraft() {
+        val output = """
+            {
+              "id":"weather-helper",
+              "name":"Помощник погоды",
+              "purpose":"Искать прогноз погоды",
+              "role":"Метеопомощник",
+              "instructions":"Используй безопасные источники.",
+              "triggers":["Прогноз погоды","Погода в городе"],
+              "inputSchema":{"type":"object","properties":{},"required":[]},
+              "outputSchema":{"type":"object","properties":{},"required":[]},
+              "allowedToolIds":[],
+              "memoryReadScopes":[],
+              "memoryWriteScopes":[],
+              "maxSteps":4,
+              "timeoutSeconds":60,
+              "maxModelCalls":2,
+              "networkPolicy":"OFFLINE",
+              "sideEffectPolicy":"DRAFT_ONLY",
+              "verificationStrategy":"Проверь результат.",
+              "evaluationCases":["Обычный запрос","Неизвестный город"],
+              "limitations":["Сетевой доступ отключён"]
+            }
+        """.trimIndent()
+        val parsed = AgentManifestParser.parse(output)
+        assertEquals(AgentManifest.STATUS_DRAFT, parsed.status)
+        assertEquals(AgentManifest.STATUS_DRAFT, parsed.copy(version = 1).status)
+    }
+
     @Test fun parserRepairsInvalidBackslashEscapeInModelText() {
         val valid = com.google.gson.Gson().toJson(validManifest())
         val malformed = valid.replace("Проверяй официальные", "Проверяй \\d+ официальные")
