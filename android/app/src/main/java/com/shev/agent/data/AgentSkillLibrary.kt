@@ -13,6 +13,8 @@ class AgentSkillLibrary(
 ) {
     fun observeVerified(): Flow<List<AgentSkillEntity>> = dao.observeVerifiedAgentSkills()
 
+    fun observeAll(): Flow<List<AgentSkillEntity>> = dao.observeAllAgentSkills()
+
     suspend fun saveDraft(
         skillId: String,
         title: String,
@@ -63,6 +65,16 @@ class AgentSkillLibrary(
         )
         dao.saveAgentSkill(verified)
         return verified
+    }
+
+    /** Called only from the explicit user-review action in the app UI. */
+    suspend fun activateAfterUserReview(skillId: String): AgentSkillEntity {
+        val current = checkNotNull(dao.getAgentSkill(skillId)) { "Навык не найден." }
+        require(current.status == AgentSkillEntity.STATUS_DRAFT) { "Активировать можно только черновик." }
+        return markVerified(
+            skillId,
+            "Пользователь открыл карточку навыка и явно подтвердил активацию. Перед применением учитывай область задачи и источники."
+        )
     }
 
     suspend fun disable(skillId: String): Boolean =
