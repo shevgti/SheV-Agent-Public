@@ -21,6 +21,17 @@ class SheVAgentAdkTools(
     // must not be able to add permissions while the specialist is running.
     private val approvedAgentToolIds: Set<String>? = agentAllowedToolIds?.toSet()
 
+    fun availableToolDescriptors(): List<AgentToolDescriptor> = executor.availableTools()
+
+    fun availableToolIds(): Set<String> = availableToolDescriptors().mapTo(linkedSetOf()) { it.id }
+
+    /** Creates a new immutable adapter whose executor allowlist is exactly the approved manifest set. */
+    fun scopedTo(agentToolIds: Set<String>): SheVAgentAdkTools {
+        val unknown = agentToolIds - availableToolIds()
+        require(unknown.isEmpty()) { "Неизвестные или недоступные инструменты: ${unknown.joinToString()}." }
+        return SheVAgentAdkTools(executor, executionContext, agentToolIds, skillLibrary)
+    }
+
     private fun execute(request: AgentToolRequest): AgentToolExecutionResult =
         approvedAgentToolIds?.let { executor.executeForAgent(it, request, executionContext) }
             ?: executor.execute(request, executionContext)
