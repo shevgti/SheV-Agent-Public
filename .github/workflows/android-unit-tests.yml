@@ -39,7 +39,13 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: "platforms;android-37.0,build-tools;37.0.0"
+          packages: ""
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install "platforms;android-37.0" "build-tools;37.0.0"
+          if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
+            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+          fi
       - name: Run complete Android JVM unit test suite
         working-directory: android
         run: gradle testDebugUnitTest --stacktrace
