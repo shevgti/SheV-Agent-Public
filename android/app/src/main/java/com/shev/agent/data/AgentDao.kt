@@ -123,6 +123,9 @@ interface AgentDao {
     suspend fun updateConversationMessageStatus(id: String, status: String)
 
 
+    @Query("SELECT * FROM agent_skills ORDER BY updatedAtEpochMillis DESC")
+    fun observeAllAgentSkills(): Flow<List<AgentSkillEntity>>
+
     @Query("SELECT * FROM agent_skills WHERE status = 'VERIFIED' ORDER BY updatedAtEpochMillis DESC")
     suspend fun getVerifiedAgentSkills(): List<AgentSkillEntity>
 
