@@ -14,13 +14,13 @@ internal object ReleaseManifestParser {
         check(tag.isNotBlank()) { "Релиз не содержит номера сборки." }
         val body = release.optString("body")
 
-        val versionCode = Regex("""(?im)^\\s*versionCode\\s*:\\s*(\\d+)\\s*$""")
+        val versionCode = Regex("""(?im)^\s*versionCode\s*:\s*(\d+)\s*$""")
             .find(body)?.groupValues?.get(1)?.toIntOrNull()
             ?: error("В описании релиза отсутствует корректный versionCode.")
         check(versionCode > 0) { "versionCode релиза должен быть положительным." }
         if (versionCode <= currentVersionCode) return null
 
-        val version = Regex("""(?im)^\\s*versionName\\s*:\\s*([0-9A-Za-z.+_-]+)\\s*$""")
+        val version = Regex("""(?im)^\s*versionName\s*:\s*([0-9A-Za-z.+_-]+)\s*$""")
             .find(body)?.groupValues?.get(1)
             ?: tag.removePrefix("v")
         check(version.isNotBlank()) { "Релиз не содержит versionName." }
