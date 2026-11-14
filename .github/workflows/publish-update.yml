@@ -155,7 +155,7 @@ jobs:
 
           published_codes = []
           for release in releases:
-              match = re.search(r"(?im)^versionCode:\\s*(\\d+)\\s*$", release.get("body") or "")
+              match = re.search(r"(?im)^versionCode:\s*(\d+)\s*$", release.get("body") or "")
               if match:
                   published_codes.append(int(match.group(1)))
           if not published_codes:
