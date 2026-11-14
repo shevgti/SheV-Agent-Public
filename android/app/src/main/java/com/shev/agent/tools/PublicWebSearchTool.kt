@@ -34,14 +34,13 @@ class PublicWebSearchTool(
             val status = connection.responseCode
             if (status !in 200..299) throw IllegalStateException("Поиск недоступен (HTTP $status).")
             val html = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText().take(MAX_RESPONSE_CHARS) }
-            val results = RESULT_BLOCK.findAll(html).mapNotNull { match ->
-                val block = match.value
-                val title = TITLE.find(block)?.groupValues?.getOrNull(1)?.let(::decodeHtml)?.trim()
-                val rawHref = HREF.find(block)?.groupValues?.getOrNull(1)?.let(::decodeHtml)?.trim()
-                val snippet = SNIPPET.find(block)?.groupValues?.getOrNull(1)?.let(::decodeHtml)?.trim().orEmpty()
-                val href = rawHref?.let(::safeResultUrl)
-                if (title.isNullOrBlank() || href == null) null else Triple(title, href, snippet)
-            }.take(MAX_RESULTS).toList()
+            val results = RESULT_LINK.findAll(html).mapNotNull { match ->
+                val tag = match.groupValues[1]
+                val title = match.groupValues[2].let(::decodeHtml).trim()
+                val rawHref = HREF_ATTRIBUTE.find(tag)?.groupValues?.getOrNull(1)?.let(::decodeHtml)?.trim()
+                val href = rawHref?.let(::unwrapSearchRedirect)?.let(::safeResultUrl)
+                if (title.isBlank() || href == null) null else Triple(title, href, "")
+            }.distinctBy { it.second }.take(MAX_RESULTS).toList()
 
             if (results.isEmpty()) {
                 "Поиск выполнен, но выдача не распознана. Попробуй переформулировать запрос."
@@ -58,6 +57,19 @@ class PublicWebSearchTool(
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun unwrapSearchRedirect(value: String): String {
+        val uri = runCatching { java.net.URI(if (value.startsWith("//")) "https:$value" else value) }.getOrNull()
+            ?: return value
+        if (uri.host == "duckduckgo.com" && uri.path == "/l/") {
+            val target = uri.rawQuery.orEmpty().split("&").firstOrNull { it.startsWith("uddg=") }
+                ?.substringAfter("uddg=")
+            if (!target.isNullOrBlank()) return runCatching {
+                java.net.URLDecoder.decode(target, Charsets.UTF_8.name())
+            }.getOrDefault(value)
+        }
+        return value
     }
 
     private fun safeResultUrl(value: String): String? {
@@ -86,9 +98,7 @@ class PublicWebSearchTool(
         private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/130 Mobile Safari/537.36"
         private const val MAX_RESPONSE_CHARS = 500_000
         private const val MAX_RESULTS = 5
-        private val RESULT_BLOCK = Regex("<div[^>]*class=[\"'][^\"']*result[^>]*>.*?</div>\\s*</div>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-        private val TITLE = Regex("<a[^>]*class=[\"'][^\"']*result__a[\"'][^>]*>(.*?)</a>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-        private val HREF = Regex("<a[^>]*class=[\"'][^\"']*result__a[\"'][^>]*href=[\"']([^\"']+)", RegexOption.IGNORE_CASE)
-        private val SNIPPET = Regex("<a[^>]*class=[\"'][^\"']*result__snippet[\"'][^>]*>(.*?)</a>|<div[^>]*class=[\"'][^\"']*result__snippet[\"'][^>]*>(.*?)</div>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+        private val RESULT_LINK = Regex("(<a(?=[^>]*class=[\\\"'][^\\\"']*result__a)(?=[^>]*href=)[^>]*>)(.*?)</a>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+        private val HREF_ATTRIBUTE = Regex("href=[\\\"']([^\\\"']+)", RegexOption.IGNORE_CASE)
     }
 }
