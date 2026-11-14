@@ -48,7 +48,7 @@ fun ReleaseUpdateCard() {
                         try {
                             release = ReleaseUpdater.check(BuildConfig.VERSION_CODE)
                             message = if (release == null) {
-                                "Новых версий нет. Если канал ещё не создан, проверка пока недоступна."
+                                "Установлена последняя опубликованная сборка."
                             } else {
                                 "Доступна версия ${release!!.version} (сборка ${release!!.versionCode}). APK будет проверен по SHA-256 перед установкой."
                             }
