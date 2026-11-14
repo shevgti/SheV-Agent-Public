@@ -29,7 +29,7 @@ object AgentCreatorPromptBuilder {
             Агент — только черновик. Выбирай allowedToolIds ТОЛЬКО из HOST TOOLS и только если инструмент действительно нужен задаче; не добавляй несуществующие ID. Если выбран инструмент с сетевым доступом, networkPolicy="READ_ONLY", иначе "OFFLINE". Всегда claudeCodeTools=[], memoryReadScopes=[], memoryWriteScopes=[], sideEffectPolicy="DRAFT_ONLY".
             Не генерируй description и triggeringExamples: используй "" и []. Не генерируй process и outputFormat: используй "".
             id — lowercase-kebab-case. model="inherit". color="blue".
-            HOST TOOLS (можешь выбрать только из этих ID; их обработчики реально зарегистрированы): $tools\nОПИСАНИЯ И СХЕМЫ ИНСТРУМЕНТОВ:\n$toolDetails
+            HOST TOOLS (можешь выбрать только из этих ID; их обработчики реально зарегистрированы): $tools\nОПИСАНИЯ И ВОЗМОЖНОСТИ ИНСТРУМЕНТОВ:\n$toolDetails
             УЖЕ СОЗДАНЫ: $existing
             ЗАДАЧА: $requestJson
             Верни все ключи строго с указанными типами. Не добавляй другие поля. Схемы — простые JSON-объекты без pattern/format/regex.
