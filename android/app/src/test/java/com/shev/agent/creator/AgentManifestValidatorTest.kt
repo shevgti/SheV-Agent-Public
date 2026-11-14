@@ -54,6 +54,44 @@ class AgentManifestValidatorTest {
         assertFalse(AgentManifestValidator(setOf("agent.inspect_tools"))
             .validate(validManifest().copy(triggers = listOf("Один триггер"))).accepted)
     }
+    @Test fun parserAcceptsNativeSchemaObjectsWithoutNestedJsonEscaping() {
+        val output = """
+            {
+              "id":"weather-researcher",
+              "name":"Исследователь погоды",
+              "purpose":"Сравнивать прогнозы",
+              "role":"Метеоаналитик",
+              "instructions":"Проверяй источники.",
+              "triggers":["Погода в городах","Сравни прогнозы"],
+              "inputSchema":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]},
+              "outputSchema":{"type":"object","properties":{"forecast":{"type":"string"}},"required":["forecast"]},
+              "allowedToolIds":[],
+              "memoryReadScopes":[],
+              "memoryWriteScopes":[],
+              "maxSteps":4,
+              "timeoutSeconds":60,
+              "maxModelCalls":2,
+              "networkPolicy":"OFFLINE",
+              "sideEffectPolicy":"DRAFT_ONLY",
+              "verificationStrategy":"Проверь поля.",
+              "evaluationCases":["Обычный","Пустой город"],
+              "limitations":["Нет сетевого доступа"]
+            }
+        """.trimIndent()
+        val parsed = AgentManifestParser.parse(output)
+        assertTrue(parsed.inputSchema.contains("city"))
+        assertTrue(parsed.outputSchema.contains("forecast"))
+        assertTrue(com.google.gson.JsonParser.parseString(parsed.inputSchema).isJsonObject)
+        assertTrue(com.google.gson.JsonParser.parseString(parsed.outputSchema).isJsonObject)
+    }
+
+    @Test fun parserRepairsInvalidBackslashEscapeInModelText() {
+        val valid = com.google.gson.Gson().toJson(validManifest())
+        val malformed = valid.replace("Проверяй официальные", "Проверяй \\d+ официальные")
+        val parsed = AgentManifestParser.parse(malformed)
+        assertTrue(parsed.instructions.contains("\\d+"))
+    }
+
     @Test fun parserExtractsJsonFromModelCodeFence() {
         val manifest = validManifest()
         val json = com.google.gson.Gson().toJson(manifest)
