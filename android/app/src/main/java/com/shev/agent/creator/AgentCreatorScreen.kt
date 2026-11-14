@@ -138,6 +138,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                                             userRequest = request,
                                             knownToolIds = knownTools,
                                             existingAgentIds = definitions.map { it.agentId }.toSet(),
+                                            knownToolDescriptions = modelViewModel.availableAgentTools().map { tool -> "${tool.id}: ${tool.title} — ${tool.description}; capabilities=${tool.capabilities}" },
                                             generate = { prompt -> if (useChatGptForCreator) modelViewModel.generateAgentCreatorOutputFromCodex(prompt) else modelViewModel.generateAgentCreatorOutputFromPrompt(prompt) },
                                             existingAgentSummaries = definitions.map { "${it.agentId}: ${it.name} — ${it.purpose}" },
                                             forceComplete = clarificationPending
