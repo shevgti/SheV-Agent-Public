@@ -1439,6 +1439,75 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /** Runs a bounded tool-free creator turn; it cannot execute or approve generated agents. */
+    /** Generates an agent manifest through the authenticated ChatGPT/Codex account. */
+    suspend fun generateAgentCreatorOutputFromCodex(creatorPrompt: String): String {
+        require(creatorPrompt.isNotBlank()) { "Пустой запрос конструктора." }
+        check(!mutableState.value.busy) { "Модель уже выполняет другую задачу." }
+        check(mutableState.value.codexConnected) { "Сначала подключи ChatGPT в настройках Codex." }
+        mutableState.update { it.copy(busy = true, error = null, codexStatus = "ChatGPT проектирует специалиста…") }
+        try {
+            return withContext(Dispatchers.IO) {
+                val client = ensureCodexClient()
+                val account = client.accountRead(true).get("account")?.takeIf { it.isJsonObject }?.asJsonObject
+                require(account?.get("type")?.asString == "chatgpt") { "Сессия ChatGPT не подтверждена. Переподключи Codex." }
+                val preferences = getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+                val modelId = preferences.getString("model_id", mutableState.value.codexModelId).orEmpty()
+                require(modelId.isNotBlank()) { "Не выбрана доступная модель ChatGPT/Codex." }
+                val threadId = client.startThread(modelId)
+                val started = client.startTurn(threadId, buildString {
+                    appendLine("Ты — конструктор специалистов SheV Agent. Подготовь паспорт агента строго по заданному контракту.")
+                    appendLine("Верни только полный JSON-объект без Markdown и пояснений. Не вызывай инструменты и не выполняй команды.")
+                    appendLine("Все предложения и разрешения должны быть минимальными и соответствовать задаче.")
+                    appendLine()
+                    append(creatorPrompt)
+                })
+                val turnId = started.getAsJsonObject("turn")?.get("id")?.asString
+                    ?: throw IllegalStateException("Codex не вернул идентификатор генерации.")
+                val answer = StringBuilder()
+                val completed = CompletableDeferred<JsonObject>()
+                kotlinx.coroutines.coroutineScope {
+                    val collector = launch(Dispatchers.IO) {
+                        client.events.collect { event ->
+                            val methodName = event.get("method")?.asString.orEmpty()
+                            val params = event.getAsJsonObject("params") ?: JsonObject()
+                            val eventThreadId = params.get("threadId")?.asString
+                            val eventTurnId = params.get("turnId")?.asString ?: params.getAsJsonObject("turn")?.get("id")?.asString
+                            if (eventThreadId != null && eventThreadId != threadId) return@collect
+                            if (eventTurnId != null && eventTurnId != turnId) return@collect
+                            when (methodName) {
+                                "item/agentMessage/delta" -> answer.append(params.get("delta")?.asString.orEmpty())
+                                "item/completed" -> {
+                                    val item = params.getAsJsonObject("item")
+                                    if (item?.get("type")?.asString == "agentMessage" && answer.isEmpty()) {
+                                        item.getAsJsonArray("content")?.forEach { part ->
+                                            if (part.isJsonObject) answer.append(part.asJsonObject.get("text")?.asString.orEmpty())
+                                        }
+                                    }
+                                }
+                                "turn/completed" -> if (eventTurnId == turnId || params.getAsJsonObject("turn")?.get("id")?.asString == turnId) completed.complete(params)
+                                "item/commandExecution/requestApproval", "item/fileChange/requestApproval" -> {
+                                    val requestId = runCatching { event.get("id")?.asLong }.getOrNull()
+                                    if (requestId != null) client.respondToServerRequest(requestId, JsonObject().apply { addProperty("decision", "decline") })
+                                }
+                            }
+                        }
+                    }
+                    try {
+                        val completion = withTimeout(180_000L) { completed.await() }
+                        val turn = completion.get("turn")?.takeIf { it.isJsonObject }?.asJsonObject
+                        val status = turn?.get("status")?.asString.orEmpty()
+                        if (status.isNotBlank() && status != "completed") {
+                            throw IllegalStateException(turn?.getAsJsonObject("error")?.get("message")?.asString ?: "Codex завершил генерацию со статусом $status.")
+                        }
+                    } finally { collector.cancel() }
+                }
+                answer.toString().trim().also { if (it.isBlank()) throw IllegalStateException("ChatGPT/Codex не вернул паспорт специалиста.") }
+            }
+        } finally {
+            mutableState.update { it.copy(busy = false, codexStatus = if (it.codexConnected) "ChatGPT подключён" else it.codexStatus) }
+        }
+    }
+
     suspend fun generateAgentCreatorOutputFromPrompt(creatorPrompt: String): String {
         require(creatorPrompt.isNotBlank()) { "Пустой запрос конструктора." }
         val active = runtime ?: throw IllegalStateException(
