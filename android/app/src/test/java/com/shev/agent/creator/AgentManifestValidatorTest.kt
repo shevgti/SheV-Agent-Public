@@ -1,5 +1,7 @@
 package com.shev.agent.creator
 
+import com.shev.agent.AgentCapability
+
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -282,7 +284,7 @@ $json
             allowedToolIds = listOf("agent.inspect_tools")
         )
         assertFalse(AgentRunPolicy.evaluate(manifest).allowed)
-        assertTrue(AgentRunPolicy.evaluate(manifest, setOf("agent.inspect_tools")).allowed)
+        assertTrue(AgentRunPolicy.evaluate(manifest, mapOf("agent.inspect_tools" to setOf(AgentCapability.ANALYZE_DATA))).allowed)
     }
 
     @Test fun specialistMayUseRegisteredReadOnlyNetworkToolsOnlyWithReadOnlyPolicy() {
@@ -291,14 +293,14 @@ $json
             allowedToolIds = listOf("agent.web_search"),
             networkPolicy = "READ_ONLY"
         )
-        assertTrue(AgentRunPolicy.evaluate(manifest, setOf("agent.web_search")).allowed)
+        assertTrue(AgentRunPolicy.evaluate(manifest, mapOf("agent.web_search" to setOf(AgentCapability.READ_REMOTE_DATA))).allowed)
         assertFalse(AgentRunPolicy.evaluate(
             manifest.copy(networkPolicy = "OFFLINE"),
-            setOf("agent.web_search")
+            mapOf("agent.web_search" to setOf(AgentCapability.READ_REMOTE_DATA))
         ).allowed)
         assertFalse(AgentRunPolicy.evaluate(
             manifest,
-            setOf("agent.inspect_tools")
+            mapOf("agent.inspect_tools" to setOf(AgentCapability.ANALYZE_DATA))
         ).allowed)
     }
 
