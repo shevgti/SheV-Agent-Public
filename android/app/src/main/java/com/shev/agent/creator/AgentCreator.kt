@@ -20,12 +20,13 @@ class AgentCreator {
         knownToolIds: Set<String>,
         existingAgentIds: Set<String>,
         generate: suspend (String) -> String,
-        existingAgentSummaries: List<String> = emptyList()
+        existingAgentSummaries: List<String> = emptyList(),
+        forceComplete: Boolean = false
     ): AgentCreationResult {
         if (userRequest.isBlank() || userRequest.length > AgentCreatorPromptBuilder.MAX_REQUEST_CHARS) {
             return AgentCreationResult.Rejected("INVALID_REQUEST", "Запрос пустой или превышает допустимый размер.")
         }
-        val prompt = AgentCreatorPromptBuilder.build(userRequest, knownToolIds, existingAgentSummaries)
+        val prompt = AgentCreatorPromptBuilder.build(userRequest, knownToolIds, existingAgentSummaries, forceComplete)
         val output = try {
             generate(prompt)
         } catch (cancelled: CancellationException) {
@@ -67,7 +68,7 @@ class AgentCreator {
                 )
             }
         }
-        if (parsed.clarifyingQuestions.isNotEmpty()) {
+        if (!forceComplete && parsed.clarifyingQuestions.isNotEmpty()) {
             val questions = parsed.clarifyingQuestions.filter { !it.isNullOrBlank() }.take(3)
             if (questions.isEmpty()) return AgentCreationResult.Rejected("INVALID_CLARIFICATION")
             return AgentCreationResult.NeedsClarification(questions)
