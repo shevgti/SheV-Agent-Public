@@ -46,6 +46,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
     var status by remember { mutableStateOf("Опиши специалиста, которого нужно создать.") }
     var busy by remember { mutableStateOf(false) }
     var clarificationPending by remember { mutableStateOf(false) }
+    var useChatGptForCreator by remember { mutableStateOf(false) }
 
     LazyColumn(
         Modifier.fillMaxSize().padding(18.dp),
@@ -63,17 +64,29 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Откуда берётся ИИ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "ВАЖНО: текущий конструктор создаёт паспорта через локальную LiteRT-LM модель на телефоне. Он пока НЕ использует Codex App Server, OpenRouter, Gemini или OpenAI API, даже если они подключены для основного чата.",
+                        "Выбери интеллект, который будет проектировать паспорт специалиста. ChatGPT использует уже подключённый Codex-аккаунт; локальная модель работает непосредственно на телефоне.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            enabled = !busy && modelState.codexConnected,
+                            onClick = { useChatGptForCreator = true }
+                        ) { Text(if (useChatGptForCreator) "✓ ChatGPT выбран" else "ChatGPT / Codex") }
+                        OutlinedButton(
+                            enabled = !busy && modelState.ready,
+                            onClick = { useChatGptForCreator = false }
+                        ) { Text(if (!useChatGptForCreator) "✓ Локальная модель" else "Локальная модель") }
+                    }
                     Text(
                         when {
+                            useChatGptForCreator && modelState.codexConnected -> "Источник конструктора: ChatGPT / Codex · подключён"
+                            useChatGptForCreator -> "ChatGPT / Codex не подключён. Открой настройки и выполни вход."
                             modelState.ready -> "Источник конструктора: локальная модель · запущена"
                             modelState.verified -> "Источник конструктора: локальная модель · файл установлен, но модель не запущена"
                             else -> "Источник конструктора: локальная модель · модель ещё не установлена"
                         },
                         fontWeight = FontWeight.SemiBold,
-                        color = if (modelState.ready) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if ((useChatGptForCreator && modelState.codexConnected) || (!useChatGptForCreator && modelState.ready)) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text("Инструменты с реальными обработчиками:", fontWeight = FontWeight.SemiBold)
                     val availableTools = modelViewModel.availableAgentTools()
@@ -114,10 +127,10 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
-                            enabled = !busy && !modelState.busy && request.isNotBlank() && modelState.ready,
+                            enabled = !busy && !modelState.busy && request.isNotBlank() && if (useChatGptForCreator) modelState.codexConnected else modelState.ready,
                             onClick = {
                                 busy = true
-                                status = "Локальная модель проектирует агента…"
+                                status = if (useChatGptForCreator) "ChatGPT / Codex проектирует агента…" else "Локальная модель проектирует агента…"
                                 scope.launch {
                                     try {
                                         val knownTools = modelViewModel.availableAgentToolIds()
@@ -125,7 +138,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                                             userRequest = request,
                                             knownToolIds = knownTools,
                                             existingAgentIds = definitions.map { it.agentId }.toSet(),
-                                            generate = { prompt -> modelViewModel.generateAgentCreatorOutputFromPrompt(prompt) },
+                                            generate = { prompt -> if (useChatGptForCreator) modelViewModel.generateAgentCreatorOutputFromCodex(prompt) else modelViewModel.generateAgentCreatorOutputFromPrompt(prompt) },
                                             existingAgentSummaries = definitions.map { "${it.agentId}: ${it.name} — ${it.purpose}" },
                                             forceComplete = clarificationPending
                                         )
