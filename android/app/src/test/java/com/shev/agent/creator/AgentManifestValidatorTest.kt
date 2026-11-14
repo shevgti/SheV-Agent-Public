@@ -159,7 +159,7 @@ $json
         )
         assertTrue(prompt.contains("Не задавай вопросов."))
         assertTrue(prompt.contains("безопасные значения по умолчанию"))
-        assertTrue(prompt.contains('"clarifyingQuestions":[]'))
+        assertTrue(prompt.contains("\"clarifyingQuestions\":[]"))
     }
 
     @Test fun creatorIncludesExistingAgentInventory() = runBlocking {
