@@ -93,30 +93,31 @@ class SheVAgentAdkTools(
         @Param("Ключевые слова через запятую.") keywords: String,
         @Param("Публичные HTTP(S)-ссылки на источники, каждая с новой строки.") sourceUrls: String
     ): Map<String, String> {
-        val library = skillLibrary ?: return mapOf("status" to "unavailable", "message" to "Библиотека навыков не подключена.")
-        return try {
-            val id = "skill-" + java.util.UUID.nameUUIDFromBytes(
-                title.trim().lowercase(java.util.Locale.ROOT).toByteArray(Charsets.UTF_8)
-            ).toString()
-            val saved = library.saveDraft(
-                skillId = id,
-                title = title,
-                summary = summary,
-                instructions = instructions,
-                keywords = keywords.split(',').map(String::trim).filter(String::isNotBlank),
-                sourceUrls = sourceUrls.lines().map(String::trim).filter(String::isNotBlank),
-                verificationNotes = "Создан главным агентом. Требуется проверка и подтверждение пользователя."
+        if (skillLibrary == null) return mapOf("status" to "unavailable", "message" to "Библиотека навыков не подключена.")
+        val execution = executeSuspending(
+            AgentToolRequest(
+                toolId = SAVE_SKILL_DRAFT_TOOL_ID,
+                capability = AgentCapability.CREATE_DRAFT,
+                input = Gson().toJson(
+                    mapOf(
+                        "title" to title,
+                        "summary" to summary,
+                        "instructions" to instructions,
+                        "keywords" to keywords,
+                        "sourceUrls" to sourceUrls
+                    )
+                )
             )
+        )
+        val result = execution.result
+        return if (execution.status == AgentToolExecutionStatus.COMPLETED && result?.success == true) {
+            mapOf("status" to "draft_saved", "message" to result.output)
+        } else {
             mapOf(
-                "status" to "draft_saved",
-                "skill_id" to saved.skillId,
-                "version" to saved.version.toString(),
-                "message" to "Черновик навыка сохранён. Он не будет использоваться, пока пользователь не проверит и не активирует его."
+                "status" to "not_saved",
+                "reason" to execution.status.name,
+                "message" to (result?.errorCode ?: "Черновик навыка не сохранён.")
             )
-        } catch (failure: IllegalArgumentException) {
-            mapOf("status" to "rejected", "message" to (failure.message ?: "Навык не прошёл проверку."))
-        } catch (failure: Exception) {
-            mapOf("status" to "error", "message" to (failure.message ?: "Не удалось сохранить навык."))
         }
     }
 
