@@ -9,6 +9,7 @@ import com.google.adk.kt.events.Event
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.shev.agent.AgentCapability
+import com.shev.agent.data.AgentSkillLibrary
 import com.shev.agent.data.ConversationMessageEntity
 import com.shev.agent.data.ConversationStateRepository
 import com.shev.agent.data.ConversationSummaryRead
@@ -88,6 +89,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private val store = ModelStore(application.applicationContext)
     private val database = SheVAgentDatabaseProvider.get(application.applicationContext)
     private val dao = database.agentDao()
+    private val skillLibrary = AgentSkillLibrary(dao)
     private val conversationStateRepository = ConversationStateRepository(database)
     private val taskRepository = RoomAgentTaskRepository(
         database,
@@ -777,6 +779,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint
                 )
+                // Retrieve only explicitly verified reusable skills. Drafts and unreviewed
+                // model-generated instructions are never injected into the agent prompt.
+                val verifiedSkillContext = skillLibrary.buildContext(message)
+                val promptWithSkills = if (verifiedSkillContext.isBlank()) promptWithContext
+                    else "$promptWithContext\\n\\n$verifiedSkillContext"
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
                         id = userMessageId,
@@ -786,7 +793,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         createdAtEpochMillis = System.currentTimeMillis()
                     )
                 )
-                active.run(promptWithContext).collect { event: Event ->
+                active.run(promptWithSkills).collect { event: Event ->
                     val answer = event.content?.parts.orEmpty()
                         .mapNotNull { it.text }
                         .filter { it.isNotBlank() }
