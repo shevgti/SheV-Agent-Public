@@ -73,7 +73,7 @@ internal object AppUpdater {
     }
 
     /** Downloads and verifies the update in the background. Does not open Android's installer. */
-    suspend fun downloadToCache(context: Context, update: AppUpdate): File = withContext(Dispatchers.IO) {
+    suspend fun downloadToCache(\n        context: Context,\n        update: AppUpdate,\n        onProgress: (Long, Long) -> Unit = { _, _ -> }\n    ): File = withContext(Dispatchers.IO) {
         val directory = File(context.cacheDir, "updates").apply {
             if (!exists() && !mkdirs()) error("Не удалось создать папку обновления")
         }
@@ -135,6 +135,16 @@ internal object AppUpdater {
             partial.delete()
             throw failure
         }
+    }
+
+    /** Backward-compatible foreground flow used by the in-chat update dialog. */
+    suspend fun downloadAndInstall(
+        context: Context,
+        update: AppUpdate,
+        onProgress: (Long, Long) -> Unit
+    ): Boolean {
+        downloadToCache(context, update, onProgress)
+        return withContext(Dispatchers.Main) { openInstaller(context) }
     }
 
     fun hasDownloadedUpdate(context: Context): Boolean {
