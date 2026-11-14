@@ -36,8 +36,8 @@ class AgentManifestValidator(private val knownToolIds: Set<String>) {
             return reject(AgentManifestRejection.UNKNOWN_TOOL, unknown.joinToString())
         if (manifest.memoryReadScopes.isNotEmpty() || manifest.memoryWriteScopes.isNotEmpty())
             return reject(AgentManifestRejection.INVALID_MEMORY_SCOPE, "Доступ к памяти агентов пока не подключён.")
-        if (manifest.networkPolicy != "OFFLINE" || manifest.sideEffectPolicy != "DRAFT_ONLY")
-            return reject(AgentManifestRejection.UNSAFE_POLICY, "Разрешены только OFFLINE и DRAFT_ONLY.")
+        if (manifest.networkPolicy !in setOf("OFFLINE", "READ_ONLY") || manifest.sideEffectPolicy != "DRAFT_ONLY")
+            return reject(AgentManifestRejection.UNSAFE_POLICY, "Разрешены только OFFLINE/READ_ONLY и DRAFT_ONLY.")
         if (manifest.verificationStrategy.isBlank())
             return reject(AgentManifestRejection.MISSING_VERIFICATION)
         if (manifest.evaluationCases.size !in 2..8 ||
