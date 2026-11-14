@@ -554,6 +554,23 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                             )
                         )
                     )
+                    register(
+                        AgentToolDescriptor(
+                            id = SheVAgentAdkTools.SAVE_SKILL_DRAFT_TOOL_ID,
+                            title = "Сохранить черновик навыка",
+                            description = "Сохраняет повторно используемую инструкцию в библиотеку SheV; не активирует её",
+                            capabilities = setOf(AgentCapability.CREATE_DRAFT),
+                            inputSchema = ToolInputSchema(
+                                listOf(
+                                    ToolInputField("title", ToolInputType.STRING, required = true, maxLength = 120),
+                                    ToolInputField("summary", ToolInputType.STRING, required = true, maxLength = 1_000),
+                                    ToolInputField("instructions", ToolInputType.STRING, required = true, maxLength = 8_000),
+                                    ToolInputField("keywords", ToolInputType.STRING, required = false, maxLength = 1_000),
+                                    ToolInputField("sourceUrls", ToolInputType.STRING, required = false, maxLength = 4_000)
+                                )
+                            )
+                        )
+                    )
                 }
                 val taskDraftHandler = SuspendingAgentTool { input ->
                     val title = runCatching {
@@ -591,6 +608,35 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         }
                     }
                 }
+                val skillDraftHandler = SuspendingAgentTool { input ->
+                    val payload = runCatching { JsonParser.parseString(input).asJsonObject }.getOrNull()
+                    val title = payload?.get("title")?.takeIf { it.isJsonPrimitive }?.asString
+                    val summary = payload?.get("summary")?.takeIf { it.isJsonPrimitive }?.asString
+                    val instructions = payload?.get("instructions")?.takeIf { it.isJsonPrimitive }?.asString
+                    if (title.isNullOrBlank() || summary.isNullOrBlank() || instructions.isNullOrBlank()) {
+                        AgentToolResult(false, "Для навыка нужны название, назначение и инструкция.", "INVALID_SKILL")
+                    } else {
+                        try {
+                            val skillId = "skill-" + title.lowercase(java.util.Locale.ROOT)
+                                .replace(Regex("[^\\\\p{L}\\\\p{N}]+"), "-")
+                                .trim('-').take(56)
+                            val saved = skillLibrary.saveDraft(
+                                skillId = skillId,
+                                title = title,
+                                summary = summary,
+                                instructions = instructions,
+                                keywords = payload.get("keywords")?.asString.orEmpty().split(',').map(String::trim).filter(String::isNotBlank),
+                                sourceUrls = payload.get("sourceUrls")?.asString.orEmpty().lines().map(String::trim).filter(String::isNotBlank),
+                                verificationNotes = "Черновик создан главным агентом; ожидает проверки пользователя."
+                            )
+                            AgentToolResult(true, "Черновик навыка «${saved.title}» v${saved.version} сохранён. Он не активирован и не будет влиять на ответы до проверки пользователем.")
+                        } catch (failure: IllegalArgumentException) {
+                            AgentToolResult(false, failure.message ?: "Навык не прошёл проверку.", "INVALID_SKILL")
+                        } catch (failure: Exception) {
+                            AgentToolResult(false, failure.message ?: "Не удалось сохранить навык.", "SKILL_SAVE_FAILED")
+                        }
+                    }
+                }
                 val currentTimeHandler = AgentTool { _ ->
                     AgentToolResult(true, LocalTimeTool().readCurrentTime())
                 }
@@ -604,6 +650,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     ),
                     suspendingHandlers = mapOf(
                         SheVAgentAdkTools.CREATE_TASK_DRAFT_ID to taskDraftHandler,
+                        SheVAgentAdkTools.SAVE_SKILL_DRAFT_TOOL_ID to skillDraftHandler,
                         SheVAgentAdkTools.WEATHER_TOOL_ID to SuspendingAgentTool { input ->
                             val city = runCatching {
                                 JsonParser.parseString(input).asJsonObject.get("city")?.asString
@@ -648,7 +695,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                             AgentCapability.READ_REMOTE_DATA
                         ),
                         explicitlyApprovedCapabilities = setOf(AgentCapability.READ_REMOTE_DATA)
-                    )
+                    ),
+                    skillLibrary = skillLibrary
                 )
                 runtime = SheVAgentRuntime.load(getApplication(), store, tools)
                 toolExecutor = executor
