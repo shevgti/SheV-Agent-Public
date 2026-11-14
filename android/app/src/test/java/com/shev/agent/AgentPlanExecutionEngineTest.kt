@@ -121,6 +121,84 @@ class AgentPlanExecutionEngineTest {
         assertEquals(AgentPlanExecutionStatus.INVALID_PLAN, result.status)
     }
 
+    @Test fun invalidLaterStepIsRejectedBeforeFirstHandlerRuns() = runBlocking {
+        var calls = 0
+        val registry = registry()
+        val executor = AgentToolExecutor(
+            registry,
+            mapOf("research.lookup" to AgentTool {
+                calls++
+                AgentToolResult(true, "unexpected")
+            })
+        )
+        val twoStepPlan = plan().copy(
+            steps = listOf(
+                plan().steps.single(),
+                plan().steps.single().copy(id = "search-2", input = """{"unexpected":"bad"}""")
+            )
+        )
+        val engine = AgentPlanExecutionEngine(AgentPlanValidator(registry), executor)
+
+        val result = engine.executeApprovedPlan(
+            twoStepPlan,
+            agentAllowedToolIds = setOf("research.lookup"),
+            context = AgentToolExecutionContext(setOf(AgentCapability.ANALYZE_DATA))
+        )
+
+        assertEquals(0, calls)
+        assertEquals(AgentPlanExecutionStatus.INVALID_PLAN, result.status)
+        assertEquals(AgentPlanRejection.INVALID_TOOL_INPUT, result.validationRejection)
+    }
+
+    @Test fun writeStepStopsAtApprovalBoundary() = runBlocking {
+        val registry = AgentToolRegistry().apply {
+            register(
+                AgentToolDescriptor(
+                    id = "project.write_draft",
+                    title = "Черновик изменения",
+                    description = "Готовит черновик изменения проекта",
+                    capabilities = setOf(AgentCapability.WRITE_PROJECT_FILES),
+                    inputSchema = ToolInputSchema(
+                        listOf(ToolInputField("content", ToolInputType.STRING, maxLength = 200))
+                    )
+                )
+            )
+        }
+        var calls = 0
+        val executor = AgentToolExecutor(
+            registry,
+            mapOf("project.write_draft" to AgentTool {
+                calls++
+                AgentToolResult(true, "written")
+            })
+        )
+        val plan = AgentPlan(
+            "Подготовить черновик",
+            listOf(
+                AgentPlanStep(
+                    "write-1",
+                    "Подготовить файл",
+                    "project.write_draft",
+                    AgentCapability.WRITE_PROJECT_FILES,
+                    """{"content":"draft"}"""
+                )
+            )
+        )
+        val engine = AgentPlanExecutionEngine(AgentPlanValidator(registry), executor)
+
+        val result = engine.executeApprovedPlan(
+            plan,
+            agentAllowedToolIds = setOf("project.write_draft"),
+            context = AgentToolExecutionContext(
+                grantedCapabilities = setOf(AgentCapability.WRITE_PROJECT_FILES)
+            )
+        )
+
+        assertEquals(0, calls)
+        assertEquals(AgentPlanExecutionStatus.APPROVAL_REQUIRED, result.status)
+        assertEquals("write-1", result.failedStepId)
+    }
+
     @Test fun missingCapabilityStopsExecutionBeforeHandler() = runBlocking {
         var calls = 0
         val registry = registry()
