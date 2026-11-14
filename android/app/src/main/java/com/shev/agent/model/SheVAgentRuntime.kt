@@ -43,6 +43,7 @@ class SheVAgentRuntime private constructor(
     private val runner: InMemoryRunner,
     private val creatorRunner: InMemoryRunner,
     private val sessionService: InMemorySessionService,
+    private val hostTools: SheVAgentAdkTools,
     val backendName: String
 ) : Closeable {
     private val closed = AtomicBoolean(false)
@@ -84,10 +85,21 @@ class SheVAgentRuntime private constructor(
     suspend fun runSpecialist(manifest: AgentManifest, input: String): String {
         check(!closed.get()) { "SheV Agent runtime is closed." }
         require(manifest.status == AgentManifest.STATUS_APPROVED) { "Агент ещё не одобрен." }
-        require(manifest.allowedToolIds.isEmpty()) { "Запуск специалистов с инструментами пока не поддерживается." }
-        require(manifest.networkPolicy == "OFFLINE" && manifest.sideEffectPolicy == "DRAFT_ONLY") {
-            "Для первого runtime разрешены только OFFLINE и DRAFT_ONLY."
+        require(manifest.networkPolicy in setOf("OFFLINE", "READ_ONLY") &&
+            manifest.sideEffectPolicy == "DRAFT_ONLY") {
+            "Разрешены только OFFLINE/READ_ONLY и DRAFT_ONLY."
         }
+        val availableDescriptors = hostTools.availableToolDescriptors().associateBy { it.id }
+        val selectedDescriptors = manifest.allowedToolIds.map { id ->
+            availableDescriptors[id] ?: throw IllegalArgumentException("Инструмент '$id' не зарегистрирован или не имеет обработчика.")
+        }
+        if (manifest.networkPolicy == "OFFLINE" && selectedDescriptors.any {
+                com.shev.agent.AgentCapability.READ_REMOTE_DATA in it.capabilities
+            }) {
+            throw IllegalArgumentException("Паспорт OFFLINE не может запрашивать сетевые инструменты.")
+        }
+        val specialistTools = if (manifest.allowedToolIds.isEmpty()) emptyList()
+            else hostTools.scopedTo(manifest.allowedToolIds.toSet()).generatedTools()
         require(input.isNotBlank() && input.length <= MAX_SPECIALIST_INPUT_CHARS) {
             "Задача пуста или превышает лимит $MAX_SPECIALIST_INPUT_CHARS символов."
         }
@@ -104,7 +116,10 @@ class SheVAgentRuntime private constructor(
                     buildString {
                         append("Ты — специализированный локальный ИИ-агент SheV. Всегда отвечай по-русски. ")
                         append("Работай строго в рамках роли и инструкций ниже. Не выдумывай выполненные действия. ")
-                        append("У тебя нет инструментов, сети, файлового доступа и права изменять данные. ")
+                        append("Твои разрешённые инструменты: ").append(manifest.allowedToolIds.joinToString().ifBlank { "нет" }).append(". ") 
+                        append("Все вызовы проходят через отдельный неизменяемый allowlist и CapabilityPolicy. ")
+                        append("Не пытайся использовать инструменты, которых нет в этом списке. ")
+                        append("У тебя нет произвольного файлового доступа и права изменять данные. ")
                         append("Если задача требует внешнего поиска или действия, прямо сообщи об ограничении.\n")
                         append("Роль: ").append(manifest.role).append("\n")
                         append("Назначение: ").append(manifest.purpose).append("\n")
@@ -114,7 +129,7 @@ class SheVAgentRuntime private constructor(
                         append("Стратегия проверки: ").append(manifest.verificationStrategy)
                     }
                 ),
-                tools = emptyList(),
+                tools = specialistTools,
                 maxSteps = manifest.maxSteps
             )
             val specialistRunner = InMemoryRunner(
@@ -219,7 +234,7 @@ class SheVAgentRuntime private constructor(
                         sessionService = sessionService
                     )
                     creatorRunner = activeCreatorRunner
-                    return@withContext SheVAgentRuntime(activeModel, activeRunner, activeCreatorRunner, sessionService, backendName)
+                    return@withContext SheVAgentRuntime(activeModel, activeRunner, activeCreatorRunner, sessionService, tools, backendName)
                 } catch (cancelled: CancellationException) {
                     try { runner?.close() } catch (_: Throwable) { /* Preserve cancellation. */ }
                     try { creatorRunner?.close() } catch (_: Throwable) { /* Preserve cancellation. */ }
