@@ -62,13 +62,14 @@ internal class CodexAppServerClient(
         val workspace = java.io.File(appContext.noBackupFilesDir, "codex-workspace").apply { mkdirs() }
         val cache = appContext.cacheDir.apply { mkdirs() }
         val configFile = java.io.File(codexHome, "config.toml")
-        if (!configFile.exists()) {
-            configFile.writeText(
-                "approval_policy = \"on-request\"\n" +
-                    "sandbox_mode = \"read-only\"\n" +
-                    "model_reasoning_effort = \"medium\"\n",
-                StandardCharsets.UTF_8
-            )
+        val existingConfig = if (configFile.exists()) {
+            configFile.readText(StandardCharsets.UTF_8)
+        } else {
+            null
+        }
+        val configured = CodexRuntimeConfig.withLiveWebSearchDefault(existingConfig)
+        if (existingConfig != configured) {
+            configFile.writeText(configured, StandardCharsets.UTF_8)
         }
         val builder = ProcessBuilder(
             binary.absolutePath,
