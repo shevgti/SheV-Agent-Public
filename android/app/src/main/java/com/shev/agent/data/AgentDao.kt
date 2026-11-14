@@ -122,6 +122,22 @@ interface AgentDao {
     @Query("UPDATE conversation_messages SET status = :status WHERE id = :id")
     suspend fun updateConversationMessageStatus(id: String, status: String)
 
+
+    @Query("SELECT * FROM agent_skills WHERE status = 'VERIFIED' ORDER BY updatedAtEpochMillis DESC")
+    suspend fun getVerifiedAgentSkills(): List<AgentSkillEntity>
+
+    @Query("SELECT * FROM agent_skills WHERE skillId = :skillId LIMIT 1")
+    suspend fun getAgentSkill(skillId: String): AgentSkillEntity?
+
+    @Query("SELECT * FROM agent_skills WHERE status = 'VERIFIED' ORDER BY updatedAtEpochMillis DESC")
+    fun observeVerifiedAgentSkills(): Flow<List<AgentSkillEntity>>
+
+    @Upsert
+    suspend fun saveAgentSkill(skill: AgentSkillEntity)
+
+    @Query("UPDATE agent_skills SET status = 'DISABLED', updatedAtEpochMillis = :nowMillis WHERE skillId = :skillId")
+    suspend fun disableAgentSkill(skillId: String, nowMillis: Long): Int
+
     @Query("SELECT * FROM agent_definitions ORDER BY updatedAtEpochMillis DESC")
     fun observeAgentDefinitions(): Flow<List<AgentDefinitionEntity>>
 
