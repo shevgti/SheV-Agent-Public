@@ -94,6 +94,36 @@ $json
         )
     }
 
+    @Test fun creatorDoesNotAskAgainAfterClarificationRound() = runBlocking {
+        val output = com.google.gson.Gson().toJson(
+            validManifest().copy(clarifyingQuestions = listOf("Какой формат отчёта нужен?"))
+        )
+        var calls = 0
+        var receivedPrompt = ""
+        val result = AgentCreator().createDraft(
+            userRequest = "Создай исследователя информации. Ответы на уточнения: можно выбрать самостоятельно.",
+            knownToolIds = setOf("agent.inspect_tools"),
+            existingAgentIds = emptySet(),
+            generate = { prompt -> calls += 1; receivedPrompt = prompt; output },
+            forceComplete = true
+        )
+        assertEquals(1, calls)
+        assertTrue(receivedPrompt.contains("НЕ задавай вопросов"))
+        assertTrue(result is AgentCreationResult.Created)
+        assertTrue((result as AgentCreationResult.Created).manifest.clarifyingQuestions.isEmpty())
+    }
+
+    @Test fun finalCreatorPromptRequiresDefaultsInsteadOfMoreQuestions() {
+        val prompt = AgentCreatorPromptBuilder.build(
+            "Создай специалиста",
+            emptySet(),
+            forceComplete = true
+        )
+        assertTrue(prompt.contains("Это финальная попытка"))
+        assertTrue(prompt.contains("разумные значения по умолчанию"))
+        assertTrue(prompt.contains("НЕ возвращай clarifyingQuestions"))
+    }
+
     @Test fun creatorIncludesExistingAgentInventory() = runBlocking {
         var receivedPrompt = ""
         val output = com.google.gson.Gson().toJson(validManifest())
