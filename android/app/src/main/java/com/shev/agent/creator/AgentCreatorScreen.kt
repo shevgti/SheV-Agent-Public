@@ -133,6 +133,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                                 status = if (useChatGptForCreator) "ChatGPT / Codex проектирует агента…" else "Локальная модель проектирует агента…"
                                 scope.launch {
                                     try {
+                                        modelViewModel.prepareAgentToolCatalog()
                                         val knownTools = modelViewModel.availableAgentToolIds()
                                         val creation = AgentCreator().createDraft(
                                             userRequest = request,
