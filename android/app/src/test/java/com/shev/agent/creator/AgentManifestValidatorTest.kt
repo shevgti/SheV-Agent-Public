@@ -279,8 +279,8 @@ $json
                 calls += 1
                 if (calls == 1) """{"triggeringExamples":[{"user":"неэкранированная "кавычка"}]}"""
                 else {
-                    assertTrue(prompt.contains("Исправь синтаксис JSON"))
-                    assertTrue(prompt.contains("Некорректный ответ"))
+                    assertTrue(prompt.contains("Повтори создание с нуля"))
+                    assertTrue(prompt.contains("короткий полный JSON"))
                     valid
                 }
             }
