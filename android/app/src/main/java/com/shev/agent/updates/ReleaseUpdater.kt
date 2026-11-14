@@ -43,6 +43,18 @@ object ReleaseUpdater {
 
     suspend fun downloadAndPromptInstall(context: Context, release: ReleaseInfo): Boolean =
         withContext(Dispatchers.IO) {
+            val canInstall = withContext(Dispatchers.Main) {
+                if (!context.packageManager.canRequestPackageInstalls()) {
+                    val settingsIntent = Intent(
+                        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        android.net.Uri.parse("package:${context.packageName}")
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(settingsIntent)
+                    false
+                } else true
+            }
+            if (!canInstall) return@withContext false
+
             val apkFile = File(context.cacheDir, APK_ASSET)
             val partialFile = File(context.cacheDir, "$APK_ASSET.part")
             partialFile.delete()
@@ -59,14 +71,6 @@ object ReleaseUpdater {
                 partialFile.delete()
             }) { "Не удалось подготовить APK после проверки." }
             withContext(Dispatchers.Main) {
-                if (!context.packageManager.canRequestPackageInstalls()) {
-                    val settingsIntent = Intent(
-                        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                        android.net.Uri.parse("package:${context.packageName}")
-                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(settingsIntent)
-                    return@withContext false
-                }
                 val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apkFile)
                 val intent = Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(uri, "application/vnd.android.package-archive")
