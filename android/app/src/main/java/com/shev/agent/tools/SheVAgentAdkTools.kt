@@ -3,6 +3,7 @@ package com.shev.agent.tools
 import com.google.adk.kt.annotations.Param
 import com.google.adk.kt.annotations.Tool
 import com.shev.agent.AgentCapability
+import com.shev.agent.data.AgentSkillLibrary
 import com.google.gson.Gson
 
 /**
@@ -13,7 +14,8 @@ class SheVAgentAdkTools(
     private val executor: AgentToolExecutor,
     private val executionContext: AgentToolExecutionContext,
     /** Non-null for generated specialists; null is reserved for existing host-owned callers. */
-    agentAllowedToolIds: Set<String>? = null
+    agentAllowedToolIds: Set<String>? = null,
+    private val skillLibrary: AgentSkillLibrary? = null
 ) {
     // Freeze the approved IDs when this adapter/session is created. A mutable caller-owned set
     // must not be able to add permissions while the specialist is running.
@@ -77,6 +79,46 @@ class SheVAgentAdkTools(
                 "reason" to execution.status.name,
                 "message" to (result?.errorCode ?: "Поручение не сохранено.")
             )
+        }
+    }
+
+    @Tool(
+        name = "save_reusable_skill_draft",
+        description = "Сохраняет найденный во время работы повторно используемый способ решения как ЧЕРНОВИК навыка. Навык не активируется автоматически и не считается проверенным."
+    )
+    suspend fun saveReusableSkillDraft(
+        @Param("Краткое название навыка.") title: String,
+        @Param("Для чего навык нужен.") summary: String,
+        @Param("Пошаговая инструкция, без секретов и исполняемого кода.") instructions: String,
+        @Param("Ключевые слова через запятую.") keywords: String,
+        @Param("Публичные HTTP(S)-ссылки на источники, каждая с новой строки.") sourceUrls: String
+    ): Map<String, String> {
+        val library = skillLibrary ?: return mapOf("status" to "unavailable", "message" to "Библиотека навыков не подключена.")
+        return try {
+            val id = title.lowercase(java.util.Locale.ROOT)
+                .replace(Regex("[^\\p{L}\\p{N}]+"), "-")
+                .trim('-')
+                .take(56)
+                .let { "skill-" + it }
+            val saved = library.saveDraft(
+                skillId = id,
+                title = title,
+                summary = summary,
+                instructions = instructions,
+                keywords = keywords.split(',').map(String::trim).filter(String::isNotBlank),
+                sourceUrls = sourceUrls.lines().map(String::trim).filter(String::isNotBlank),
+                verificationNotes = "Создан главным агентом. Требуется проверка и подтверждение пользователя."
+            )
+            mapOf(
+                "status" to "draft_saved",
+                "skill_id" to saved.skillId,
+                "version" to saved.version.toString(),
+                "message" to "Черновик навыка сохранён. Он не будет использоваться, пока пользователь не проверит и не активирует его."
+            )
+        } catch (failure: IllegalArgumentException) {
+            mapOf("status" to "rejected", "message" to (failure.message ?: "Навык не прошёл проверку."))
+        } catch (failure: Exception) {
+            mapOf("status" to "error", "message" to (failure.message ?: "Не удалось сохранить навык."))
         }
     }
 
@@ -158,5 +200,6 @@ class SheVAgentAdkTools(
         const val CREATE_TASK_DRAFT_ID = "agent.create_task_draft"
         const val WEATHER_TOOL_ID = "agent.current_weather"
         const val WEB_SEARCH_TOOL_ID = "agent.web_search"
+        const val SAVE_SKILL_DRAFT_TOOL_ID = "agent.save_skill_draft"
     }
 }
