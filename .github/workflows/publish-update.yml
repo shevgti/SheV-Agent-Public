@@ -176,7 +176,7 @@ jobs:
       - name: Allocate unique release tag
         working-directory: android
         run: |
-          VERSION=$(grep -oP 'versionName = "\\K[^"]+' app/build.gradle.kts)
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           test -n "$VERSION"
           RELEASE_TAG="v${VERSION}-build.${APP_VERSION_CODE}"
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
