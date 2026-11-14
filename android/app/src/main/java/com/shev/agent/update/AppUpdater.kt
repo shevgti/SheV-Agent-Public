@@ -73,7 +73,11 @@ internal object AppUpdater {
     }
 
     /** Downloads and verifies the update in the background. Does not open Android's installer. */
-    suspend fun downloadToCache(\n        context: Context,\n        update: AppUpdate,\n        onProgress: (Long, Long) -> Unit = { _, _ -> }\n    ): File = withContext(Dispatchers.IO) {
+    suspend fun downloadToCache(
+        context: Context,
+        update: AppUpdate,
+        onProgress: (Long, Long) -> Unit = { _, _ -> }
+    ): File = withContext(Dispatchers.IO) {
         val directory = File(context.cacheDir, "updates").apply {
             if (!exists() && !mkdirs()) error("Не удалось создать папку обновления")
         }
@@ -82,7 +86,10 @@ internal object AppUpdater {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (apk.isFile && apk.length() > 0L &&
             prefs.getInt(KEY_VERSION_CODE, 0) == update.versionCode
-        ) return@withContext apk
+        ) {
+            withContext(Dispatchers.Main) { onProgress(apk.length(), apk.length()) }
+            return@withContext apk
+        }
 
         partial.delete()
         try {
@@ -94,6 +101,7 @@ internal object AppUpdater {
                     "APK превышает допустимый размер."
                 }
                 var downloaded = 0L
+                var lastReported = 0L
                 connection.inputStream.buffered().use { input ->
                     partial.outputStream().buffered().use { output ->
                         val buffer = ByteArray(128 * 1024)
@@ -103,6 +111,10 @@ internal object AppUpdater {
                             downloaded += count
                             require(downloaded <= MAX_APK_BYTES) { "APK превышает допустимый размер." }
                             output.write(buffer, 0, count)
+                            if (downloaded - lastReported >= 256 * 1024) {
+                                lastReported = downloaded
+                                withContext(Dispatchers.Main) { onProgress(downloaded, expectedLength) }
+                            }
                         }
                     }
                 }
@@ -126,6 +138,7 @@ internal object AppUpdater {
 
             if (apk.exists() && !apk.delete()) error("Не удалось заменить предыдущий APK.")
             if (!partial.renameTo(apk)) error("Не удалось сохранить скачанный APK.")
+            withContext(Dispatchers.Main) { onProgress(apk.length(), apk.length()) }
             prefs.edit()
                 .putInt(KEY_VERSION_CODE, update.versionCode)
                 .putString(KEY_VERSION_NAME, update.versionName)
