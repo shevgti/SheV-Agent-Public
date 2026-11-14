@@ -222,9 +222,9 @@ $json
 
     @Test fun creatorPromptDoesNotAskSmallModelToGenerateNestedWorkedExamples() {
         val prompt = AgentCreatorPromptBuilder.build("Погода в городах мира", emptySet())
-        assertTrue(prompt.contains("Не генерируй triggeringExamples"))
-        assertTrue(prompt.contains("triggeringExamples\": []"))
-        assertTrue(prompt.contains("description\": \"\""))
+        assertTrue(prompt.contains("Не генерируй description и triggeringExamples"))
+        assertTrue(prompt.contains("\"triggeringExamples\":[]"))
+        assertTrue(prompt.contains("\"description\":\"\""))
     }
 
     @Test fun promptContainsAllowlistAndUserTask() {
