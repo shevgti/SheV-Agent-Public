@@ -618,7 +618,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     } else {
                         try {
                             val skillId = "skill-" + title.lowercase(java.util.Locale.ROOT)
-                                .replace(Regex("[^\\\\p{L}\\\\p{N}]+"), "-")
+                                .replace(Regex("[^\\p{L}\\p{N}]+"), "-")
                                 .trim('-').take(56)
                             val saved = skillLibrary.saveDraft(
                                 skillId = skillId,
