@@ -34,7 +34,7 @@ fun AgentSkillLibraryScreen(
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Библиотека навыков", style = MaterialTheme.typography.headlineSmall)
         Text(
-            "SheV может предлагать навыки после решения задач. Черновики не влияют на ответы, пока ты не проверишь их и не активируешь.",
+            "SheV может предлагать навыки после решения задач. Черновики не влияют на ответы, пока ты не проверишь их и не активируешь. Сейчас библиотека подключена к локальному чату; синхронизация с Codex и другими облачными режимами — следующий этап.",
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         if (message != null) {
