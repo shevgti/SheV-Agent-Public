@@ -5,25 +5,22 @@ data class AgentRunDecision(
     val reason: String? = null
 )
 
-/**
- * First runtime slice: approved, offline, tool-free specialists only.
- * Tool-backed execution remains disabled until per-agent allowlists are enforced by the host executor.
- */
+/** Revalidates an approved manifest against the exact host tools that have live handlers. */
 object AgentRunPolicy {
-    fun evaluate(manifest: AgentManifest): AgentRunDecision {
+    fun evaluate(
+        manifest: AgentManifest,
+        registeredToolIds: Set<String> = emptySet()
+    ): AgentRunDecision {
         if (manifest.status != AgentManifest.STATUS_APPROVED) {
             return AgentRunDecision(false, "Сначала одобри паспорт агента.")
         }
-        if (manifest.allowedToolIds.isNotEmpty()) {
-            return AgentRunDecision(false, "У этого специалиста запрошены инструменты. Их безопасная привязка ещё не подключена.")
-        }
-        val validation = AgentManifestValidator(emptySet()).validate(
+        val validation = AgentManifestValidator(registeredToolIds).validate(
             manifest.copy(status = AgentManifest.STATUS_DRAFT)
         )
         if (!validation.accepted) {
             return AgentRunDecision(
                 false,
-                "Паспорт не прошёл повторную проверку: ${validation.rejection ?: "ошибка"}."
+                "Паспорт не прошёл повторную проверку: ${validation.rejection ?: "ошибка"}.${validation.detail?.let { " $it" }.orEmpty()}"
             )
         }
         return AgentRunDecision(true)
