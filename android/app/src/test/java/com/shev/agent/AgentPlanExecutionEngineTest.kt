@@ -92,7 +92,19 @@ class AgentPlanExecutionEngineTest {
 
     @Test fun missingExecutableHandlerIsDetectedBeforeAnyStepRuns() = runBlocking {
         var calls = 0
-        val registry = registry()
+        val registry = registry().apply {
+            register(
+                AgentToolDescriptor(
+                    id = "research.open",
+                    title = "Открыть страницу",
+                    description = "Читает выбранную веб-страницу",
+                    capabilities = setOf(AgentCapability.ANALYZE_DATA),
+                    inputSchema = ToolInputSchema(
+                        listOf(ToolInputField("query", ToolInputType.STRING, maxLength = 200))
+                    )
+                )
+            )
+        }
         val executor = AgentToolExecutor(
             registry,
             mapOf("research.lookup" to AgentTool {
@@ -118,7 +130,7 @@ class AgentPlanExecutionEngineTest {
         )
 
         assertEquals(0, calls)
-        assertEquals(AgentPlanExecutionStatus.INVALID_PLAN, result.status)
+        assertEquals(AgentPlanExecutionStatus.TOOL_NOT_EXECUTABLE, result.status)
     }
 
     @Test fun invalidLaterStepIsRejectedBeforeFirstHandlerRuns() = runBlocking {
