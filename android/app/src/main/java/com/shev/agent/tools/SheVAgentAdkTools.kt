@@ -95,11 +95,9 @@ class SheVAgentAdkTools(
     ): Map<String, String> {
         val library = skillLibrary ?: return mapOf("status" to "unavailable", "message" to "Библиотека навыков не подключена.")
         return try {
-            val id = title.lowercase(java.util.Locale.ROOT)
-                .replace(Regex("[^\\p{L}\\p{N}]+"), "-")
-                .trim('-')
-                .take(56)
-                .let { "skill-" + it }
+            val id = "skill-" + java.util.UUID.nameUUIDFromBytes(
+                title.trim().lowercase(java.util.Locale.ROOT).toByteArray(Charsets.UTF_8)
+            ).toString()
             val saved = library.saveDraft(
                 skillId = id,
                 title = title,
