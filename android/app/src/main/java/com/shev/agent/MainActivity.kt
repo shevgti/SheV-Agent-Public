@@ -47,12 +47,16 @@ import com.shev.agent.tools.GitHubAuthCard
 import com.shev.agent.tools.ToolWorkshopScreen
 import com.shev.agent.updates.ReleaseUpdateCard
 import com.shev.agent.update.UpdateCheckWorker
+import com.shev.agent.update.AppUpdater
+import android.widget.Toast
 
 /**
  * The specialised-agent factory is the default screen. The primary chat and
  * safe tool workshop remain available as separate bottom-navigation destinations.
  */
 class MainActivity : ComponentActivity() {
+    private var installDownloadedUpdateRequested = false
+    private var awaitingInstallPermission = false
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
             getSharedPreferences(PERMISSIONS_PREFS, MODE_PRIVATE).edit()
@@ -70,6 +74,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installDownloadedUpdateRequested = intent?.action == ACTION_INSTALL_DOWNLOADED_UPDATE
         window.statusBarColor = android.graphics.Color.rgb(16, 19, 24)
         window.navigationBarColor = android.graphics.Color.rgb(16, 19, 24)
         window.decorView.systemUiVisibility = 0
@@ -103,6 +108,50 @@ class MainActivity : ComponentActivity() {
         requestFirstLaunchPermissions()
         // Run one update check immediately and keep the 15-minute periodic check scheduled.
         UpdateCheckWorker.schedule(applicationContext)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.action == ACTION_INSTALL_DOWNLOADED_UPDATE) {
+            installDownloadedUpdateRequested = true
+            installDownloadedUpdateIfRequested()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        installDownloadedUpdateIfRequested()
+    }
+
+    private fun installDownloadedUpdateIfRequested() {
+        if (installDownloadedUpdateRequested) {
+            installDownloadedUpdateRequested = false
+            try {
+                awaitingInstallPermission = !AppUpdater.openInstaller(this)
+            } catch (error: Exception) {
+                Toast.makeText(
+                    this,
+                    "Не удалось открыть установку обновления: ${error.message ?: "ошибка"}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            return
+        }
+        if (awaitingInstallPermission &&
+            (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls())
+        ) {
+            awaitingInstallPermission = false
+            try {
+                AppUpdater.openInstaller(this)
+            } catch (error: Exception) {
+                Toast.makeText(
+                    this,
+                    "Не удалось открыть установку обновления: ${error.message ?: "ошибка"}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
     }
 
     /**
@@ -145,7 +194,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private companion object {
+    companion object {
+        const val ACTION_INSTALL_DOWNLOADED_UPDATE = "com.shev.agent.action.INSTALL_DOWNLOADED_UPDATE"
         const val PERMISSIONS_PREFS = "shev_agent_permissions"
         const val KEY_NOTIFICATION_PROMPTED = "notification_prompt_completed"
         const val KEY_MICROPHONE_PROMPTED = "microphone_prompt_completed"
