@@ -304,6 +304,18 @@ $json
         ).allowed)
     }
 
+    @Test fun specialistCannotReceiveHighRiskToolsEvenWhenRegistered() {
+        val manifest = validManifest().copy(
+            status = AgentManifest.STATUS_APPROVED,
+            allowedToolIds = listOf("project.write")
+        )
+        val decision = AgentRunPolicy.evaluate(
+            manifest,
+            mapOf("project.write" to setOf(com.shev.agent.AgentCapability.WRITE_PROJECT_FILES))
+        )
+        assertFalse(decision.allowed)
+    }
+
     @Test fun specialistWithNetworkOrSideEffectsCannotRun() {
         val network = AgentRunPolicy.evaluate(
             validManifest().copy(status = AgentManifest.STATUS_APPROVED, allowedToolIds = emptyList(), networkPolicy = "ONLINE")
