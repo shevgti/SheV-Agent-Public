@@ -27,6 +27,8 @@ enum class AgentPlanRejection {
     EMPTY_STEP_TITLE,
     UNKNOWN_TOOL,
     CAPABILITY_NOT_DECLARED,
+    INPUT_SCHEMA_MISSING,
+    INVALID_TOOL_INPUT,
     INPUT_TOO_LARGE
 }
 
@@ -75,6 +77,11 @@ class AgentPlanValidator(
                 ?: return AgentPlanValidation(false, AgentPlanRejection.UNKNOWN_TOOL, step.id)
             if (step.capability !in descriptor.capabilities) {
                 return AgentPlanValidation(false, AgentPlanRejection.CAPABILITY_NOT_DECLARED, step.id)
+            }
+            val schema = descriptor.inputSchema
+                ?: return AgentPlanValidation(false, AgentPlanRejection.INPUT_SCHEMA_MISSING, step.id)
+            if (!schema.validate(step.input).accepted) {
+                return AgentPlanValidation(false, AgentPlanRejection.INVALID_TOOL_INPUT, step.id)
             }
         }
         return AgentPlanValidation(true)
