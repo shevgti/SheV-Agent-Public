@@ -6,9 +6,10 @@ import org.junit.Test
 
 class CodexRuntimeConfigTest {
     @Test fun codexInstructionsRequireRealSearchAndSourceLinks() {
-        assertTrue(CodexRuntimeConfig.DEVELOPER_INSTRUCTIONS.contains("используй встроенный web search"))
-        assertTrue(CodexRuntimeConfig.DEVELOPER_INSTRUCTIONS.contains("добавляй прямые ссылки"))
-        assertTrue(CodexRuntimeConfig.DEVELOPER_INSTRUCTIONS.contains("не заявляй о поиске", ignoreCase = true))
+        val instructions = CodexRuntimeConfig.DEVELOPER_INSTRUCTIONS.lowercase()
+        assertTrue(instructions, instructions.contains("используй встроенный web search"))
+        assertTrue(instructions, instructions.contains("добавляй прямые ссылки"))
+        assertTrue(instructions, instructions.contains("не заявляй о поиске"))
     }
 
     @Test fun newInstallEnablesLiveWebSearchAndKeepsReadOnlySandbox() {
