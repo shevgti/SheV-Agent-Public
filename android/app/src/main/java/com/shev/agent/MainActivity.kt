@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -36,6 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.shev.agent.creator.AgentCreatorScreen
+import com.shev.agent.data.AgentSkillLibrary
+import com.shev.agent.data.AgentSkillLibraryScreen
 import com.shev.agent.data.SheVAgentDatabase
 import com.shev.agent.data.SheVAgentDatabaseProvider
 import com.shev.agent.model.LocalModelPanel
@@ -183,7 +186,8 @@ private fun SheVAgentApp(
                 LocalModelPanel(chatViewModel)
             }
             SheVAgentTab.TOOLS -> SettingsScreen(
-                modifier = Modifier.fillMaxSize().padding(inset)
+                modifier = Modifier.fillMaxSize().padding(inset),
+                skillLibrary = AgentSkillLibrary(database.agentDao())
             )
         }
     }
@@ -191,9 +195,13 @@ private fun SheVAgentApp(
 
 
 @Composable
-private fun SettingsScreen(modifier: Modifier = Modifier) {
+private fun SettingsScreen(
+    modifier: Modifier = Modifier,
+    skillLibrary: AgentSkillLibrary
+) {
     var showGitHub by rememberSaveable { mutableStateOf(false) }
     var showWorkshop by rememberSaveable { mutableStateOf(false) }
+    var showSkills by rememberSaveable { mutableStateOf(false) }
     Column(
         modifier.verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -204,6 +212,18 @@ private fun SettingsScreen(modifier: Modifier = Modifier) {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         ReleaseUpdateCard()
+        Card {
+            Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                TextButton(onClick = { showSkills = !showSkills }) {
+                    Text(if (showSkills) "Скрыть библиотеку навыков" else "Библиотека знаний и навыков SheV")
+                }
+                if (showSkills) {
+                    androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().heightIn(max = 560.dp)) {
+                        AgentSkillLibraryScreen(skillLibrary, Modifier.fillMaxWidth())
+                    }
+                }
+            }
+        }
         Card {
             Column(Modifier.fillMaxWidth().padding(12.dp)) {
                 TextButton(onClick = { showGitHub = !showGitHub }) {
