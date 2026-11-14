@@ -54,7 +54,7 @@ class SheVAgentAdkTools(
         )
         val result = execution.result
         return if (execution.status == AgentToolExecutionStatus.COMPLETED && result?.success == true) {
-            mapOf("status" to "ok", "tools" to result.output)
+            mapOf("status" to "ok", "tools" to (approvedAgentToolIds?.sorted()?.joinToString() ?: result.output))
         } else {
             mapOf(
                 "status" to "denied",
