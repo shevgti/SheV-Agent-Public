@@ -6,6 +6,44 @@ import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class SheVAgentAdkToolsTest {
+    @Test fun scopedAdapterExposesOnlyRegisteredIdsAndDeniesOtherCalls() {
+        val registry = AgentToolRegistry()
+        registry.register(
+            AgentToolDescriptor(
+                SheVAgentAdkTools.TOOL_ID,
+                "Каталог инструментов",
+                "Показывает доступные инструменты",
+                setOf(AgentCapability.ANALYZE_DATA),
+                ToolInputSchema(listOf(ToolInputField("query", ToolInputType.STRING, required = false)))
+            )
+        )
+        registry.register(
+            AgentToolDescriptor(
+                SheVAgentAdkTools.CURRENT_TIME_TOOL_ID,
+                "Время",
+                "Читает время устройства",
+                setOf(AgentCapability.ANALYZE_DATA),
+                ToolInputSchema(listOf(ToolInputField("query", ToolInputType.STRING, required = true, maxLength = 8)))
+            )
+        )
+        val executor = AgentToolExecutor(
+            registry,
+            mapOf(
+                SheVAgentAdkTools.TOOL_ID to AgentTool { AgentToolResult(true, "catalog") },
+                SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to AgentTool { AgentToolResult(true, "time") }
+            )
+        )
+        val host = SheVAgentAdkTools(
+            executor,
+            AgentToolExecutionContext(setOf(AgentCapability.ANALYZE_DATA))
+        )
+        assertEquals(setOf(SheVAgentAdkTools.TOOL_ID, SheVAgentAdkTools.CURRENT_TIME_TOOL_ID), host.availableToolIds())
+
+        val scoped = host.scopedTo(setOf(SheVAgentAdkTools.TOOL_ID))
+        assertEquals("ok", scoped.inspectAvailableTools()["status"])
+        assertEquals("denied", scoped.getCurrentLocalTime("now")["status"])
+    }
+
     @Test fun adkAdapterRejectsHostToolOutsideAgentAllowlistBeforeHandlerRuns() {
         val registry = AgentToolRegistry()
         registry.register(
