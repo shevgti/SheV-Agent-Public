@@ -62,13 +62,14 @@ internal class CodexAppServerClient(
         val workspace = java.io.File(appContext.noBackupFilesDir, "codex-workspace").apply { mkdirs() }
         val cache = appContext.cacheDir.apply { mkdirs() }
         val configFile = java.io.File(codexHome, "config.toml")
-        if (!configFile.exists()) {
-            configFile.writeText(
-                "approval_policy = \"on-request\"\n" +
-                    "sandbox_mode = \"read-only\"\n" +
-                    "model_reasoning_effort = \"medium\"\n",
-                StandardCharsets.UTF_8
-            )
+        val existingConfig = if (configFile.exists()) {
+            configFile.readText(StandardCharsets.UTF_8)
+        } else {
+            null
+        }
+        val configured = CodexRuntimeConfig.withLiveWebSearchDefault(existingConfig)
+        if (existingConfig != configured) {
+            configFile.writeText(configured, StandardCharsets.UTF_8)
         }
         val builder = ProcessBuilder(
             binary.absolutePath,
@@ -155,13 +156,7 @@ internal class CodexAppServerClient(
                 addProperty("cwd", workspace.absolutePath)
                 addProperty("sandbox", "read-only")
                 addProperty("serviceName", "shev_agent")
-                addProperty(
-                    "developerInstructions",
-                    "Ты — SheV, персональный AI-агент пользователя. Всегда отвечай по-русски. " +
-                        "Работай в папке рабочего пространства приложения. Не заявляй, что действие выполнено, " +
-                        "если оно не завершилось успешно. Перед командами и изменениями файлов запрашивай подтверждение. " +
-                        "Не пытайся обходить ограничения Android или получать доступ к данным вне разрешённой папки."
-                )
+                addProperty("developerInstructions", CodexRuntimeConfig.DEVELOPER_INSTRUCTIONS)
             }
         )
         return result.get("thread")?.takeIf { it.isJsonObject }?.asJsonObject?.get("id")?.asString

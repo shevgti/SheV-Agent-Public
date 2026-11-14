@@ -41,7 +41,7 @@ fun CodexProviderPanel(viewModel: LocalModelViewModel) {
         ) {
             Text("Codex · умный AI-агент", style = MaterialTheme.typography.titleLarge)
             Text(
-                "Официальный Codex работает прямо внутри SheV Agent. Вход через ChatGPT, без API-ключей, Gemini, Termux и сторонних шлюзов. Агент хранит отдельную историю; по умолчанию работает в режиме чтения, а запросы на команды и запись показываются отдельно для подтверждения.",
+                "Официальный Codex работает прямо внутри SheV Agent. Вход через ChatGPT, без API-ключей, Gemini, Termux и сторонних шлюзов. В режиме Codex включён живой веб-поиск; ответы на актуальные запросы должны содержать источники. Агент хранит отдельную историю и работает в режиме чтения; запросы на команды и запись показываются отдельно для подтверждения.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
