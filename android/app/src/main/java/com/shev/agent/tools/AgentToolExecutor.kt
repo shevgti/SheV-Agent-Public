@@ -189,14 +189,16 @@ class AgentToolExecutor(
             return AgentToolExecutionResult(AgentToolExecutionStatus.INVALID_INPUT)
         }
 
-        val handler = suspendingHandlers[request.toolId]
-            ?: return AgentToolExecutionResult(AgentToolExecutionStatus.HANDLER_NOT_REGISTERED)
+        val suspendingHandler = suspendingHandlers[request.toolId]
+        val synchronousHandler = handlers[request.toolId]
+        if (suspendingHandler == null && synchronousHandler == null) {
+            return AgentToolExecutionResult(AgentToolExecutionStatus.HANDLER_NOT_REGISTERED)
+        }
 
         return try {
-            AgentToolExecutionResult(
-                AgentToolExecutionStatus.COMPLETED,
-                handler.execute(request.input)
-            )
+            val result = suspendingHandler?.execute(request.input)
+                ?: synchronousHandler!!.execute(request.input)
+            AgentToolExecutionResult(AgentToolExecutionStatus.COMPLETED, result)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (_: Exception) {
