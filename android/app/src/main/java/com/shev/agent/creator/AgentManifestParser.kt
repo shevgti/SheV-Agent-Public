@@ -21,6 +21,7 @@ object AgentManifestParser {
         normalizeSchemaField(obj, "inputSchema")
         normalizeSchemaField(obj, "outputSchema")
 
+        if (!obj.has("status") || obj.get("status").isJsonNull) obj.addProperty("status", AgentManifest.STATUS_DRAFT)
         if (!obj.has("description") || obj.get("description").isJsonNull) obj.addProperty("description", "")
         if (!obj.has("model") || obj.get("model").isJsonNull) obj.addProperty("model", "inherit")
         if (!obj.has("color") || obj.get("color").isJsonNull) obj.addProperty("color", "magenta")
