@@ -46,11 +46,11 @@ fun ReleaseUpdateCard() {
                         release = null
                         message = "Проверяю публичный канал обновлений…"
                         try {
-                            release = ReleaseUpdater.check(BuildConfig.VERSION_NAME)
+                            release = ReleaseUpdater.check(BuildConfig.VERSION_CODE)
                             message = if (release == null) {
                                 "Новых версий нет. Если канал ещё не создан, проверка пока недоступна."
                             } else {
-                                "Доступна версия ${release!!.version}. APK будет проверен по SHA-256 перед установкой."
+                                "Доступна версия ${release!!.version} (сборка ${release!!.versionCode}). APK будет проверен по SHA-256 перед установкой."
                             }
                         } catch (error: Exception) {
                             message = "Не удалось проверить обновления: ${error.message ?: "ошибка сети"}"
@@ -80,7 +80,7 @@ fun ReleaseUpdateCard() {
                     },
                     enabled = !downloading,
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Скачать и установить ${available.version}") }
+                ) { Text("Обновить до ${available.version}") }
             }
         }
     }

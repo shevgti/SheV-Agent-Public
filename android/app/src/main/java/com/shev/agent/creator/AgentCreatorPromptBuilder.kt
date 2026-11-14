@@ -27,7 +27,7 @@ object AgentCreatorPromptBuilder {
             ПРАВИЛА:
             - Пиши по-русски, конкретно и без повторов. Не выдумывай факты и недостающие данные.
             - Если без уточнения нельзя выбрать роль или границы задачи, верни 1–3 вопроса в clarifyingQuestions; остальные поля заполни пустыми значениями.
-            - Создай экспертную роль с измеримой целью, 2–4 сценариями triggers и 2 полными triggeringExamples.
+            - Создай экспертную роль с измеримой целью и 2–4 сценариями triggers. Не генерируй triggeringExamples и description: оставь triggeringExamples пустым массивом [], description пустой строкой. Примеры и description безопасно сформирует приложение из проверенных полей паспорта.
             - instructions должны содержать обязанности, процесс, стандарты качества, формат результата и обработку ошибок.
             - id: уникальный lowercase-kebab-case; model: inherit; color: blue/cyan/green/yellow/magenta/red.
             - allowedToolIds — только точные ID из HOST TOOLS. Обычно оставляй пустым.
@@ -47,17 +47,14 @@ object AgentCreatorPromptBuilder {
               "name": "Технический специалист",
               "purpose": "Измеримая цель",
               "role": "Узкая экспертная роль",
-              "description": "Use this agent when ... See \"When to invoke\" in the agent body for examples.",
+              "description": "",
               "model": "inherit",
               "color": "blue",
               "instructions": "Обязанности; процесс; критерии качества; формат результата; обработка ошибок.",
               "process": "Шаги работы и проверки результата.",
               "outputFormat": "Структура ответа.",
               "triggers": ["Сценарий 1", "Сценарий 2"],
-              "triggeringExamples": [
-                {"context":"Контекст","user":"Запрос","assistant":"Ответ","commentary":"Причина","invocation":"Использую этого специалиста."},
-                {"context":"Контекст 2","user":"Запрос 2","assistant":"Ответ 2","commentary":"Причина 2","invocation":"Использую этого специалиста."}
-              ],
+              "triggeringExamples": [],
               "inputSchema": "{\"type\":\"object\",\"properties\":{},\"required\":[]}",
               "outputSchema": "{\"type\":\"object\",\"properties\":{},\"required\":[]}",
               "allowedToolIds": [],

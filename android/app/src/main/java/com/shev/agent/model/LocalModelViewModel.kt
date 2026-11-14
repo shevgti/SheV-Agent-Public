@@ -22,6 +22,7 @@ import com.shev.agent.creator.AgentManifestParser
 import com.shev.agent.creator.AgentRunPolicy
 import com.shev.agent.tools.AgentTool
 import com.shev.agent.tools.LocalTimeTool
+import com.shev.agent.tools.OpenMeteoWeatherTool
 import com.shev.agent.tools.SuspendingAgentTool
 import com.shev.agent.tools.AgentToolDescriptor
 import com.shev.agent.tools.AgentToolExecutionContext
@@ -519,6 +520,17 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     )
                     register(
                         AgentToolDescriptor(
+                            id = SheVAgentAdkTools.WEATHER_TOOL_ID,
+                            title = "Получить актуальную погоду",
+                            description = "Получает текущую погоду в указанном городе из публичного онлайн-сервиса Open-Meteo",
+                            capabilities = setOf(AgentCapability.READ_REMOTE_DATA),
+                            inputSchema = ToolInputSchema(
+                                listOf(ToolInputField("city", ToolInputType.STRING, required = true, maxLength = 100))
+                            )
+                        )
+                    )
+                    register(
+                        AgentToolDescriptor(
                             id = SheVAgentAdkTools.CREATE_TASK_DRAFT_ID,
                             title = "Создать черновик поручения",
                             description = "Сохраняет локальное поручение в ожидании подтверждения; ничего не выполняет",
@@ -577,13 +589,34 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to currentTimeHandler
                     ),
                     suspendingHandlers = mapOf(
-                        SheVAgentAdkTools.CREATE_TASK_DRAFT_ID to taskDraftHandler
+                        SheVAgentAdkTools.CREATE_TASK_DRAFT_ID to taskDraftHandler,
+                        SheVAgentAdkTools.WEATHER_TOOL_ID to SuspendingAgentTool { input ->
+                            val city = runCatching {
+                                JsonParser.parseString(input).asJsonObject.get("city")?.asString
+                            }.getOrNull()
+                            if (city.isNullOrBlank()) {
+                                AgentToolResult(false, "Укажи город.", "CITY_REQUIRED")
+                            } else {
+                                try {
+                                    AgentToolResult(true, OpenMeteoWeatherTool().currentWeather(city))
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (failure: Exception) {
+                                    AgentToolResult(false, failure.message ?: "Не удалось получить погоду.", "WEATHER_UNAVAILABLE")
+                                }
+                            }
+                        }
                     )
                 )
                 val tools = SheVAgentAdkTools(
                     executor,
                     AgentToolExecutionContext(
-                        setOf(AgentCapability.ANALYZE_DATA, AgentCapability.CREATE_DRAFT)
+                        grantedCapabilities = setOf(
+                            AgentCapability.ANALYZE_DATA,
+                            AgentCapability.CREATE_DRAFT,
+                            AgentCapability.READ_REMOTE_DATA
+                        ),
+                        explicitlyApprovedCapabilities = setOf(AgentCapability.READ_REMOTE_DATA)
                     )
                 )
                 runtime = SheVAgentRuntime.load(getApplication(), store, tools)
