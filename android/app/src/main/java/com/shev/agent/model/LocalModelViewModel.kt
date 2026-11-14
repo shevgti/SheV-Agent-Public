@@ -617,9 +617,9 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         AgentToolResult(false, "Для навыка нужны название, назначение и инструкция.", "INVALID_SKILL")
                     } else {
                         try {
-                            val skillId = "skill-" + title.lowercase(java.util.Locale.ROOT)
-                                .replace(Regex("[^\\p{L}\\p{N}]+"), "-")
-                                .trim('-').take(56)
+                            val skillId = "skill-" + UUID.nameUUIDFromBytes(
+                                title.trim().lowercase(java.util.Locale.ROOT).toByteArray(Charsets.UTF_8)
+                            ).toString()
                             val saved = skillLibrary.saveDraft(
                                 skillId = skillId,
                                 title = title,
