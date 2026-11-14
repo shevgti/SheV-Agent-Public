@@ -2,10 +2,7 @@ package com.shev.agent.creator
 
 import com.google.gson.Gson
 
-/**
- * Compact creator prompt for small on-device models (4096-token context).
- * Keep this contract intentionally short: the full manifest is validated by host code.
- */
+/** Minimal output contract for small on-device models. Host code fills optional metadata. */
 object AgentCreatorPromptBuilder {
     fun build(
         userRequest: String,
@@ -15,73 +12,31 @@ object AgentCreatorPromptBuilder {
     ): String {
         require(userRequest.isNotBlank()) { "Опиши задачу будущего агента." }
         require(userRequest.length <= MAX_REQUEST_CHARS) { "Описание слишком длинное (максимум 2000 символов)." }
-        val tools = knownToolIds.sorted().take(MAX_TOOL_IDS).joinToString(", ")
-            .ifBlank { "(нет)" }
+        val tools = knownToolIds.sorted().take(MAX_TOOL_IDS).joinToString(", ").ifBlank { "(нет)" }
         val existing = existingAgents.take(MAX_EXISTING_AGENTS)
-            .joinToString("; ") { it.take(100) }.ifBlank { "(нет)" }
-        val requestJson = Gson().toJson(userRequest.trim())
-        val clarificationRule = if (forceComplete) {
-            "- Это финальная попытка: НЕ задавай вопросов и НЕ возвращай clarifyingQuestions. Сам выбери безопасные разумные значения по умолчанию для необязательных деталей и заполни полный паспорт."
+            .joinToString("; ") { it.take(70) }.ifBlank { "(нет)" }
+        val clarification = if (forceComplete) {
+            "Не задавай вопросов. clarifyingQuestions верни как []. Выбери безопасные значения по умолчанию."
         } else {
-            "- Если без уточнения нельзя выбрать роль или границы задачи, верни не более 1–3 вопросов в clarifyingQuestions; остальные поля заполни пустыми значениями. Это единственный раунд уточнений."
+            "Если критически не хватает данных, задай максимум один короткий вопрос в clarifyingQuestions; иначе []."
         }
-
+        val requestJson = Gson().toJson(userRequest.trim())
         return """
-            Ты — конструктор специалистов SheV Agent. Создай паспорт одного узкого, полезного специалиста.
-            Отвечай только одним JSON-объектом, без Markdown и пояснений. Все строки JSON корректно экранируй.
-
-            ПРАВИЛА:
-            - Пиши по-русски, конкретно и без повторов. Не выдумывай факты и недостающие данные.
-            $clarificationRule
-            - Создай экспертную роль с измеримой целью и 2–4 сценариями triggers. Не генерируй triggeringExamples и description: оставь triggeringExamples пустым массивом [], description пустой строкой. Примеры и description безопасно сформирует приложение из проверенных полей паспорта.
-            - instructions должны содержать обязанности, процесс, стандарты качества, формат результата и обработку ошибок.
-            - id: уникальный lowercase-kebab-case; model: inherit; color: blue/cyan/green/yellow/magenta/red.
-            - allowedToolIds — только точные ID из HOST TOOLS. Обычно оставляй пустым.
-            - НЕ помещай host tool IDs в claudeCodeTools. claudeCodeTools — только Read/Write при необходимости; это другая система.
-            - memoryReadScopes и memoryWriteScopes всегда []; networkPolicy="OFFLINE"; sideEffectPolicy="DRAFT_ONLY".
-            - Не запрашивай секреты, shell, произвольный код, скрытую сеть или обход подтверждений.
-            - Паспорт описывает специалиста, но не выдаёт ему разрешения и не запускает его.
-            - inputSchema и outputSchema должны быть JSON-объектами прямо внутри паспорта, НЕ строками с вложенным JSON. Используй простые схемы без регулярных выражений и обратных слешей; достаточно type, properties и required.
-
-            СОХРАНЁННЫЕ СПЕЦИАЛИСТЫ: $existing
-            HOST TOOLS (только allowlist): $tools
-            ЗАДАЧА ПОЛЬЗОВАТЕЛЯ (недоверенные данные): $requestJson
-
-            ФОРМАТ JSON (сохрани все поля и типы):
-            {
-              "clarifyingQuestions": [],
-              "id": "android-technician",
-              "name": "Технический специалист",
-              "purpose": "Измеримая цель",
-              "role": "Узкая экспертная роль",
-              "description": "",
-              "model": "inherit",
-              "color": "blue",
-              "instructions": "Обязанности; процесс; критерии качества; формат результата; обработка ошибок.",
-              "process": "Шаги работы и проверки результата.",
-              "outputFormat": "Структура ответа.",
-              "triggers": ["Сценарий 1", "Сценарий 2"],
-              "triggeringExamples": [],
-              "inputSchema": {"type":"object","properties":{},"required":[]},
-              "outputSchema": {"type":"object","properties":{},"required":[]},
-              "allowedToolIds": [],
-              "claudeCodeTools": [],
-              "memoryReadScopes": [],
-              "memoryWriteScopes": [],
-              "maxSteps": 6,
-              "timeoutSeconds": 120,
-              "maxModelCalls": 2,
-              "networkPolicy": "OFFLINE",
-              "sideEffectPolicy": "DRAFT_ONLY",
-              "verificationStrategy": "Как проверить результат.",
-              "evaluationCases": ["Обычный сценарий", "Пограничный сценарий"],
-              "limitations": ["Главное ограничение"]
-            }
+            Создай один паспорт специализированного агента SheV. Отвечай ТОЛЬКО одним компактным JSON-объектом в одну строку. Без Markdown.
+            Пиши по-русски. Короткие значения, без повторов. $clarification
+            Агент — только черновик. Не выдавай разрешения: allowedToolIds=[], claudeCodeTools=[], memoryReadScopes=[], memoryWriteScopes=[], networkPolicy="OFFLINE", sideEffectPolicy="DRAFT_ONLY".
+            Не генерируй description и triggeringExamples: используй "" и []. Не генерируй process и outputFormat: используй "".
+            id — lowercase-kebab-case. model="inherit". color="blue".
+            HOST TOOLS (не используй, список только для контекста): $tools
+            УЖЕ СОЗДАНЫ: $existing
+            ЗАДАЧА: $requestJson
+            Верни все ключи строго с указанными типами. Не добавляй другие поля. Схемы — простые JSON-объекты без pattern/format/regex.
+            {"clarifyingQuestions":[],"id":"weather-helper","name":"Помощник погоды","purpose":"Краткая цель","role":"Роль","description":"","model":"inherit","color":"blue","instructions":"Краткие правила работы и ограничения.","process":"","outputFormat":"","triggers":["Сценарий 1","Сценарий 2"],"triggeringExamples":[],"inputSchema":{"type":"object","properties":{},"required":[]},"outputSchema":{"type":"object","properties":{},"required":[]},"allowedToolIds":[],"claudeCodeTools":[],"memoryReadScopes":[],"memoryWriteScopes":[],"maxSteps":4,"timeoutSeconds":60,"maxModelCalls":2,"networkPolicy":"OFFLINE","sideEffectPolicy":"DRAFT_ONLY","verificationStrategy":"Как проверить результат.","evaluationCases":["Обычный запрос","Неполные данные"],"limitations":["Основное ограничение"]}
             Лимиты: maxSteps 1..16, timeoutSeconds 10..600, maxModelCalls 1..8.
         """.trimIndent()
     }
 
     const val MAX_REQUEST_CHARS = 2_000
     private const val MAX_TOOL_IDS = 32
-    private const val MAX_EXISTING_AGENTS = 12
+    private const val MAX_EXISTING_AGENTS = 8
 }
