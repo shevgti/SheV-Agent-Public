@@ -41,7 +41,7 @@ class SheVAgentAdkToolsTest {
 
         val scoped = host.scopedTo(setOf(SheVAgentAdkTools.TOOL_ID))
         assertEquals("ok", scoped.inspectAvailableTools()["status"])
-        assertEquals("denied", scoped.getCurrentLocalTime("now")["status"])
+        assertEquals("unavailable", scoped.getCurrentLocalTime("now")["status"])
     }
 
     @Test fun adkAdapterRejectsHostToolOutsideAgentAllowlistBeforeHandlerRuns() {
