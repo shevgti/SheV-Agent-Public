@@ -92,6 +92,7 @@ class AgentCreator {
         }
         // The host owns the description contract; never trust model-generated frontmatter prose.
         val safeManifest = parsed.copy(
+            clarifyingQuestions = emptyList(),
             description = "",
             triggeringExamples = safeExamples
         )
