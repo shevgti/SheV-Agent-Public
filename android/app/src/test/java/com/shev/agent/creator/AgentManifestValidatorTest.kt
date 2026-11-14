@@ -146,7 +146,7 @@ $json
             forceComplete = true
         )
         assertEquals(1, calls)
-        assertTrue(receivedPrompt.contains("НЕ задавай вопросов"))
+        assertTrue(receivedPrompt.contains("Не задавай вопросов."))
         assertTrue(result is AgentCreationResult.Created)
         assertTrue((result as AgentCreationResult.Created).manifest.clarifyingQuestions.isEmpty())
     }
@@ -157,9 +157,9 @@ $json
             emptySet(),
             forceComplete = true
         )
-        assertTrue(prompt.contains("Это финальная попытка"))
-        assertTrue(prompt.contains("разумные значения по умолчанию"))
-        assertTrue(prompt.contains("НЕ возвращай clarifyingQuestions"))
+        assertTrue(prompt.contains("Не задавай вопросов."))
+        assertTrue(prompt.contains("безопасные значения по умолчанию"))
+        assertTrue(prompt.contains('"clarifyingQuestions":[]'))
     }
 
     @Test fun creatorIncludesExistingAgentInventory() = runBlocking {
@@ -195,7 +195,7 @@ $json
         assertTrue(prompt.contains("clarifyingQuestions"))
         assertTrue(prompt.contains("triggeringExamples"))
         assertTrue(prompt.contains("description"))
-        assertTrue(prompt.contains("НЕ помещай host tool IDs"))
+        assertTrue(prompt.contains("HOST TOOLS (не используй"))
         assertTrue(prompt.contains("claudeCodeTools"))
     }
 
