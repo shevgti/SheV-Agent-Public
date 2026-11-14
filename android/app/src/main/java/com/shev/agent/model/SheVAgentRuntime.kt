@@ -14,6 +14,7 @@ import com.google.adk.kt.types.Role
 import com.google.adk.kt.litertlm.LiteRtLmModel
 import com.google.ai.edge.litertlm.Backend
 import com.shev.agent.tools.SheVAgentAdkTools
+import com.shev.agent.tools.generatedTools
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
