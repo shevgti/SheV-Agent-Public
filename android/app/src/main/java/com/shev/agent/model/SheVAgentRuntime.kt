@@ -99,6 +99,14 @@ class SheVAgentRuntime private constructor(
             }) {
             throw IllegalArgumentException("Паспорт OFFLINE не может запрашивать сетевые инструменты.")
         }
+        if (selectedDescriptors.any { descriptor ->
+                descriptor.capabilities.any {
+                    it.risk == com.shev.agent.CapabilityRisk.HIGH ||
+                        it.risk == com.shev.agent.CapabilityRisk.CRITICAL
+                }
+            }) {
+            throw IllegalArgumentException("Специалистам разрешены только инструменты чтения и создания локальных черновиков.")
+        }
         val specialistTools = if (manifest.allowedToolIds.isEmpty()) emptyList()
             else hostTools.scopedTo(manifest.allowedToolIds.toSet()).generatedTools()
         require(input.isNotBlank() && input.length <= MAX_SPECIALIST_INPUT_CHARS) {
