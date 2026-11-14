@@ -35,6 +35,18 @@ class AgentManifestValidatorTest {
         )
     )
 
+    @Test fun creatorPromptIncludesOnlyRegisteredToolCatalogAndDescriptions() {
+        val prompt = AgentCreatorPromptBuilder.build(
+            userRequest = "Создай исследователя погоды",
+            knownToolIds = setOf("weather.forecast"),
+            knownToolDescriptions = listOf("weather.forecast: Прогноз погоды — получает текущие условия и прогноз; capabilities=[READ_REMOTE_DATA]")
+        )
+        assertTrue(prompt.contains("weather.forecast"))
+        assertTrue(prompt.contains("Прогноз погоды"))
+        assertTrue(prompt.contains("READ_REMOTE_DATA"))
+        assertTrue(prompt.contains("DRAFT_ONLY"))
+    }
+
     @Test fun acceptsValidManifestWithinAllowlist() {
         assertTrue(AgentManifestValidator(setOf("agent.inspect_tools")).validate(validManifest()).accepted)
     }
