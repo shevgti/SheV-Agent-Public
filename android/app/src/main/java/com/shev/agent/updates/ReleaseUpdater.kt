@@ -2,6 +2,9 @@ package com.shev.agent.updates
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -50,6 +53,7 @@ object ReleaseUpdater {
                 partialFile.delete()
                 "Контрольная сумма APK не совпадает"
             }
+            validateApkIdentity(context, partialFile, release.versionCode)
             check(partialFile.renameTo(apkFile) || run {
                 partialFile.copyTo(apkFile, overwrite = true)
                 partialFile.delete()
@@ -73,6 +77,49 @@ object ReleaseUpdater {
             }
             true
         }
+
+    private fun validateApkIdentity(context: Context, apkFile: File, expectedVersionCode: Int) {
+        val packageManager = context.packageManager
+        val signatureFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            PackageManager.GET_SIGNING_CERTIFICATES
+        } else {
+            @Suppress("DEPRECATION")
+            PackageManager.GET_SIGNATURES
+        }
+        val archive = packageManager.getPackageArchiveInfo(apkFile.absolutePath, signatureFlag)
+            ?: error("Не удалось прочитать Android-манифест скачанного APK.")
+        val installed = packageManager.getPackageInfo(context.packageName, signatureFlag)
+        val archiveVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            archive.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            archive.versionCode.toLong()
+        }
+        ReleaseInstallPolicy.validate(
+            expectedPackageName = context.packageName,
+            expectedVersionCode = expectedVersionCode.toLong(),
+            installedSignerSha256 = signerDigests(installed),
+            candidate = ApkIdentity(
+                packageName = archive.packageName.orEmpty(),
+                versionCode = archiveVersionCode,
+                signerSha256 = signerDigests(archive)
+            )
+        )
+    }
+
+    private fun signerDigests(packageInfo: PackageInfo): Set<String> {
+        val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.signingInfo?.apkContentsSigners
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo.signatures
+        }
+        return signatures.orEmpty().map { signature ->
+            MessageDigest.getInstance("SHA-256")
+                .digest(signature.toByteArray())
+                .joinToString("") { byte -> "%02x".format(byte) }
+        }.toSet()
+    }
 
     private fun readTrustedText(url: String): String {
         val connection = openTrustedConnection(url, 10_000)
