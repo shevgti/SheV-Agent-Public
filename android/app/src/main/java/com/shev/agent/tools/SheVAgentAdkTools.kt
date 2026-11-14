@@ -25,6 +25,9 @@ class SheVAgentAdkTools(
 
     fun availableToolIds(): Set<String> = availableToolDescriptors().mapTo(linkedSetOf()) { it.id }
 
+    suspend fun buildVerifiedSkillContext(query: String): String =
+        skillLibrary?.buildContext(query).orEmpty()
+
     /** Creates a new immutable adapter whose executor allowlist is exactly the approved manifest set. */
     fun scopedTo(agentToolIds: Set<String>): SheVAgentAdkTools {
         val unknown = agentToolIds - availableToolIds()
