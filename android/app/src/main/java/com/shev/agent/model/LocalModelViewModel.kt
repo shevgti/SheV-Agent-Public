@@ -783,7 +783,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 // model-generated instructions are never injected into the agent prompt.
                 val verifiedSkillContext = skillLibrary.buildContext(message)
                 val promptWithSkills = if (verifiedSkillContext.isBlank()) promptWithContext
-                    else "$promptWithContext\\n\\n$verifiedSkillContext"
+                    else "$promptWithContext\n\n$verifiedSkillContext"
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
                         id = userMessageId,
