@@ -1,9 +1,6 @@
 name: Publish SheV Agent update
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_run:
     workflows:
       - "SheV Agent Android"
@@ -12,11 +9,6 @@ on:
     types:
       - completed
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "Release tag must match app version, for example v0.3.1"
-        required: true
-        default: "v0.3.2"
 permissions:
   contents: write
   actions: read
@@ -28,7 +20,7 @@ concurrency:
 jobs:
   release:
     name: Build and publish installable APK
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    if: (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') && (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -161,16 +153,15 @@ jobs:
           if not releases:
               raise SystemExit("No published release found; refusing to guess the previous versionCode.")
 
-          releases.sort(key=lambda item: item.get("published_at") or item.get("created_at") or "", reverse=True)
-          latest = releases[0]
-          match = re.search(r"(?im)^versionCode:\s*(\d+)\s*$", latest.get("body") or "")
-          if not match:
-              raise SystemExit(
-                  f"Latest release {latest.get('tag_name')} has no versionCode in its release notes; "
-                  "refusing to publish an APK with an unverified versionCode."
-              )
+          published_codes = []
+          for release in releases:
+              match = re.search(r"(?im)^versionCode:\s*(\d+)\s*$", release.get("body") or "")
+              if match:
+                  published_codes.append(int(match.group(1)))
+          if not published_codes:
+              raise SystemExit("No published release contains a valid versionCode; refusing to guess.")
 
-          previous = int(match.group(1))
+          previous = max(published_codes)
           next_code = max(baseline, previous) + 1
           if next_code > 2_100_000_000:
               raise SystemExit("Android versionCode limit reached.")
@@ -182,21 +173,15 @@ jobs:
           print(f"Allocated versionCode: {next_code}")
           PY
 
-      - name: Verify release tag matches app version
+      - name: Allocate unique release tag
         working-directory: android
         run: |
           VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           test -n "$VERSION"
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            RELEASE_TAG="${{ inputs.release_tag }}"
-          elif [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
-            RELEASE_TAG="v$VERSION"
-          else
-            RELEASE_TAG="$GITHUB_REF_NAME"
-          fi
-          test "v$VERSION" = "$RELEASE_TAG"
+          RELEASE_TAG="v${VERSION}-build.${APP_VERSION_CODE}"
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+          echo "Publishing ${RELEASE_TAG}"
 
       - name: Run unit tests
         working-directory: android
@@ -228,11 +213,13 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: SheV Agent ${{ env.APP_VERSION }}
+          name: SheV Agent ${{ env.APP_VERSION }} (build ${{ env.APP_VERSION_CODE }})
           tag_name: ${{ env.RELEASE_TAG }}
           target_commitish: ${{ github.event.workflow_run.head_sha || github.sha }}
           body: |
-            SheV Agent Android update ${{ env.APP_VERSION }}.
+            SheV Agent Android update.
+
+            versionName: ${{ env.APP_VERSION }}
 
             versionCode: ${{ env.APP_VERSION_CODE }}
 

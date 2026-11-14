@@ -34,7 +34,7 @@ fun ReleaseUpdateCard() {
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text("Обновления SheV Agent", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text("Установлена версия ${BuildConfig.VERSION_NAME}")
+            Text("Установлена версия ${BuildConfig.VERSION_NAME} (сборка ${BuildConfig.VERSION_CODE})")
             Text(message, style = MaterialTheme.typography.bodyMedium)
             if (checking || downloading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
@@ -48,7 +48,7 @@ fun ReleaseUpdateCard() {
                         try {
                             release = ReleaseUpdater.check(BuildConfig.VERSION_CODE)
                             message = if (release == null) {
-                                "Новых версий нет. Если канал ещё не создан, проверка пока недоступна."
+                                "Установлена последняя опубликованная сборка."
                             } else {
                                 "Доступна версия ${release!!.version} (сборка ${release!!.versionCode}). APK будет проверен по SHA-256 перед установкой."
                             }
@@ -80,7 +80,7 @@ fun ReleaseUpdateCard() {
                     },
                     enabled = !downloading,
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Обновить до ${available.version}") }
+                ) { Text("Обновить до ${available.version} · сборка ${available.versionCode}") }
             }
         }
     }

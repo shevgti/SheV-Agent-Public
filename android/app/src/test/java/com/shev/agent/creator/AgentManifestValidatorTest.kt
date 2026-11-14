@@ -1,5 +1,7 @@
 package com.shev.agent.creator
 
+import com.shev.agent.AgentCapability
+
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -33,6 +35,18 @@ class AgentManifestValidatorTest {
         )
     )
 
+    @Test fun creatorPromptIncludesOnlyRegisteredToolCatalogAndDescriptions() {
+        val prompt = AgentCreatorPromptBuilder.build(
+            userRequest = "Создай исследователя погоды",
+            knownToolIds = setOf("weather.forecast"),
+            knownToolDescriptions = listOf("weather.forecast: Прогноз погоды — получает текущие условия и прогноз; capabilities=[READ_REMOTE_DATA]")
+        )
+        assertTrue(prompt.contains("weather.forecast"))
+        assertTrue(prompt.contains("Прогноз погоды"))
+        assertTrue(prompt.contains("READ_REMOTE_DATA"))
+        assertTrue(prompt.contains("DRAFT_ONLY"))
+    }
+
     @Test fun acceptsValidManifestWithinAllowlist() {
         assertTrue(AgentManifestValidator(setOf("agent.inspect_tools")).validate(validManifest()).accepted)
     }
@@ -54,6 +68,74 @@ class AgentManifestValidatorTest {
         assertFalse(AgentManifestValidator(setOf("agent.inspect_tools"))
             .validate(validManifest().copy(triggers = listOf("Один триггер"))).accepted)
     }
+    @Test fun parserAcceptsNativeSchemaObjectsWithoutNestedJsonEscaping() {
+        val output = """
+            {
+              "id":"weather-researcher",
+              "name":"Исследователь погоды",
+              "purpose":"Сравнивать прогнозы",
+              "role":"Метеоаналитик",
+              "instructions":"Проверяй источники.",
+              "triggers":["Погода в городах","Сравни прогнозы"],
+              "inputSchema":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]},
+              "outputSchema":{"type":"object","properties":{"forecast":{"type":"string"}},"required":["forecast"]},
+              "allowedToolIds":[],
+              "memoryReadScopes":[],
+              "memoryWriteScopes":[],
+              "maxSteps":4,
+              "timeoutSeconds":60,
+              "maxModelCalls":2,
+              "networkPolicy":"OFFLINE",
+              "sideEffectPolicy":"DRAFT_ONLY",
+              "verificationStrategy":"Проверь поля.",
+              "evaluationCases":["Обычный","Пустой город"],
+              "limitations":["Нет сетевого доступа"]
+            }
+        """.trimIndent()
+        val parsed = AgentManifestParser.parse(output)
+        assertTrue(parsed.inputSchema.contains("city"))
+        assertTrue(parsed.outputSchema.contains("forecast"))
+        assertTrue(com.google.gson.JsonParser.parseString(parsed.inputSchema).isJsonObject)
+        assertTrue(com.google.gson.JsonParser.parseString(parsed.outputSchema).isJsonObject)
+    }
+
+
+    @Test fun parserDefaultsMissingStatusToDraft() {
+        val output = """
+            {
+              "id":"weather-helper",
+              "name":"Помощник погоды",
+              "purpose":"Искать прогноз погоды",
+              "role":"Метеопомощник",
+              "instructions":"Используй безопасные источники.",
+              "triggers":["Прогноз погоды","Погода в городе"],
+              "inputSchema":{"type":"object","properties":{},"required":[]},
+              "outputSchema":{"type":"object","properties":{},"required":[]},
+              "allowedToolIds":[],
+              "memoryReadScopes":[],
+              "memoryWriteScopes":[],
+              "maxSteps":4,
+              "timeoutSeconds":60,
+              "maxModelCalls":2,
+              "networkPolicy":"OFFLINE",
+              "sideEffectPolicy":"DRAFT_ONLY",
+              "verificationStrategy":"Проверь результат.",
+              "evaluationCases":["Обычный запрос","Неизвестный город"],
+              "limitations":["Сетевой доступ отключён"]
+            }
+        """.trimIndent()
+        val parsed = AgentManifestParser.parse(output)
+        assertEquals(AgentManifest.STATUS_DRAFT, parsed.status)
+        assertEquals(AgentManifest.STATUS_DRAFT, parsed.copy(version = 1).status)
+    }
+
+    @Test fun parserRepairsInvalidBackslashEscapeInModelText() {
+        val valid = com.google.gson.Gson().toJson(validManifest())
+        val malformed = valid.replace("Проверяй официальные", "Проверяй \\d+ официальные")
+        val parsed = AgentManifestParser.parse(malformed)
+        assertTrue(parsed.instructions.contains("\\d+"))
+    }
+
     @Test fun parserExtractsJsonFromModelCodeFence() {
         val manifest = validManifest()
         val json = com.google.gson.Gson().toJson(manifest)
@@ -108,7 +190,7 @@ $json
             forceComplete = true
         )
         assertEquals(1, calls)
-        assertTrue(receivedPrompt.contains("НЕ задавай вопросов"))
+        assertTrue(receivedPrompt.contains("Не задавай вопросов."))
         assertTrue(result is AgentCreationResult.Created)
         assertTrue((result as AgentCreationResult.Created).manifest.clarifyingQuestions.isEmpty())
     }
@@ -119,9 +201,9 @@ $json
             emptySet(),
             forceComplete = true
         )
-        assertTrue(prompt.contains("Это финальная попытка"))
-        assertTrue(prompt.contains("разумные значения по умолчанию"))
-        assertTrue(prompt.contains("НЕ возвращай clarifyingQuestions"))
+        assertTrue(prompt.contains("Не задавай вопросов."))
+        assertTrue(prompt.contains("безопасные значения по умолчанию"))
+        assertTrue(prompt.contains("\"clarifyingQuestions\":[]"))
     }
 
     @Test fun creatorIncludesExistingAgentInventory() = runBlocking {
@@ -157,7 +239,7 @@ $json
         assertTrue(prompt.contains("clarifyingQuestions"))
         assertTrue(prompt.contains("triggeringExamples"))
         assertTrue(prompt.contains("description"))
-        assertTrue(prompt.contains("НЕ помещай host tool IDs"))
+        assertTrue(prompt.contains("HOST TOOLS (можешь выбрать только из этих ID"))
         assertTrue(prompt.contains("claudeCodeTools"))
     }
 
@@ -184,9 +266,9 @@ $json
 
     @Test fun creatorPromptDoesNotAskSmallModelToGenerateNestedWorkedExamples() {
         val prompt = AgentCreatorPromptBuilder.build("Погода в городах мира", emptySet())
-        assertTrue(prompt.contains("Не генерируй triggeringExamples"))
-        assertTrue(prompt.contains("triggeringExamples\": []"))
-        assertTrue(prompt.contains("description\": \"\""))
+        assertTrue(prompt.contains("Не генерируй description и triggeringExamples"))
+        assertTrue(prompt.contains("\"triggeringExamples\":[]"))
+        assertTrue(prompt.contains("\"description\":\"\""))
     }
 
     @Test fun promptContainsAllowlistAndUserTask() {
@@ -209,11 +291,39 @@ $json
     }
 
     @Test fun specialistWithRequestedToolsCannotRunBeforeBindingExists() {
+        val manifest = validManifest().copy(
+            status = AgentManifest.STATUS_APPROVED,
+            allowedToolIds = listOf("agent.inspect_tools")
+        )
+        assertFalse(AgentRunPolicy.evaluate(manifest).allowed)
+        assertTrue(AgentRunPolicy.evaluate(manifest, mapOf("agent.inspect_tools" to setOf(AgentCapability.ANALYZE_DATA))).allowed)
+    }
+
+    @Test fun specialistMayUseRegisteredReadOnlyNetworkToolsOnlyWithReadOnlyPolicy() {
+        val manifest = validManifest().copy(
+            status = AgentManifest.STATUS_APPROVED,
+            allowedToolIds = listOf("agent.web_search"),
+            networkPolicy = "READ_ONLY"
+        )
+        assertTrue(AgentRunPolicy.evaluate(manifest, mapOf("agent.web_search" to setOf(AgentCapability.READ_REMOTE_DATA))).allowed)
+        assertFalse(AgentRunPolicy.evaluate(
+            manifest.copy(networkPolicy = "OFFLINE"),
+            mapOf("agent.web_search" to setOf(AgentCapability.READ_REMOTE_DATA))
+        ).allowed)
+        assertFalse(AgentRunPolicy.evaluate(
+            manifest,
+            mapOf("agent.inspect_tools" to setOf(AgentCapability.ANALYZE_DATA))
+        ).allowed)
+    }
+
+    @Test fun specialistCannotReceiveHighRiskToolsEvenWhenRegistered() {
+        val manifest = validManifest().copy(
+            status = AgentManifest.STATUS_APPROVED,
+            allowedToolIds = listOf("project.write")
+        )
         val decision = AgentRunPolicy.evaluate(
-            validManifest().copy(
-                status = AgentManifest.STATUS_APPROVED,
-                allowedToolIds = listOf("agent.inspect_tools")
-            )
+            manifest,
+            mapOf("project.write" to setOf(com.shev.agent.AgentCapability.WRITE_PROJECT_FILES))
         )
         assertFalse(decision.allowed)
     }
@@ -241,8 +351,8 @@ $json
                 calls += 1
                 if (calls == 1) """{"triggeringExamples":[{"user":"неэкранированная "кавычка"}]}"""
                 else {
-                    assertTrue(prompt.contains("Исправь синтаксис JSON"))
-                    assertTrue(prompt.contains("Некорректный ответ"))
+                    assertTrue(prompt.contains("Повтори создание с нуля"))
+                    assertTrue(prompt.contains("короткий полный JSON"))
                     valid
                 }
             }

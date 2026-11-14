@@ -4,8 +4,8 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [AgentTaskEntity::class, AgentEventEntity::class, ImprovementEntity::class, CapabilityGrantEntity::class, WorkspaceLayoutEntity::class, ConversationMessageEntity::class, ApprovalEvidenceEntity::class, ConversationStateEntity::class, AgentDefinitionEntity::class],
-    version = 11,
+    entities = [AgentTaskEntity::class, AgentEventEntity::class, ImprovementEntity::class, CapabilityGrantEntity::class, WorkspaceLayoutEntity::class, ConversationMessageEntity::class, ApprovalEvidenceEntity::class, ConversationStateEntity::class, AgentDefinitionEntity::class, AgentSkillEntity::class],
+    version = 12,
     exportSchema = false
 )
 abstract class SheVAgentDatabase : RoomDatabase() {
@@ -82,6 +82,15 @@ internal val MIGRATION_10_11 = object : androidx.room.migration.Migration(10, 11
     }
 }
 
+
+internal val MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS agent_skills (skillId TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL, summary TEXT NOT NULL, instructions TEXT NOT NULL, keywords TEXT NOT NULL, sourceUrls TEXT NOT NULL, status TEXT NOT NULL, verificationNotes TEXT NOT NULL, version INTEGER NOT NULL, createdAtEpochMillis INTEGER NOT NULL, updatedAtEpochMillis INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_agent_skills_updatedAtEpochMillis ON agent_skills (updatedAtEpochMillis)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_agent_skills_status ON agent_skills (status)")
+    }
+}
+
 object SheVAgentDatabaseProvider {
     @Volatile
     private var instance: SheVAgentDatabase? = null
@@ -102,7 +111,8 @@ object SheVAgentDatabaseProvider {
                 MIGRATION_7_8,
                 MIGRATION_8_9,
                 MIGRATION_9_10,
-                MIGRATION_10_11
+                MIGRATION_10_11,
+                MIGRATION_11_12
             ).build().also { instance = it }
         }
 }

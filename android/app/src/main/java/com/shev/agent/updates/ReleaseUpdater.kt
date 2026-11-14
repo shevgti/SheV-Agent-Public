@@ -2,6 +2,9 @@ package com.shev.agent.updates
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -23,31 +26,16 @@ object ReleaseUpdater {
             .openConnection() as HttpURLConnection).apply {
             connectTimeout = 10_000
             readTimeout = 15_000
+            useCaches = false
             setRequestProperty("Accept", "application/vnd.github+json")
+            setRequestProperty("User-Agent", "SheV-Agent-Android")
             setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+            setRequestProperty("Cache-Control", "no-cache")
         }
         try {
-            if (connection.responseCode == 404) return@withContext null
             check(connection.responseCode in 200..299) { "GitHub: HTTP ${connection.responseCode}" }
             val release = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-            if (release.optBoolean("draft") || release.optBoolean("prerelease")) return@withContext null
-            val version = release.optString("tag_name").removePrefix("v")
-            val versionCode = Regex("""(?im)^\s*versionCode:\s*(\d+)\s*$""")
-                .find(release.optString("body"))?.groupValues?.get(1)?.toIntOrNull()
-                ?: error("В релизе отсутствует проверенный versionCode")
-            if (version.isBlank() || versionCode <= currentVersionCode) return@withContext null
-            val assets = release.getJSONArray("assets")
-            var apk: String? = null
-            var checksum: String? = null
-            for (i in 0 until assets.length()) {
-                val asset = assets.getJSONObject(i)
-                when (asset.optString("name")) {
-                    APK_ASSET -> apk = asset.optString("browser_download_url")
-                    CHECKSUM_ASSET -> checksum = asset.optString("browser_download_url")
-                }
-            }
-            if (apk.isNullOrBlank() || checksum.isNullOrBlank()) error("В релизе отсутствует APK или SHA-256")
-            ReleaseInfo(version, versionCode, apk!!, checksum!!)
+            ReleaseManifestParser.parse(release, currentVersionCode)
         } finally {
             connection.disconnect()
         }
@@ -55,6 +43,18 @@ object ReleaseUpdater {
 
     suspend fun downloadAndPromptInstall(context: Context, release: ReleaseInfo): Boolean =
         withContext(Dispatchers.IO) {
+            val canInstall = withContext(Dispatchers.Main) {
+                if (!context.packageManager.canRequestPackageInstalls()) {
+                    val settingsIntent = Intent(
+                        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        android.net.Uri.parse("package:${context.packageName}")
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(settingsIntent)
+                    false
+                } else true
+            }
+            if (!canInstall) return@withContext false
+
             val apkFile = File(context.cacheDir, APK_ASSET)
             val partialFile = File(context.cacheDir, "$APK_ASSET.part")
             partialFile.delete()
@@ -65,19 +65,12 @@ object ReleaseUpdater {
                 partialFile.delete()
                 "Контрольная сумма APK не совпадает"
             }
+            validateApkIdentity(context, partialFile, release.versionCode)
             check(partialFile.renameTo(apkFile) || run {
                 partialFile.copyTo(apkFile, overwrite = true)
                 partialFile.delete()
             }) { "Не удалось подготовить APK после проверки." }
             withContext(Dispatchers.Main) {
-                if (!context.packageManager.canRequestPackageInstalls()) {
-                    val settingsIntent = Intent(
-                        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                        android.net.Uri.parse("package:${context.packageName}")
-                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(settingsIntent)
-                    return@withContext false
-                }
                 val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apkFile)
                 val intent = Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(uri, "application/vnd.android.package-archive")
@@ -88,6 +81,49 @@ object ReleaseUpdater {
             }
             true
         }
+
+    private fun validateApkIdentity(context: Context, apkFile: File, expectedVersionCode: Int) {
+        val packageManager = context.packageManager
+        val signatureFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            PackageManager.GET_SIGNING_CERTIFICATES
+        } else {
+            @Suppress("DEPRECATION")
+            PackageManager.GET_SIGNATURES
+        }
+        val archive = packageManager.getPackageArchiveInfo(apkFile.absolutePath, signatureFlag)
+            ?: error("Не удалось прочитать Android-манифест скачанного APK.")
+        val installed = packageManager.getPackageInfo(context.packageName, signatureFlag)
+        val archiveVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            archive.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            archive.versionCode.toLong()
+        }
+        ReleaseInstallPolicy.validate(
+            expectedPackageName = context.packageName,
+            expectedVersionCode = expectedVersionCode.toLong(),
+            installedSignerSha256 = signerDigests(installed),
+            candidate = ApkIdentity(
+                packageName = archive.packageName.orEmpty(),
+                versionCode = archiveVersionCode,
+                signerSha256 = signerDigests(archive)
+            )
+        )
+    }
+
+    private fun signerDigests(packageInfo: PackageInfo): Set<String> {
+        val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.signingInfo?.apkContentsSigners
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo.signatures
+        }
+        return signatures.orEmpty().map { signature ->
+            MessageDigest.getInstance("SHA-256")
+                .digest(signature.toByteArray())
+                .joinToString("") { byte -> "%02x".format(byte) }
+        }.toSet()
+    }
 
     private fun readTrustedText(url: String): String {
         val connection = openTrustedConnection(url, 10_000)

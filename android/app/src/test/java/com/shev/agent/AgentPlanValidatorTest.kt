@@ -2,6 +2,9 @@ package com.shev.agent
 
 import com.shev.agent.tools.AgentToolDescriptor
 import com.shev.agent.tools.AgentToolRegistry
+import com.shev.agent.tools.ToolInputField
+import com.shev.agent.tools.ToolInputSchema
+import com.shev.agent.tools.ToolInputType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -14,7 +17,8 @@ class AgentPlanValidatorTest {
                 id = "notes.read",
                 title = "Чтение заметок",
                 description = "Читает выбранные заметки",
-                capabilities = setOf(AgentCapability.READ_LOCAL_DATA)
+                capabilities = setOf(AgentCapability.READ_LOCAL_DATA),
+                inputSchema = ToolInputSchema(listOf(ToolInputField("query", ToolInputType.STRING, maxLength = 100)))
             )
         )
     }
@@ -24,7 +28,7 @@ class AgentPlanValidatorTest {
         title = "Прочитать заметки",
         toolId = "notes.read",
         capability = AgentCapability.READ_LOCAL_DATA,
-        input = "selected"
+        input = """{"query":"selected"}"""
     )
 
     @Test fun acceptsPlanWithRegisteredToolAndDeclaredCapability() {
@@ -76,6 +80,28 @@ class AgentPlanValidatorTest {
         assertFalse(
             validator.validate(AgentPlan("План", listOf(step().copy(title = " ")))).accepted
         )
+    }
+
+    @Test fun rejectsInvalidToolInputBeforeExecution() {
+        val result = AgentPlanValidator(registry()).validate(
+            AgentPlan("План", listOf(step().copy(input = """{"unexpected":"value"}""")))
+        )
+        assertEquals(AgentPlanRejection.INVALID_TOOL_INPUT, result.rejection)
+    }
+
+    @Test fun rejectsToolsWithoutInputSchema() {
+        val noSchema = AgentToolRegistry().apply {
+            register(
+                AgentToolDescriptor(
+                    id = "notes.read",
+                    title = "Чтение заметок",
+                    description = "Читает выбранные заметки",
+                    capabilities = setOf(AgentCapability.READ_LOCAL_DATA)
+                )
+            )
+        }
+        val result = AgentPlanValidator(noSchema).validate(AgentPlan("План", listOf(step())))
+        assertEquals(AgentPlanRejection.INPUT_SCHEMA_MISSING, result.rejection)
     }
 
     @Test fun rejectsOversizedToolInput() {

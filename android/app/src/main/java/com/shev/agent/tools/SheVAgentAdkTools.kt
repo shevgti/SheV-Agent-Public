@@ -3,6 +3,7 @@ package com.shev.agent.tools
 import com.google.adk.kt.annotations.Param
 import com.google.adk.kt.annotations.Tool
 import com.shev.agent.AgentCapability
+import com.shev.agent.data.AgentSkillLibrary
 import com.google.gson.Gson
 
 /**
@@ -13,11 +14,26 @@ class SheVAgentAdkTools(
     private val executor: AgentToolExecutor,
     private val executionContext: AgentToolExecutionContext,
     /** Non-null for generated specialists; null is reserved for existing host-owned callers. */
-    agentAllowedToolIds: Set<String>? = null
+    agentAllowedToolIds: Set<String>? = null,
+    private val skillLibrary: AgentSkillLibrary? = null
 ) {
     // Freeze the approved IDs when this adapter/session is created. A mutable caller-owned set
     // must not be able to add permissions while the specialist is running.
     private val approvedAgentToolIds: Set<String>? = agentAllowedToolIds?.toSet()
+
+    fun availableToolDescriptors(): List<AgentToolDescriptor> = executor.availableTools()
+
+    fun availableToolIds(): Set<String> = availableToolDescriptors().mapTo(linkedSetOf()) { it.id }
+
+    suspend fun buildVerifiedSkillContext(query: String): String =
+        skillLibrary?.buildContext(query).orEmpty()
+
+    /** Creates a new immutable adapter whose executor allowlist is exactly the approved manifest set. */
+    fun scopedTo(agentToolIds: Set<String>): SheVAgentAdkTools {
+        val unknown = agentToolIds - availableToolIds()
+        require(unknown.isEmpty()) { "Неизвестные или недоступные инструменты: ${unknown.joinToString()}." }
+        return SheVAgentAdkTools(executor, executionContext, agentToolIds, skillLibrary)
+    }
 
     private fun execute(request: AgentToolRequest): AgentToolExecutionResult =
         approvedAgentToolIds?.let { executor.executeForAgent(it, request, executionContext) }
@@ -41,7 +57,7 @@ class SheVAgentAdkTools(
         )
         val result = execution.result
         return if (execution.status == AgentToolExecutionStatus.COMPLETED && result?.success == true) {
-            mapOf("status" to "ok", "tools" to result.output)
+            mapOf("status" to "ok", "tools" to (approvedAgentToolIds?.sorted()?.joinToString() ?: result.output))
         } else {
             mapOf(
                 "status" to "denied",
@@ -81,6 +97,45 @@ class SheVAgentAdkTools(
     }
 
     @Tool(
+        name = "save_reusable_skill_draft",
+        description = "Сохраняет найденный во время работы повторно используемый способ решения как ЧЕРНОВИК навыка. Навык не активируется автоматически и не считается проверенным."
+    )
+    suspend fun saveReusableSkillDraft(
+        @Param("Краткое название навыка.") title: String,
+        @Param("Для чего навык нужен.") summary: String,
+        @Param("Пошаговая инструкция, без секретов и исполняемого кода.") instructions: String,
+        @Param("Ключевые слова через запятую.") keywords: String,
+        @Param("Публичные HTTP(S)-ссылки на источники, каждая с новой строки.") sourceUrls: String
+    ): Map<String, String> {
+        if (skillLibrary == null) return mapOf("status" to "unavailable", "message" to "Библиотека навыков не подключена.")
+        val execution = executeSuspending(
+            AgentToolRequest(
+                toolId = SAVE_SKILL_DRAFT_TOOL_ID,
+                capability = AgentCapability.CREATE_DRAFT,
+                input = Gson().toJson(
+                    mapOf(
+                        "title" to title,
+                        "summary" to summary,
+                        "instructions" to instructions,
+                        "keywords" to keywords,
+                        "sourceUrls" to sourceUrls
+                    )
+                )
+            )
+        )
+        val result = execution.result
+        return if (execution.status == AgentToolExecutionStatus.COMPLETED && result?.success == true) {
+            mapOf("status" to "draft_saved", "message" to result.output)
+        } else {
+            mapOf(
+                "status" to "not_saved",
+                "reason" to execution.status.name,
+                "message" to (result?.errorCode ?: "Черновик навыка не сохранён.")
+            )
+        }
+    }
+
+    @Tool(
         name = "get_current_local_time",
         description = "Returns the actual current date, time and timezone from the Android device. Use this for every question about current time or today's date; never guess."
     )
@@ -102,6 +157,29 @@ class SheVAgentAdkTools(
         }
     }
 
+
+    @Tool(
+        name = "search_web",
+        description = "Ищет актуальную информацию в публичном интернете и возвращает до пяти заголовков, ссылок и сниппетов. Не утверждай, что прочитал полные страницы."
+    )
+    suspend fun searchWeb(
+        @Param("Поисковый запрос на русском или английском языке, от 2 до 200 символов.") query: String
+    ): Map<String, String> {
+        val execution = executeSuspending(
+            AgentToolRequest(
+                toolId = WEB_SEARCH_TOOL_ID,
+                capability = AgentCapability.READ_REMOTE_DATA,
+                input = Gson().toJson(mapOf("query" to query))
+            )
+        )
+        val result = execution.result
+        return if (execution.status == AgentToolExecutionStatus.COMPLETED && result?.success == true) {
+            mapOf("status" to "ok", "results" to result.output)
+        } else {
+            mapOf("status" to "unavailable", "reason" to execution.status.name,
+                "message" to (result?.errorCode ?: "Поиск не выполнен."))
+        }
+    }
 
     @Tool(
         name = "get_current_weather",
@@ -134,5 +212,7 @@ class SheVAgentAdkTools(
         const val CURRENT_TIME_TOOL_ID = "agent.current_local_time"
         const val CREATE_TASK_DRAFT_ID = "agent.create_task_draft"
         const val WEATHER_TOOL_ID = "agent.current_weather"
+        const val WEB_SEARCH_TOOL_ID = "agent.web_search"
+        const val SAVE_SKILL_DRAFT_TOOL_ID = "agent.save_skill_draft"
     }
 }

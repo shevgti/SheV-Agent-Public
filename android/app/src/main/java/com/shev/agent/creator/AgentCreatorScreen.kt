@@ -46,6 +46,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
     var status by remember { mutableStateOf("Опиши специалиста, которого нужно создать.") }
     var busy by remember { mutableStateOf(false) }
     var clarificationPending by remember { mutableStateOf(false) }
+    var useChatGptForCreator by remember { mutableStateOf(false) }
 
     LazyColumn(
         Modifier.fillMaxSize().padding(18.dp),
@@ -63,17 +64,29 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Откуда берётся ИИ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "ВАЖНО: текущий конструктор создаёт паспорта через локальную LiteRT-LM модель на телефоне. Он пока НЕ использует Codex App Server, OpenRouter, Gemini или OpenAI API, даже если они подключены для основного чата.",
+                        "Выбери интеллект, который будет проектировать паспорт специалиста. ChatGPT использует уже подключённый Codex-аккаунт; локальная модель работает непосредственно на телефоне.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            enabled = !busy && modelState.codexConnected,
+                            onClick = { useChatGptForCreator = true }
+                        ) { Text(if (useChatGptForCreator) "✓ ChatGPT выбран" else "ChatGPT / Codex") }
+                        OutlinedButton(
+                            enabled = !busy && modelState.ready,
+                            onClick = { useChatGptForCreator = false }
+                        ) { Text(if (!useChatGptForCreator) "✓ Локальная модель" else "Локальная модель") }
+                    }
                     Text(
                         when {
+                            useChatGptForCreator && modelState.codexConnected -> "Источник конструктора: ChatGPT / Codex · подключён"
+                            useChatGptForCreator -> "ChatGPT / Codex не подключён. Открой настройки и выполни вход."
                             modelState.ready -> "Источник конструктора: локальная модель · запущена"
                             modelState.verified -> "Источник конструктора: локальная модель · файл установлен, но модель не запущена"
                             else -> "Источник конструктора: локальная модель · модель ещё не установлена"
                         },
                         fontWeight = FontWeight.SemiBold,
-                        color = if (modelState.ready) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if ((useChatGptForCreator && modelState.codexConnected) || (!useChatGptForCreator && modelState.ready)) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text("Инструменты с реальными обработчиками:", fontWeight = FontWeight.SemiBold)
                     val availableTools = modelViewModel.availableAgentTools()
@@ -92,7 +105,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                         }
                     }
                     Text(
-                        "Сам конструктор работает без инструментов. Список выше — каталог реально работающих адаптеров приложения, но привязка инструментов к отдельным специалистам пока не реализована. Поэтому первый запуск специалистов ограничен локальным офлайн-режимом без инструментов и побочных действий.",
+                        "Сам конструктор работает без инструментов. Список выше — каталог инструментов с реальными обработчиками. При создании паспорта модель может выбрать только эти инструменты; после твоего одобрения специалист получит только выбранный allowlist.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -114,19 +127,20 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
-                            enabled = !busy && !modelState.busy && request.isNotBlank() && modelState.ready,
+                            enabled = !busy && !modelState.busy && request.isNotBlank() && (if (useChatGptForCreator) modelState.codexConnected else modelState.ready),
                             onClick = {
                                 busy = true
-                                status = "Локальная модель проектирует агента…"
+                                status = if (useChatGptForCreator) "ChatGPT / Codex проектирует агента…" else "Локальная модель проектирует агента…"
                                 scope.launch {
                                     try {
-                                        // F4 first slice is intentionally tool-free; host adapters are not yet bound per agent.
-                                        val knownTools = emptySet<String>()
+                                        modelViewModel.prepareAgentToolCatalog()
+                                        val knownTools = modelViewModel.availableAgentToolIds()
                                         val creation = AgentCreator().createDraft(
                                             userRequest = request,
                                             knownToolIds = knownTools,
                                             existingAgentIds = definitions.map { it.agentId }.toSet(),
-                                            generate = { prompt -> modelViewModel.generateAgentCreatorOutputFromPrompt(prompt) },
+                                            knownToolDescriptions = modelViewModel.availableAgentTools().map { tool -> "${tool.id}: ${tool.title} — ${tool.description}; capabilities=${tool.capabilities}" },
+                                            generate = { prompt -> if (useChatGptForCreator) modelViewModel.generateAgentCreatorOutputFromCodex(prompt) else modelViewModel.generateAgentCreatorOutputFromPrompt(prompt) },
                                             existingAgentSummaries = definitions.map { "${it.agentId}: ${it.name} — ${it.purpose}" },
                                             forceComplete = clarificationPending
                                         )
@@ -235,7 +249,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                                     updatedAtEpochMillis = System.currentTimeMillis()
                                 )
                             )
-                            status = "Паспорт одобрен. Специалиста можно запускать вручную в ограниченном офлайн-режиме без инструментов."
+                            status = "Паспорт одобрен. Специалист запускается вручную и получает только перечисленные в паспорте инструменты."
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (failure: Exception) {
@@ -248,7 +262,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
         }
         item {
             Text(
-                "Безопасность: одобрение не включает постоянную автономную работу. Сейчас одобренного специалиста можно запускать только вручную, локально и без инструментов, сети, файлового доступа или изменения данных. Привязка инструментов, evaluator и постоянная активация будут отдельными этапами с повторной проверкой разрешений.",
+                "Безопасность: одобрение не включает постоянную автономную работу. Специалист запускается вручную; сетевые инструменты допускаются только при READ_ONLY, все вызовы проходят через индивидуальный allowlist и CapabilityPolicy. Произвольного файлового доступа и изменения данных нет; опасные операции требуют отдельного подтверждения.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

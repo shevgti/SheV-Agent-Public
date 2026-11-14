@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -36,6 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.shev.agent.creator.AgentCreatorScreen
+import com.shev.agent.data.AgentSkillLibrary
+import com.shev.agent.data.AgentSkillLibraryScreen
 import com.shev.agent.data.SheVAgentDatabase
 import com.shev.agent.data.SheVAgentDatabaseProvider
 import com.shev.agent.model.LocalModelPanel
@@ -44,12 +47,16 @@ import com.shev.agent.tools.GitHubAuthCard
 import com.shev.agent.tools.ToolWorkshopScreen
 import com.shev.agent.updates.ReleaseUpdateCard
 import com.shev.agent.update.UpdateCheckWorker
+import com.shev.agent.update.AppUpdater
+import android.widget.Toast
 
 /**
  * The specialised-agent factory is the default screen. The primary chat and
  * safe tool workshop remain available as separate bottom-navigation destinations.
  */
 class MainActivity : ComponentActivity() {
+    private var installDownloadedUpdateRequested = false
+    private var awaitingInstallPermission = false
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
             getSharedPreferences(PERMISSIONS_PREFS, MODE_PRIVATE).edit()
@@ -67,6 +74,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installDownloadedUpdateRequested = intent?.action == ACTION_INSTALL_DOWNLOADED_UPDATE
         window.statusBarColor = android.graphics.Color.rgb(16, 19, 24)
         window.navigationBarColor = android.graphics.Color.rgb(16, 19, 24)
         window.decorView.systemUiVisibility = 0
@@ -100,6 +108,50 @@ class MainActivity : ComponentActivity() {
         requestFirstLaunchPermissions()
         // Run one update check immediately and keep the 15-minute periodic check scheduled.
         UpdateCheckWorker.schedule(applicationContext)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.action == ACTION_INSTALL_DOWNLOADED_UPDATE) {
+            installDownloadedUpdateRequested = true
+            installDownloadedUpdateIfRequested()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        installDownloadedUpdateIfRequested()
+    }
+
+    private fun installDownloadedUpdateIfRequested() {
+        if (installDownloadedUpdateRequested) {
+            installDownloadedUpdateRequested = false
+            try {
+                awaitingInstallPermission = !AppUpdater.openInstaller(this)
+            } catch (error: Exception) {
+                Toast.makeText(
+                    this,
+                    "Не удалось открыть установку обновления: ${error.message ?: "ошибка"}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            return
+        }
+        if (awaitingInstallPermission &&
+            (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls())
+        ) {
+            awaitingInstallPermission = false
+            try {
+                AppUpdater.openInstaller(this)
+            } catch (error: Exception) {
+                Toast.makeText(
+                    this,
+                    "Не удалось открыть установку обновления: ${error.message ?: "ошибка"}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
     }
 
     /**
@@ -142,7 +194,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private companion object {
+    companion object {
+        const val ACTION_INSTALL_DOWNLOADED_UPDATE = "com.shev.agent.action.INSTALL_DOWNLOADED_UPDATE"
         const val PERMISSIONS_PREFS = "shev_agent_permissions"
         const val KEY_NOTIFICATION_PROMPTED = "notification_prompt_completed"
         const val KEY_MICROPHONE_PROMPTED = "microphone_prompt_completed"
@@ -183,7 +236,8 @@ private fun SheVAgentApp(
                 LocalModelPanel(chatViewModel)
             }
             SheVAgentTab.TOOLS -> SettingsScreen(
-                modifier = Modifier.fillMaxSize().padding(inset)
+                modifier = Modifier.fillMaxSize().padding(inset),
+                skillLibrary = AgentSkillLibrary(database.agentDao())
             )
         }
     }
@@ -191,9 +245,13 @@ private fun SheVAgentApp(
 
 
 @Composable
-private fun SettingsScreen(modifier: Modifier = Modifier) {
+private fun SettingsScreen(
+    modifier: Modifier = Modifier,
+    skillLibrary: AgentSkillLibrary
+) {
     var showGitHub by rememberSaveable { mutableStateOf(false) }
     var showWorkshop by rememberSaveable { mutableStateOf(false) }
+    var showSkills by rememberSaveable { mutableStateOf(false) }
     Column(
         modifier.verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -204,6 +262,18 @@ private fun SettingsScreen(modifier: Modifier = Modifier) {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         ReleaseUpdateCard()
+        Card {
+            Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                TextButton(onClick = { showSkills = !showSkills }) {
+                    Text(if (showSkills) "Скрыть библиотеку навыков" else "Библиотека знаний и навыков SheV")
+                }
+                if (showSkills) {
+                    androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().heightIn(max = 560.dp)) {
+                        AgentSkillLibraryScreen(skillLibrary, Modifier.fillMaxWidth())
+                    }
+                }
+            }
+        }
         Card {
             Column(Modifier.fillMaxWidth().padding(12.dp)) {
                 TextButton(onClick = { showGitHub = !showGitHub }) {
