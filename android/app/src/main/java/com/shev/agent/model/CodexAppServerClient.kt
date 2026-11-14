@@ -156,13 +156,7 @@ internal class CodexAppServerClient(
                 addProperty("cwd", workspace.absolutePath)
                 addProperty("sandbox", "read-only")
                 addProperty("serviceName", "shev_agent")
-                addProperty(
-                    "developerInstructions",
-                    "Ты — SheV, персональный AI-агент пользователя. Всегда отвечай по-русски. " +
-                        "Работай в папке рабочего пространства приложения. Не заявляй, что действие выполнено, " +
-                        "если оно не завершилось успешно. Перед командами и изменениями файлов запрашивай подтверждение. " +
-                        "Не пытайся обходить ограничения Android или получать доступ к данным вне разрешённой папки."
-                )
+                addProperty("developerInstructions", CodexRuntimeConfig.DEVELOPER_INSTRUCTIONS)
             }
         )
         return result.get("thread")?.takeIf { it.isJsonObject }?.asJsonObject?.get("id")?.asString
