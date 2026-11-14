@@ -130,7 +130,7 @@ class SheVAgentRuntime private constructor(
                         append("Все вызовы проходят через отдельный неизменяемый allowlist и CapabilityPolicy. ")
                         append("Не пытайся использовать инструменты, которых нет в этом списке. ")
                         append("У тебя нет произвольного файлового доступа и права изменять данные. ")
-                        append("Если задача требует внешнего поиска или действия, прямо сообщи об ограничении.\n")
+                        append("Если нужного инструмента нет в разрешённом списке, прямо сообщи об ограничении.\n")
                         append("Роль: ").append(manifest.role).append("\n")
                         append("Назначение: ").append(manifest.purpose).append("\n")
                         append("Инструкции: ").append(manifest.instructions).append("\n")
