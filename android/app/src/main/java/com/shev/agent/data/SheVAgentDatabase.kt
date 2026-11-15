@@ -5,7 +5,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [AgentTaskEntity::class, AgentEventEntity::class, ImprovementEntity::class, CapabilityGrantEntity::class, WorkspaceLayoutEntity::class, ConversationMessageEntity::class, ApprovalEvidenceEntity::class, ConversationStateEntity::class, AgentDefinitionEntity::class, AgentSkillEntity::class],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 abstract class SheVAgentDatabase : RoomDatabase() {
@@ -91,6 +91,15 @@ internal val MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12
     }
 }
 
+
+internal val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE agent_tasks ADD COLUMN planJson TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE agent_tasks ADD COLUMN planHash TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE approval_evidence ADD COLUMN planHash TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 object SheVAgentDatabaseProvider {
     @Volatile
     private var instance: SheVAgentDatabase? = null
@@ -112,7 +121,8 @@ object SheVAgentDatabaseProvider {
                 MIGRATION_8_9,
                 MIGRATION_9_10,
                 MIGRATION_10_11,
-                MIGRATION_11_12
+                MIGRATION_11_12,
+                MIGRATION_12_13
             ).build().also { instance = it }
         }
 }
