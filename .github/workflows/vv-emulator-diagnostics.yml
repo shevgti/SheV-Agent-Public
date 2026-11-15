@@ -26,7 +26,7 @@ jobs:
         run: |
           sdkmanager --install "platform-tools" "emulator" "platforms;android-36" "system-images;android-36;google_apis;x86_64"
           yes | sdkmanager --licenses >/dev/null
-      - name: Boot emulator and verify Android is ready
+      - name: Boot emulator and collect diagnostics
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
@@ -37,23 +37,28 @@ jobs:
           emulator-boot-timeout: 900
           script: |
             set -euxo pipefail
-            adb devices -l
+            DIAG_DIR="$RUNNER_TEMP/vv-android16-diagnostics"
+            mkdir -p "$DIAG_DIR"
+            adb devices -l | tee "$DIAG_DIR/adb-devices.txt"
             adb wait-for-device
-            for i in $(seq 1 60); do
+            for i in $(seq 1 90); do
               BOOT="$(adb shell getprop sys.boot_completed | tr -d '\r')"
               if [ "$BOOT" = "1" ]; then break; fi
               sleep 5
             done
             test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1"
-            adb shell getprop ro.build.version.release
-            adb shell getprop ro.build.version.sdk
-            adb shell wm size
-            adb shell wm density
+            adb shell getprop > "$DIAG_DIR/getprop.txt"
+            adb shell getprop ro.build.version.release | tee "$DIAG_DIR/android-release.txt"
+            adb shell getprop ro.build.version.sdk | tee "$DIAG_DIR/android-api.txt"
+            adb shell wm size | tee "$DIAG_DIR/screen-size.txt"
+            adb shell wm density | tee "$DIAG_DIR/screen-density.txt"
+            adb logcat -d -t 20000 > "$DIAG_DIR/logcat.txt"
+            date -u +"%Y-%m-%dT%H:%M:%SZ" > "$DIAG_DIR/collected-at-utc.txt"
       - name: Upload emulator diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: vv-android16-emulator-diagnostics
-          path: ${{ runner.temp }}/
-          if-no-files-found: ignore
+          path: ${{ runner.temp }}/vv-android16-diagnostics/
+          if-no-files-found: warn
           retention-days: 7
