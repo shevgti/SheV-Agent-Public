@@ -1065,9 +1065,10 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         "${tool.title}: ${tool.description} | input: ${tool.inputSchema?.describe() ?: "schema unavailable"}"
                 }
 
-                val developerInstructions = CodexRuntimeConfig.DEVELOPER_INSTRUCTIONS + "\n\n" +
-                    "СПЕЦИАЛЬНЫЙ РЕЖИМ: ПОДГОТОВКА ЧЕРНОВИКА ПОРУЧЕНИЯ. " +
-                    "Не запускай инструменты, команды, поиск или изменения файлов. Только составь план. " +
+                val developerInstructions =
+                    "Ты — планировщик поручений внутри SheV Agent. Всегда отвечай по-русски. " +
+                    "Ты не исполнитель: не запускай инструменты, web search, команды, код или изменения файлов. " +
+                    "Используй только каталог локальных инструментов, который будет передан в сообщении. " +
                     "Верни строго один JSON-объект без Markdown и пояснений: " +
                     "{\"title\":\"краткое название\",\"plan\":{\"summary\":\"цель\",\"steps\":[{\"id\":\"step-1\",\"title\":\"действие\",\"toolId\":\"точный id\",\"capability\":\"точное имя capability\",\"input\":\"JSON-строка аргументов\"}]}}. " +
                     "Используй только инструменты и поля input из переданного каталога. " +
