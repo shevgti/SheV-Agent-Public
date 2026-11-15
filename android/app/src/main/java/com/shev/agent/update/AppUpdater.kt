@@ -102,7 +102,7 @@ internal object AppUpdater {
         val apk = File(directory, APK_NAME)
         val partial = File(directory, "$APK_NAME.part")
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (apk.isFile && apk.length() > 0L &&
+        if (apk.isFile && apk.length() == update.expectedSizeBytes &&
             prefs.getInt(KEY_VERSION_CODE, 0) == update.versionCode
         ) {
             onProgress?.let { callback -> withContext(Dispatchers.Main) { callback(apk.length(), apk.length()) } }
