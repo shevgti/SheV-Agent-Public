@@ -40,6 +40,7 @@ interface AgentDao {
           AND taskId = :taskId
           AND expectedRevision = :expectedRevision
           AND operation = :operation
+          AND planHash = :planHash
           AND consumedAtEpochMillis IS NULL
           AND issuedAtEpochMillis <= :nowMillis
           AND expiresAtEpochMillis > :nowMillis
@@ -49,6 +50,7 @@ interface AgentDao {
         taskId: String,
         expectedRevision: Long,
         operation: String,
+        planHash: String,
         nowMillis: Long
     ): Int
 

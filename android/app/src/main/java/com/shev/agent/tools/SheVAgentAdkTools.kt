@@ -75,13 +75,14 @@ class SheVAgentAdkTools(
         description = "Creates a local task draft for the user. The task remains WAITING_APPROVAL and no action is executed."
     )
     suspend fun createTaskDraft(
-        @Param("Краткое описание поручения, которое пользователь явно попросил сохранить.") title: String
+        @Param("Краткое описание поручения, которое пользователь явно попросил сохранить.") title: String,
+        @Param("Строгий JSON-план с summary и steps [{id,title,toolId,capability,input}], использующий только инструменты из каталога.") planJson: String
     ): Map<String, String> {
         val execution = executeSuspending(
             AgentToolRequest(
                 toolId = CREATE_TASK_DRAFT_ID,
                 capability = AgentCapability.CREATE_DRAFT,
-                input = Gson().toJson(mapOf("title" to title))
+                input = Gson().toJson(mapOf("title" to title, "planJson" to planJson))
             )
         )
         val result = execution.result

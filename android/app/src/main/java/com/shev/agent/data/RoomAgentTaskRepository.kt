@@ -2,6 +2,7 @@ package com.shev.agent.data
 
 import androidx.room.withTransaction
 import com.shev.agent.AgentPhase
+import com.shev.agent.AgentPlanJsonCodec
 import com.shev.agent.AgentTask
 import com.shev.agent.AgentTaskOrchestrator
 import com.shev.agent.AgentWorkflowCommand
@@ -18,6 +19,7 @@ interface AgentTaskAuthorizationVerifier {
         taskId: String,
         expectedRevision: Long,
         evidenceRef: String,
+        planHash: String,
         nowMillis: Long
     ): Boolean
 
@@ -35,7 +37,8 @@ data class AgentTaskTransitionRequest(
     val eventId: String,
     val idempotencyKey: String,
     val occurredAtEpochMillis: Long,
-    val evidenceRef: String? = null
+    val evidenceRef: String? = null,
+    val planHash: String? = null
 )
 
 data class AgentTaskDraftRequest(
@@ -43,7 +46,8 @@ data class AgentTaskDraftRequest(
     val title: String,
     val eventId: String,
     val idempotencyKey: String,
-    val occurredAtEpochMillis: Long
+    val occurredAtEpochMillis: Long,
+    val planJson: String = ""
 )
 
 sealed interface AgentTaskDraftResult {
@@ -62,7 +66,8 @@ enum class AgentTaskRepositoryRejection {
     INVALID_APPROVAL_EVIDENCE,
     VERIFICATION_EVIDENCE_REQUIRED,
     INVALID_VERIFICATION_EVIDENCE,
-    INVALID_STORED_PHASE
+    INVALID_STORED_PHASE,
+    INVALID_PLAN
 }
 
 sealed interface AgentTaskRepositoryResult {
@@ -91,9 +96,13 @@ class RoomAgentTaskRepository(
      */
     suspend fun createDraft(request: AgentTaskDraftRequest): AgentTaskDraftResult {
         val title = request.title.trim()
+        val canonicalPlan = AgentPlanJsonCodec.canonicalize(request.planJson)
+            ?: return AgentTaskDraftResult.InvalidRequest
+        val planHash = AgentPlanJsonCodec.sha256(canonicalPlan)
         if (request.taskId.isBlank() ||
             title.isEmpty() ||
             title.length > 2_000 ||
+            request.planJson.length > AgentPlanJsonCodec.MAX_PLAN_JSON_CHARS ||
             request.eventId.isBlank() ||
             request.idempotencyKey.isBlank() ||
             request.occurredAtEpochMillis < 0L
@@ -109,7 +118,7 @@ class RoomAgentTaskRepository(
                 if (!sameRequest) return@withTransaction AgentTaskDraftResult.Conflict
                 val existing = dao.getTask(request.taskId)
                     ?: return@withTransaction AgentTaskDraftResult.NotFound
-                if (existing.title != title) {
+                if (existing.title != title || existing.planHash != planHash || existing.planJson != canonicalPlan) {
                     return@withTransaction AgentTaskDraftResult.Conflict
                 }
                 return@withTransaction try {
@@ -130,7 +139,9 @@ class RoomAgentTaskRepository(
                 requiresApproval = true,
                 createdAtEpochMillis = request.occurredAtEpochMillis,
                 updatedAtEpochMillis = request.occurredAtEpochMillis,
-                revision = 0L
+                revision = 0L,
+                planJson = canonicalPlan,
+                planHash = planHash
             )
             dao.insertTask(initialTask)
 
@@ -201,6 +212,10 @@ class RoomAgentTaskRepository(
                     previous.evidenceRef?.matches(Regex("[0-9a-f]{64}")) == true
                 if (!sameRequest) return@withTransaction AgentTaskRepositoryResult.IdempotencyConflict
                 val current = dao.getTask(taskId) ?: return@withTransaction AgentTaskRepositoryResult.NotFound
+                if (current.planJson.isBlank() || current.planHash.isBlank() ||
+                    AgentPlanJsonCodec.canonicalize(current.planJson) != current.planJson ||
+                    AgentPlanJsonCodec.sha256(current.planJson) != current.planHash
+                ) return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
                 return@withTransaction try {
                     AgentTaskRepositoryResult.Replayed(current.toWorkflowState())
                 } catch (_: IllegalArgumentException) {
@@ -209,6 +224,10 @@ class RoomAgentTaskRepository(
             }
 
             val stored = dao.getTask(taskId) ?: return@withTransaction AgentTaskRepositoryResult.NotFound
+            if (stored.planJson.isBlank() || stored.planHash.isBlank() ||
+                AgentPlanJsonCodec.canonicalize(stored.planJson) != stored.planJson ||
+                AgentPlanJsonCodec.sha256(stored.planJson) != stored.planHash
+            ) return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
             if (stored.revision != expectedRevision) {
                 return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_REVISION)
             }
@@ -225,6 +244,7 @@ class RoomAgentTaskRepository(
                     taskId = taskId,
                     expectedRevision = expectedRevision,
                     operation = APPROVE_OPERATION,
+                    planHash = stored.planHash,
                     issuedAtEpochMillis = occurredAtEpochMillis,
                     expiresAtEpochMillis = occurredAtEpochMillis + APPROVAL_TTL_MILLIS
                 )
@@ -237,7 +257,8 @@ class RoomAgentTaskRepository(
                     eventId = eventId,
                     idempotencyKey = idempotencyKey,
                     occurredAtEpochMillis = occurredAtEpochMillis,
-                    evidenceRef = nonce
+                    evidenceRef = nonce,
+                    planHash = stored.planHash
                 )
             )
             if (result !is AgentTaskRepositoryResult.Applied) {
@@ -323,8 +344,13 @@ class RoomAgentTaskRepository(
         if (request.command == AgentWorkflowCommand.APPROVE) {
             val evidence = request.evidenceRef
                 ?: return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.APPROVAL_REQUIRED)
+            val planHash = request.planHash
+                ?: return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
+            if (stored.planHash != planHash || stored.planJson.isBlank() ||
+                AgentPlanJsonCodec.sha256(stored.planJson) != planHash
+            ) return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
             if (!authorizationVerifier.consumeApprovalEvidence(
-                    request.taskId, request.expectedRevision, evidence, request.occurredAtEpochMillis
+                    request.taskId, request.expectedRevision, evidence, planHash, request.occurredAtEpochMillis
                 )) {
                 return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_APPROVAL_EVIDENCE)
             }

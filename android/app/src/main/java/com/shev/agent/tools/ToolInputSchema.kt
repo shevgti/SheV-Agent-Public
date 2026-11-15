@@ -15,7 +15,7 @@ data class ToolInputField(
 ) {
     init {
         require(name.matches(Regex("[A-Za-z][A-Za-z0-9_]{0,63}")))
-        require(maxLength in 1..8192)
+        require(maxLength in 1..16384)
         require(minInteger == null || maxInteger == null || minInteger <= maxInteger)
         require(type == ToolInputType.STRING || allowedValues.isEmpty())
         require(type == ToolInputType.INTEGER || (minInteger == null && maxInteger == null))
@@ -44,6 +44,19 @@ class ToolInputSchema(fields: List<ToolInputField>) {
         require(fields.isNotEmpty())
         require(fields.map { it.name }.distinct().size == fields.size)
         fieldsByName = fields.associateBy { it.name }
+    }
+
+    fun describe(): String = fieldsByName.values.joinToString("; ") { field ->
+        buildString {
+            append(field.name)
+            append(": ")
+            append(field.type.name)
+            append(if (field.required) " required" else " optional")
+            if (field.type == ToolInputType.STRING) append(" maxLength=${field.maxLength}")
+            if (field.allowedValues.isNotEmpty()) append(" allowed=${field.allowedValues.sorted().joinToString("|")}")
+            field.minInteger?.let { append(" min=$it") }
+            field.maxInteger?.let { append(" max=$it") }
+        }
     }
 
     fun validate(input: String): ToolInputValidation {

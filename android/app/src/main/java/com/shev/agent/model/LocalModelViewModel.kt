@@ -9,6 +9,8 @@ import com.google.adk.kt.events.Event
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.shev.agent.AgentCapability
+import com.shev.agent.AgentPlanJsonCodec
+import com.shev.agent.AgentPlanValidator
 import com.shev.agent.AgentWorkflowCommand
 import com.shev.agent.data.AgentSkillLibrary
 import com.shev.agent.data.ConversationMessageEntity
@@ -104,6 +106,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     val tasks = dao.observeTasks()
     private var runtime: SheVAgentRuntime? = null
     private var toolExecutor: AgentToolExecutor? = null
+    private var agentToolRegistry: AgentToolRegistry? = null
     private var codexClient: CodexAppServerClient? = null
     private var codexActiveThreadId: String? = null
     private var codexActiveTurnId: String? = null
@@ -742,11 +745,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                                 addProperty("content", promptWithContext)
                             })
                         }
-                        val bridge = OpenAiLocalToolBridge(taskRepository)
+                        val bridge = createOpenAiLocalToolBridge()
                         try {
                             OpenAiResponsesClient(config).completeWithTools(
                                 history = input,
-                                instructions = "Ты — SheV, личный помощник пользователя. Отвечай по-русски. Ты можешь вызывать только явно перечисленные инструменты SheV. Используй создание черновика только когда пользователь прямо просит сохранить поручение. Не утверждай, что действие выполнено, если инструмент вернул not_executed. Не раскрывай ключи и секреты.",
+                                instructions = "Ты — SheV, личный помощник пользователя. Отвечай по-русски. Вызывай создание черновика поручения только по прямой просьбе пользователя. Перед созданием получи каталог доступных инструментов и приложи planJson строго по схеме {summary,steps:[{id,title,toolId,capability,input}]}, используя только разрешённые toolId и capability. План будет показан во вкладке «Поручения»; сохранение и подтверждение не запускают действия. Не заявляй о выполнении без отдельной проверки результата. Не раскрывай ключи и секреты.",
                                 tools = bridge.definitions,
                                 executeTool = bridge::execute
                             )
@@ -1177,12 +1180,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         addProperty("content", promptWithContext)
                     })
                 }
-                val localTools = OpenAiLocalToolBridge(taskRepository)
+                val localTools = createOpenAiLocalToolBridge()
                 val answer = OpenAiResponsesClient(
                     OpenAiCompatibleConfig("https://api.openai.com/v1", modelId, token)
                 ).completeWithTools(
                     history = responseInput,
-                    instructions = "Ты — SheV, персональный AI-помощник пользователя. Всегда отвечай по-русски. Ты работаешь внутри Android-приложения SheV Agent. В твоём распоряжении только три локальных инструмента, перечисленных в запросе: точное местное время, просмотр доступных инструментов и создание черновика поручения. Вызывай создание черновика только если пользователь явно просит сохранить или добавить поручение; черновик остаётся на вкладке «Поручения» и ждёт подтверждения, ничего не исполняется. Не пытайся выполнять другие действия, не придумывай результаты инструментов, не проси пользователя отправлять API-ключи в чат. Все вызовы проверяются приложением.",
+                    instructions = "Ты — SheV, персональный AI-помощник пользователя. Всегда отвечай по-русски. Ты работаешь внутри Android-приложения SheV Agent. Перед созданием поручения по прямой просьбе пользователя вызови inspect_available_agent_tools и сформируй planJson строго по схеме {summary,steps:[{id,title,toolId,capability,input}]}; используй только доступные идентификаторы и возможности, а input должен соответствовать описанию инструмента. План показывается во вкладке «Поручения» и ожидает подтверждения; подтверждение плана само по себе не запускает действия. Не утверждай, что задача выполнена без независимой проверки результата. Не придумывай результаты инструментов и не раскрывай API-ключи. Все вызовы проверяются приложением.",
                     tools = localTools.definitions,
                     executeTool = { name, argumentsJson -> localTools.execute(name, argumentsJson) }
                 )
@@ -1271,7 +1274,10 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     description = "Сохраняет локальное поручение в ожидании подтверждения; ничего не выполняет",
                     capabilities = setOf(AgentCapability.CREATE_DRAFT),
                     inputSchema = ToolInputSchema(
-                        listOf(ToolInputField("title", ToolInputType.STRING, required = true, maxLength = 2_000))
+                        listOf(
+                            ToolInputField("title", ToolInputType.STRING, required = true, maxLength = 2_000),
+                            ToolInputField("planJson", ToolInputType.STRING, required = true, maxLength = AgentPlanJsonCodec.MAX_PLAN_JSON_CHARS)
+                        )
                     )
                 )
             )
@@ -1293,17 +1299,30 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 )
             )
         }
+        val planValidator = AgentPlanValidator(registry)
+        val allowedPlanToolIds = registry.list().mapTo(linkedSetOf()) { it.id } - setOf(
+            SheVAgentAdkTools.TOOL_ID,
+            SheVAgentAdkTools.CURRENT_TIME_TOOL_ID,
+            SheVAgentAdkTools.CREATE_TASK_DRAFT_ID,
+            SheVAgentAdkTools.SAVE_SKILL_DRAFT_TOOL_ID
+        )
         val taskDraftHandler = SuspendingAgentTool { input ->
-            val title = runCatching {
-                JsonParser.parseString(input).asJsonObject.get("title")?.asString
-            }.getOrNull()
+            val payload = runCatching { JsonParser.parseString(input).asJsonObject }.getOrNull()
+            val title = payload?.get("title")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
+            val rawPlan = payload?.get("planJson")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
+            val plan = rawPlan?.let(AgentPlanJsonCodec::decode)
+            val validation = plan?.let(planValidator::validate)
             if (title.isNullOrBlank()) {
                 AgentToolResult(false, "Пустое или некорректное поручение.", "INVALID_TITLE")
+            } else if (plan == null || validation?.accepted != true || plan.steps.any { it.toolId !in allowedPlanToolIds }) {
+                AgentToolResult(false, "План не сохранён: используй только инструменты из каталога и корректные параметры.", "INVALID_PLAN")
             } else {
                 val now = System.currentTimeMillis()
-                // Stable for one minute: a retried tool call cannot create duplicate drafts.
+                val canonicalPlan = AgentPlanJsonCodec.canonicalJson(plan)
+                val planHash = AgentPlanJsonCodec.sha256(canonicalPlan)
+                // Retries of the exact same plan are idempotent; changed plans get a new draft.
                 val requestBucket = now / 60_000L
-                val requestSeed = "shev-task-draft-v1:$requestBucket:$title"
+                val requestSeed = "shev-task-draft-v2:$requestBucket:$title:$planHash"
                 val taskId = UUID.nameUUIDFromBytes(requestSeed.toByteArray()).toString()
                 val eventId = UUID.nameUUIDFromBytes("event:$taskId".toByteArray()).toString()
                 when (val result = taskRepository.createDraft(
@@ -1312,16 +1331,17 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         title = title,
                         eventId = eventId,
                         idempotencyKey = "task-create:$taskId",
-                        occurredAtEpochMillis = now
+                        occurredAtEpochMillis = now,
+                        planJson = canonicalPlan
                     )
                 )) {
                     is AgentTaskDraftResult.Created -> AgentToolResult(
                         true,
-                        "Черновик поручения «${result.state.task.title}» сохранён. Он ожидает подтверждения во вкладке «Поручения». Никакое действие не запускалось."
+                        "Черновик поручения «${result.state.task.title}» сохранён. План доступен во вкладке «Поручения» для проверки и подтверждения. Никакое действие не запускалось."
                     )
                     is AgentTaskDraftResult.Replayed -> AgentToolResult(
                         true,
-                        "Это поручение уже сохранено и ожидает подтверждения во вкладке «Поручения». Повторная запись не создана."
+                        "Это поручение уже сохранено во вкладке «Поручения». Повторная запись не создана."
                     )
                     AgentTaskDraftResult.InvalidRequest -> AgentToolResult(false, "Поручение не сохранено: некорректный запрос.", "INVALID_REQUEST")
                     AgentTaskDraftResult.Conflict -> AgentToolResult(false, "Поручение не сохранено: обнаружен конфликт записи.", "CONFLICT")
@@ -1365,7 +1385,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             registry,
             mapOf(
                 SheVAgentAdkTools.TOOL_ID to AgentTool {
-                    AgentToolResult(true, registry.list().joinToString { it.id })
+                    AgentToolResult(true, registry.list().joinToString("\n") { tool -> "${tool.id} | ${tool.title} | ${tool.capabilities.joinToString { it.name }} | ${tool.description} | input: ${tool.inputSchema?.describe() ?: "schema unavailable"}" })
                 },
                 SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to currentTimeHandler
             ),
@@ -1420,7 +1440,26 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             skillLibrary = skillLibrary
         )
         toolExecutor = executor
+        agentToolRegistry = registry
         return tools
+    }
+
+    private fun createOpenAiLocalToolBridge(): OpenAiLocalToolBridge {
+        if (toolExecutor == null || agentToolRegistry == null) createAgentToolHost()
+        val registry = checkNotNull(agentToolRegistry) { "Реестр инструментов SheV не создан." }
+        val blocked = setOf(
+            SheVAgentAdkTools.TOOL_ID,
+            SheVAgentAdkTools.CURRENT_TIME_TOOL_ID,
+            SheVAgentAdkTools.CREATE_TASK_DRAFT_ID,
+            SheVAgentAdkTools.SAVE_SKILL_DRAFT_TOOL_ID
+        )
+        val allowed = registry.list().mapTo(linkedSetOf()) { it.id } - blocked
+        return OpenAiLocalToolBridge(
+            taskRepository = taskRepository,
+            planValidator = AgentPlanValidator(registry),
+            planToolDescriptors = registry.list(),
+            allowedPlanToolIds = allowed
+        )
     }
 
     /** Allows ChatGPT/Codex to inspect the same host tools without downloading a local model. */

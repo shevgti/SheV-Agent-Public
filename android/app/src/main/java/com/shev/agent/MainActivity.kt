@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.shev.agent.AgentPlanJsonCodec
 import com.shev.agent.creator.AgentCreatorScreen
 import com.shev.agent.data.AgentSkillLibrary
 import com.shev.agent.data.AgentTaskRepositoryResult
@@ -290,6 +291,9 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
             }
         } else {
             tasks.forEach { task ->
+                val plan = AgentPlanJsonCodec.decode(task.planJson)
+                val planHashValid = plan != null &&
+                    AgentPlanJsonCodec.sha256(AgentPlanJsonCodec.canonicalJson(plan)) == task.planHash
                 Card {
                     Column(
                         Modifier.fillMaxWidth().padding(14.dp),
@@ -300,6 +304,35 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
                             AgentTaskPresentation.statusLabel(task.phase),
                             color = MaterialTheme.colorScheme.primary
                         )
+                        if (planHashValid && plan != null) {
+                            Text(plan.summary, style = MaterialTheme.typography.bodyMedium)
+                            plan.steps.forEachIndexed { index, step ->
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text("${index + 1}. ${step.title}", style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        "${step.toolId} · ${step.capability.title}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        "Параметры: ${step.input}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Text(
+                                "План зафиксирован контрольной суммой ${task.planHash.take(12)}…",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Text(
+                                "План отсутствует или не прошёл проверку целостности. Подтверждение отключено.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
                         when (task.phase) {
                             AgentPhase.WAITING_APPROVAL.name -> {
                                 Text(
@@ -309,7 +342,7 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(
-                                        enabled = actingTaskId == null,
+                                        enabled = actingTaskId == null && planHashValid,
                                         onClick = {
                                             scope.launch {
                                                 actingTaskId = task.id
