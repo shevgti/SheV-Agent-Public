@@ -366,7 +366,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                             Text("Приложение", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text("Установленная версия: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", style = MaterialTheme.typography.bodyMedium)
                             if (updateInfo != null) {
-                                Text("Доступна версия: ${updateInfo!!.versionName}", color = Color(0xFF16834A), fontWeight = FontWeight.SemiBold)
+                                Text("Доступна версия: ${updateInfo!!.versionName} (${updateInfo!!.versionCode})", color = Color(0xFF16834A), fontWeight = FontWeight.SemiBold)
                                 Button(onClick = { showUpdateDialog = true }, enabled = !downloadingUpdate, modifier = Modifier.fillMaxWidth()) { Text("Скачать и установить") }
                             } else {
                                 Text("Обновление: ${if (checkingUpdate) "проверяю…" else "последняя версия или нет опубликованного релиза"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -766,7 +766,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
         val update = updateInfo!!
         AlertDialog(
             onDismissRequest = { if (!downloadingUpdate) showUpdateDialog = false },
-            title = { Text("Доступно обновление ${update.versionName}") },
+            title = { Text("Доступно обновление ${update.versionName} · сборка ${update.versionCode}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(update.notes.lineSequence().firstOrNull { it.isNotBlank() } ?: "Новая версия SheV Agent готова.")
