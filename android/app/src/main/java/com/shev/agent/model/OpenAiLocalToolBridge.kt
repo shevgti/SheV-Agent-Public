@@ -120,7 +120,7 @@ class OpenAiLocalToolBridge(
             TIME_TOOL_ID to AgentTool { _ -> AgentToolResult(true, LocalTimeTool().readCurrentTime()) },
             INSPECT_TOOL_ID to AgentTool {
                 AgentToolResult(true, planToolDescriptors.filter { it.id in allowedPlanToolIds }.joinToString("\n") { tool ->
-                    "${tool.id} | ${tool.title} | ${tool.capabilities.joinToString { it.name }} | ${tool.description}"
+                    "${tool.id} | ${tool.title} | ${tool.capabilities.joinToString { it.name }} | ${tool.description} | input: ${tool.inputSchema?.describe() ?: "schema unavailable"}"
                 })
             }
         ),
