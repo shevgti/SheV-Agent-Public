@@ -14,6 +14,7 @@ class CodexTaskDraftResponseParserTest {
         assertTrue(CodexTaskDraftResponseParser.isExplicitTaskDraftRequest("Создай мне задачу на завтра"))
         assertFalse(CodexTaskDraftResponseParser.isExplicitTaskDraftRequest("Не надо создавать задачу"))
         assertFalse(CodexTaskDraftResponseParser.isExplicitTaskDraftRequest("Расскажи, как создать поручение"))
+        assertFalse(CodexTaskDraftResponseParser.isExplicitTaskDraftRequest("Покажи, как создать задачу"))
         assertFalse(CodexTaskDraftResponseParser.isExplicitTaskDraftRequest("Просто обсудим задачу"))
     }
 
