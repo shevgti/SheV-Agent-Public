@@ -161,7 +161,7 @@ object ReleaseUpdater {
                     }
                     val length = connection.contentLengthLong
                     require(length < 0L || length <= MAX_APK_BYTES) {
-                        "APK превышает допустимый размер."
+                        "APK слишком большой: ${formatBytes(length)}. Лимит загрузчика: ${formatBytes(MAX_APK_BYTES)}."
                     }
                     var copied = 0L
                     connection.inputStream.use { input ->
@@ -172,7 +172,7 @@ object ReleaseUpdater {
                                 if (count < 0) break
                                 copied += count
                                 require(copied <= MAX_APK_BYTES) {
-                                    "APK превышает допустимый размер."
+                                    "APK превысил лимит загрузчика ${formatBytes(MAX_APK_BYTES)}."
                                 }
                                 output.write(buffer, 0, count)
                             }
@@ -194,8 +194,9 @@ object ReleaseUpdater {
                 }
             }
         }
+        val detail = lastFailure?.message?.takeIf { it.isNotBlank() } ?: lastFailure?.javaClass?.simpleName ?: "неизвестная ошибка"
         throw IllegalStateException(
-            "Не удалось скачать обновление после $DOWNLOAD_ATTEMPTS попыток. Проверь VPN/сеть и повтори загрузку.",
+            "Не удалось скачать обновление после $DOWNLOAD_ATTEMPTS попыток. Причина: $detail",
             lastFailure
         )
     }
@@ -242,7 +243,10 @@ object ReleaseUpdater {
     private const val DOWNLOAD_ATTEMPTS = 3
     private const val DOWNLOAD_READ_TIMEOUT_MS = 180_000
     private const val RETRY_DELAY_MS = 1_500L
-    private const val MAX_APK_BYTES = 200L * 1024L * 1024L
+    // Codex ARM64 runtime makes the installable APK ~203 MiB; leave headroom for future bundled runtimes.
+    private const val MAX_APK_BYTES = 350L * 1024L * 1024L
+
+    private fun formatBytes(bytes: Long): String = "%.1f MiB".format(bytes / (1024.0 * 1024.0))
     private const val MAX_CHECKSUM_CHARS = 1024
     private val REDIRECT_STATUS_CODES = setOf(301, 302, 303, 307, 308)
 }

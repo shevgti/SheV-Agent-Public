@@ -6,7 +6,7 @@ plugins {
 
 val configuredVersionCode = providers.gradleProperty("SHEV_VERSION_CODE")
     .map { it.toInt() }
-    .getOrElse(34)
+    .getOrElse(36)
 require(configuredVersionCode > 0) {
     "SHEV_VERSION_CODE must be a positive Android versionCode."
 }

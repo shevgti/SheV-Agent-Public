@@ -101,6 +101,100 @@ jobs:
           PY
           grep -n -B1 -A1 'mxc_engine::run::log_policy_hash' mxc/src/mxc-sdk/src/core/mxc_engine/dispatch.rs
 
+      - name: Patch unsupported Android file-lock APIs in Codex
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          # Android's Rust std target does not implement File::try_lock / try_lock_shared.
+          # The embedded App Server is single-instance per SheV process, so Android uses
+          # process ownership and retains lock files/guards without unsupported OS locks.
+          p = Path("codex/codex-rs/arg0/src/lib.rs")
+          s = p.read_text()
+          old = "    lock_file.try_lock()?;"
+          new = """    #[cfg(not(target_os = "android"))]
+              lock_file.try_lock()?;
+              // On Android the app owns one embedded App Server process; keep the
+              // lock file alive with Arg0PathEntryGuard without unsupported std file locks."""
+          assert s.count(old) == 1, "arg0 lock call changed"
+          p.write_text(s.replace(old, new))
+
+          p = Path("codex/codex-rs/file-system/src/local_logs.rs")
+          s = p.read_text()
+          s = s.replace("#[cfg(unix)]\n    _cleanup_lock: std::fs::File,", "#[cfg(all(unix, not(target_os = \"android\")))]\n    _cleanup_lock: std::fs::File,")
+          old = """                    #[cfg(unix)]
+                    let directory = {
+                        use std::os::unix::fs::MetadataExt;
+
+                        let directory = std::fs::File::open(&path)?;
+                        directory.try_lock_shared()?;
+                        let locked = directory.metadata()?;
+                        let current = std::fs::metadata(&path)?;
+                        if !locked.is_dir()
+                            || (current.dev(), current.ino()) != (locked.dev(), locked.ino())
+                        {
+                            return Err(io::Error::new(
+                                io::ErrorKind::NotFound,
+                                "log directory changed during initialization",
+                            ));
+                        }
+                        directory
+                    };"""
+          new = """                    #[cfg(all(unix, not(target_os = "android")))]
+                    let directory = {
+                        use std::os::unix::fs::MetadataExt;
+
+                        let directory = std::fs::File::open(&path)?;
+                        directory.try_lock_shared()?;
+                        let locked = directory.metadata()?;
+                        let current = std::fs::metadata(&path)?;
+                        if !locked.is_dir()
+                            || (current.dev(), current.ino()) != (locked.dev(), locked.ino())
+                        {
+                            return Err(io::Error::new(
+                                io::ErrorKind::NotFound,
+                                "log directory changed during initialization",
+                            ));
+                        }
+                        directory
+                    };"""
+          assert s.count(old) == 1, "local log shared lock block changed"
+          s = s.replace(old, new)
+          s = s.replace("#[cfg(unix)]\n                        _cleanup_lock: directory,", "#[cfg(all(unix, not(target_os = \"android\")))]\n                        _cleanup_lock: directory,")
+          p.write_text(s)
+
+          p = Path("codex/codex-rs/rollout/src/writer_lock.rs")
+          s = p.read_text()
+          marker = "const COORDINATION_LOCK_FILE: &str = \".coordination.lock\";"
+          helpers = marker + """
+
+          // Android's Rust std target reports Unsupported for advisory File locks.
+          // SheV embeds a single App Server process per app process, so retain the
+          // lock-file lifetime but rely on the host's single-instance ownership.
+          fn try_lock_exclusive(file: &File) -> Result<(), fs::TryLockError> {
+              #[cfg(target_os = "android")]
+              { let _ = file; Ok(()) }
+              #[cfg(not(target_os = "android"))]
+              { std::fs::File::try_lock(file) }
+          }
+
+          fn try_lock_shared(file: &File) -> Result<(), fs::TryLockError> {
+              #[cfg(target_os = "android")]
+              { let _ = file; Ok(()) }
+              #[cfg(not(target_os = "android"))]
+              { std::fs::File::try_lock_shared(file) }
+          }
+          """
+          assert s.count(marker) == 1, "writer lock insertion point changed"
+          s = s.replace(marker, helpers)
+          s = re.sub(r"([A-Za-z_][A-Za-z0-9_]*)\.try_lock_shared\(\)", r"try_lock_shared(&\\1)", s)
+          s = re.sub(r"([A-Za-z_][A-Za-z0-9_]*)\.try_lock\(\)", r"try_lock_exclusive(&\\1)", s)
+          assert ".try_lock()" not in s and ".try_lock_shared()" not in s, "unexpected unpatched writer lock call remains"
+          p.write_text(s)
+          PY
+
       - name: Cache Rust Android build artifacts
         uses: Swatinem/rust-cache@v2
         with:
