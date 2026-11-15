@@ -14,10 +14,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.LinearProgressIndicator
+import kotlinx.coroutines.launch
 
 private data class VoiceEngineEntry(
     val name: String, val russian: String, val license: String, val runtime: String,
@@ -28,6 +37,17 @@ private data class VoiceEngineEntry(
 @Composable
 fun VoiceEnginesPanel() {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val voiceStore = remember(context) { RussianPiperVoiceStore(context) }
+    val installed = remember { mutableStateMapOf<String, Boolean>() }
+    val progress = remember { mutableStateMapOf<String, Float>() }
+    val status = remember { mutableStateMapOf<String, String>() }
+    val busy = remember { mutableStateMapOf<String, Boolean>() }
+    LaunchedEffect(Unit) {
+        RussianPiperVoice.entries.forEach { voice ->
+            installed[voice.name] = voiceStore.isInstalled(voice)
+        }
+    }
     val engines = listOf(
         VoiceEngineEntry("Coqui XTTS-v2", "Русский подтверждён · 16 языков",
             "Coqui Public Model License (CPML)", "Python / PyTorch · сервер или ПК с GPU",
@@ -63,6 +83,68 @@ fun VoiceEnginesPanel() {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(engine.repositoryUrl))) }) { Text("Код") }
                             Button(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(engine.modelUrl))) }) { Text("Модель") }
+                        }
+                    }
+                }
+            }
+            androidx.compose.material3.HorizontalDivider()
+            Text("Русские офлайн-голоса", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Загружаются на телефон один раз. После установки озвучивание работает без интернета и платного API. Размер каждого архива около 67 МБ.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            RussianPiperVoice.entries.forEach { voice ->
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(voice.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Piper ONNX · русский · офлайн", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        if (busy[voice.name] == true) {
+                            LinearProgressIndicator(progress = { progress[voice.name] ?: 0f }, modifier = Modifier.fillMaxWidth())
+                            Text(status[voice.name] ?: "Подготовка модели…", style = MaterialTheme.typography.bodySmall)
+                        } else if (installed[voice.name] == true) {
+                            Text("Модель установлена", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        } else {
+                            Text("Не загружена", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                enabled = busy[voice.name] != true,
+                                onClick = {
+                                    scope.launch {
+                                        busy[voice.name] = true
+                                        status[voice.name] = "Загружаю и проверяю архив…"
+                                        try {
+                                            voiceStore.install(voice) { downloaded, total ->
+                                                progress[voice.name] = (downloaded.toFloat() / total.coerceAtLeast(1L)).coerceIn(0f, 1f)
+                                            }
+                                            installed[voice.name] = true
+                                            status[voice.name] = "Голос установлен"
+                                        } catch (error: Exception) {
+                                            status[voice.name] = "Ошибка: ${error.message ?: "не удалось установить"}"
+                                        } finally {
+                                            busy[voice.name] = false
+                                        }
+                                    }
+                                }
+                            ) { Text(if (installed[voice.name] == true) "Переустановить" else "Скачать") }
+                            OutlinedButton(
+                                enabled = installed[voice.name] == true && busy[voice.name] != true,
+                                onClick = {
+                                    scope.launch {
+                                        busy[voice.name] = true
+                                        status[voice.name] = "Готовлю пример речи…"
+                                        try {
+                                            voiceStore.speakSample(context, voice, "Привет! Я голосовой помощник SheV. Рад тебя слышать.")
+                                            status[voice.name] = "Пример воспроизведён"
+                                        } catch (error: Exception) {
+                                            status[voice.name] = "Ошибка воспроизведения: ${error.message ?: "неизвестная ошибка"}"
+                                        } finally {
+                                            busy[voice.name] = false
+                                        }
+                                    }
+                                }
+                            ) { Text("Прослушать") }
+                        }
+                        status[voice.name]?.takeIf { busy[voice.name] != true }?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
