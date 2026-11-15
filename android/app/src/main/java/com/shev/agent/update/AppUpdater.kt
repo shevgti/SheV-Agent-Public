@@ -163,8 +163,8 @@ internal object AppUpdater {
                     connection.disconnect()
                 }
 
-                val magic = partial.inputStream().use {
-                    ByteArray(4) { it.read().toByte() }
+                val magic = partial.inputStream().use { input ->
+                    ByteArray(4) { input.read().toByte() }
                 }
                 require(
                     magic[0] == 0x50.toByte() && magic[1] == 0x4B.toByte() &&
