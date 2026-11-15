@@ -130,8 +130,8 @@ internal class ChatGptPlanOAuth(
                     } else {
                         returnedClientId ?: throw IllegalStateException("OpenAI не вернул зарегистрированный client_id.")
                     }
-                    require(issuedClientId.startsWith("oaiapp_") && issuedClientId.length <= 256) {
-                        "OpenAI вернул некорректный идентификатор клиента."
+                    require(issuedClientId.isNotBlank() && issuedClientId.length <= 256) {
+                        "OpenAI вернул пустой или слишком длинный client_id."
                     }
                     code to issuedClientId
                 }
