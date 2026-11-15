@@ -1,38 +1,19 @@
 package com.shev.agent.model
 
-import com.google.adk.kt.sessions.InMemorySessionService
-import com.google.adk.kt.sessions.SessionKey
-import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SheVAgentSessionTest {
     @Test
-    fun initializesSessionBeforeFirstAgentTurn() = runBlocking {
-        val sessionService = InMemorySessionService()
+    fun chatTurnSessionsAreUniqueAndSeparatedFromCreatorSessions() {
+        val chatIds = List(100) { SheVAgentSession.newChatTurnSessionId() }
+        val creatorIds = List(100) { SheVAgentSession.newCreatorSessionId() }
 
-        SheVAgentSession.initialize(sessionService)
-
-        val session = sessionService.getSession(
-            SessionKey(
-                SheVAgentSession.APP_NAME,
-                SheVAgentSession.USER_ID,
-                SheVAgentSession.SESSION_ID
-            )
-        )
-
-        assertNotNull(session)
-        assertEquals(SheVAgentSession.SESSION_ID, session?.key?.id)
-    }
-    @Test
-    fun creatorAttemptsAlwaysReceiveIndependentEmptySessions() {
-        val firstAttempt = SheVAgentSession.newCreatorSessionId()
-        val repairAttempt = SheVAgentSession.newCreatorSessionId()
-
-        assertNotEquals(firstAttempt, repairAttempt)
-        assert(firstAttempt.startsWith("creator-"))
-        assert(repairAttempt.startsWith("creator-"))
+        assertEquals(100, chatIds.toSet().size)
+        assertEquals(100, creatorIds.toSet().size)
+        assertTrue(chatIds.all { it.startsWith("chat-") })
+        assertTrue(creatorIds.all { it.startsWith("creator-") })
+        assertTrue(chatIds.toSet().intersect(creatorIds.toSet()).isEmpty())
     }
 }
