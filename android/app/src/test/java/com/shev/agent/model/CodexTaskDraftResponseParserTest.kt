@@ -12,6 +12,7 @@ class CodexTaskDraftResponseParserTest {
     fun detectsOnlyExplicitPositiveTaskDraftRequests() {
         assertTrue(CodexTaskDraftResponseParser.isExplicitTaskDraftRequest("Сохрани это как поручение"))
         assertTrue(CodexTaskDraftResponseParser.isExplicitTaskDraftRequest("Создай мне задачу на завтра"))
+        assertTrue(CodexTaskDraftResponseParser.isExplicitTaskDraftRequest("Запиши поручение на проверку документов"))
         assertFalse(CodexTaskDraftResponseParser.isExplicitTaskDraftRequest("Не надо создавать задачу"))
         assertFalse(CodexTaskDraftResponseParser.isExplicitTaskDraftRequest("Расскажи, как создать поручение"))
         assertFalse(CodexTaskDraftResponseParser.isExplicitTaskDraftRequest("Покажи, как создать задачу"))
