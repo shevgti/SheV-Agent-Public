@@ -21,6 +21,9 @@ interface AgentDao {
     @Query("SELECT * FROM agent_tasks ORDER BY updatedAtEpochMillis DESC")
     fun observeTasks(): Flow<List<AgentTaskEntity>>
 
+    @Query("SELECT * FROM agent_task_steps ORDER BY taskId ASC, position ASC")
+    fun observeAllTaskSteps(): Flow<List<AgentTaskStepEntity>>
+
     @Query("SELECT * FROM agent_task_steps WHERE taskId = :taskId ORDER BY position ASC")
     fun observeTaskSteps(taskId: String): Flow<List<AgentTaskStepEntity>>
 
