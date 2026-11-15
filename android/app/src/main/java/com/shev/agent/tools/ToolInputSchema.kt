@@ -46,6 +46,19 @@ class ToolInputSchema(fields: List<ToolInputField>) {
         fieldsByName = fields.associateBy { it.name }
     }
 
+    fun describe(): String = fieldsByName.values.joinToString("; ") { field ->
+        buildString {
+            append(field.name)
+            append(": ")
+            append(field.type.name)
+            append(if (field.required) " required" else " optional")
+            if (field.type == ToolInputType.STRING) append(" maxLength=${field.maxLength}")
+            if (field.allowedValues.isNotEmpty()) append(" allowed=${field.allowedValues.sorted().joinToString("|")}")
+            field.minInteger?.let { append(" min=$it") }
+            field.maxInteger?.let { append(" max=$it") }
+        }
+    }
+
     fun validate(input: String): ToolInputValidation {
         val element = try {
             JsonParser.parseString(input)
