@@ -135,6 +135,37 @@ interface AgentDao {
     @Query("SELECT COUNT(*) FROM approval_evidence")
     suspend fun countApprovalEvidence(): Int
 
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertTaskCompletionEvidence(evidence: TaskCompletionEvidenceEntity)
+
+    @Query("""
+        UPDATE task_completion_evidence
+        SET consumedAtEpochMillis = :nowMillis
+        WHERE evidenceHash = :evidenceHash
+          AND taskId = :taskId
+          AND expectedRevision = :expectedRevision
+          AND planHash = :planHash
+          AND consumedAtEpochMillis IS NULL
+          AND issuedAtEpochMillis <= :nowMillis
+          AND expiresAtEpochMillis > :nowMillis
+    """)
+    suspend fun consumeTaskCompletionEvidence(
+        evidenceHash: String,
+        taskId: String,
+        expectedRevision: Long,
+        planHash: String,
+        nowMillis: Long
+    ): Int
+
+    @Query("DELETE FROM task_completion_evidence WHERE evidenceHash = :evidenceHash")
+    suspend fun deleteTaskCompletionEvidence(evidenceHash: String): Int
+
+    @Query("DELETE FROM task_completion_evidence WHERE expiresAtEpochMillis <= :nowMillis")
+    suspend fun deleteExpiredTaskCompletionEvidence(nowMillis: Long): Int
+
+    @Query("SELECT * FROM task_completion_evidence WHERE evidenceHash = :evidenceHash LIMIT 1")
+    suspend fun getTaskCompletionEvidence(evidenceHash: String): TaskCompletionEvidenceEntity?
+
     @Query("SELECT * FROM agent_events ORDER BY createdAtEpochMillis DESC")
     fun observeEvents(): Flow<List<AgentEventEntity>>
 
