@@ -4,6 +4,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven { url = uri("https://jitpack.io") }
         // sherpa-onnx publishes the Android AAR and JVM bindings as GitHub release assets.
         ivy {
             url = uri("https://github.com/k2-fsa/sherpa-onnx/releases/download")
