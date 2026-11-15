@@ -1206,6 +1206,13 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         codexActiveTurnId = turnId
         val answer = StringBuilder()
         val completed = CompletableDeferred<JsonObject>()
+        suspend fun abortPlanningTurn(reason: String) {
+            if (completed.isCompleted) return
+            withContext(NonCancellable) {
+                try { client.interrupt(threadId, turnId) } catch (_: Exception) { }
+            }
+            completed.completeExceptionally(IllegalStateException(reason))
+        }
         val collector = launch(Dispatchers.IO) {
             client.events.collect { event ->
                 val method = event.get("method")?.asString.orEmpty()
@@ -1224,20 +1231,18 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     "item/started" -> {
                         val itemType = params.getAsJsonObject("item")?.get("type")?.asString
                         if (eventTurnId == turnId && itemType in setOf("commandExecution", "fileChange", "webSearch", "mcpToolCall", "toolCall")) {
-                            completed.completeExceptionally(
-                                IllegalStateException("Планировщик попытался запустить команду или изменить файлы. Запрос остановлен.")
+                            abortPlanningTurn(
+                                "Планировщик попытался запустить команду или изменить файлы. Запрос остановлен."
                             )
-                            client.interrupt(threadId, turnId)
                         }
                     }
                     "item/completed" -> {
                         val item = params.getAsJsonObject("item")
                         val itemType = item?.get("type")?.asString
                         if (eventTurnId == turnId && itemType in setOf("commandExecution", "fileChange")) {
-                            completed.completeExceptionally(
-                                IllegalStateException("Планировщик попытался выполнить команду или изменить файлы. Запрос остановлен.")
+                            abortPlanningTurn(
+                                "Планировщик попытался выполнить команду или изменить файлы. Запрос остановлен."
                             )
-                            client.interrupt(threadId, turnId)
                         } else if (eventTurnId == turnId && itemType == "agentMessage" && answer.isEmpty()) {
                             val text = item.getAsJsonArray("content")?.mapNotNull { part ->
                                 part.takeIf { it.isJsonObject }?.asJsonObject?.get("text")?.asString
@@ -1252,10 +1257,9 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     }
                     "item/commandExecution/requestApproval",
                     "item/fileChange/requestApproval" -> {
-                        completed.completeExceptionally(
-                            IllegalStateException("Планировщик попытался запросить выполнение команды или изменение файлов. Запрос остановлен.")
+                        abortPlanningTurn(
+                            "Планировщик попытался запросить выполнение команды или изменение файлов. Запрос остановлен."
                         )
-                        client.interrupt(threadId, turnId)
                     }
                 }
             }
