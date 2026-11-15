@@ -459,6 +459,27 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun setDeepSeekPrimaryEnabled(enabled: Boolean) {
+        getApplication<Application>().getSharedPreferences("shev_deepseek", Application.MODE_PRIVATE)
+            .edit().putBoolean("use_for_primary_chat", enabled).apply()
+        if (enabled) {
+            listOf("shev_openai", "shev_gemini", "shev_openrouter", "shev_omniroute", "shev_codex").forEach { name ->
+                getApplication<Application>().getSharedPreferences(name, Application.MODE_PRIVATE)
+                    .edit().putBoolean("use_for_primary_chat", false).apply()
+            }
+        }
+        mutableState.update {
+            it.copy(
+                useDeepSeek = enabled,
+                useCodex = if (enabled) false else it.useCodex,
+                useOpenAI = if (enabled) false else it.useOpenAI,
+                useGemini = if (enabled) false else it.useGemini,
+                useOpenRouter = if (enabled) false else it.useOpenRouter,
+                useOmniRoute = if (enabled) false else it.useOmniRoute
+            )
+        }
+    }
+
     /** Cancels the active answer so voice input can take priority. */
     fun cancelResponse() {
         val client = codexClient
