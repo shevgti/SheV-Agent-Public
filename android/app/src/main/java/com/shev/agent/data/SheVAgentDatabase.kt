@@ -4,8 +4,8 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [AgentTaskEntity::class, AgentEventEntity::class, ImprovementEntity::class, CapabilityGrantEntity::class, WorkspaceLayoutEntity::class, ConversationMessageEntity::class, ApprovalEvidenceEntity::class, ConversationStateEntity::class, AgentDefinitionEntity::class, AgentSkillEntity::class],
-    version = 13,
+    entities = [AgentTaskEntity::class, AgentEventEntity::class, ImprovementEntity::class, CapabilityGrantEntity::class, WorkspaceLayoutEntity::class, ConversationMessageEntity::class, ApprovalEvidenceEntity::class, ConversationStateEntity::class, AgentDefinitionEntity::class, AgentSkillEntity::class, AgentTaskStepEntity::class],
+    version = 14,
     exportSchema = false
 )
 abstract class SheVAgentDatabase : RoomDatabase() {
@@ -100,6 +100,14 @@ internal val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13
     }
 }
 
+
+internal val MIGRATION_13_14 = object : androidx.room.migration.Migration(13, 14) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS agent_task_steps (taskId TEXT NOT NULL, stepId TEXT NOT NULL, position INTEGER NOT NULL, title TEXT NOT NULL, toolId TEXT NOT NULL, planHash TEXT NOT NULL, status TEXT NOT NULL, output TEXT NOT NULL, errorCode TEXT, startedAtEpochMillis INTEGER, finishedAtEpochMillis INTEGER, PRIMARY KEY(taskId, stepId))")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_agent_task_steps_taskId_position ON agent_task_steps (taskId, position)")
+    }
+}
+
 object SheVAgentDatabaseProvider {
     @Volatile
     private var instance: SheVAgentDatabase? = null
@@ -122,7 +130,8 @@ object SheVAgentDatabaseProvider {
                 MIGRATION_9_10,
                 MIGRATION_10_11,
                 MIGRATION_11_12,
-                MIGRATION_12_13
+                MIGRATION_12_13,
+                MIGRATION_13_14
             ).build().also { instance = it }
         }
 }
