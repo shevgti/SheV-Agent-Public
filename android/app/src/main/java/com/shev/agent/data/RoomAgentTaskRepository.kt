@@ -271,6 +271,99 @@ class RoomAgentTaskRepository(
     }
 
     /**
+     * Completes a task only after the user explicitly confirms reviewing every persisted step result.
+     * This is human verification, not an automatic claim by the model.
+     */
+    suspend fun completeFromUserReview(
+        taskId: String,
+        expectedRevision: Long,
+        eventId: String,
+        idempotencyKey: String,
+        occurredAtEpochMillis: Long
+    ): AgentTaskRepositoryResult {
+        if (taskId.isBlank() || eventId.isBlank() || idempotencyKey.isBlank() ||
+            expectedRevision < 0L || expectedRevision == Long.MAX_VALUE ||
+            occurredAtEpochMillis < 0L || occurredAtEpochMillis > Long.MAX_VALUE - COMPLETION_EVIDENCE_TTL_MILLIS
+        ) return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_REQUEST)
+
+        return database.withTransaction {
+            val dao = database.agentDao()
+            val previous = dao.findEventByIdempotencyKey(idempotencyKey)
+            if (previous != null) {
+                val sameRequest = previous.taskId == taskId &&
+                    previous.eventType == AgentWorkflowCommand.COMPLETE.name &&
+                    previous.revision == expectedRevision + 1L &&
+                    previous.evidenceRef?.matches(Regex("[0-9a-f]{64}")) == true
+                if (!sameRequest) return@withTransaction AgentTaskRepositoryResult.IdempotencyConflict
+                val evidence = dao.getTaskCompletionEvidence(previous.evidenceRef!!)
+                    ?: return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_VERIFICATION_EVIDENCE)
+                if (evidence.verifierType != TaskCompletionEvidenceEntity.USER_REVIEW ||
+                    evidence.consumedAtEpochMillis == null
+                ) return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_VERIFICATION_EVIDENCE)
+                val current = dao.getTask(taskId) ?: return@withTransaction AgentTaskRepositoryResult.NotFound
+                return@withTransaction try {
+                    AgentTaskRepositoryResult.Replayed(current.toWorkflowState())
+                } catch (_: IllegalArgumentException) {
+                    AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_STORED_PHASE)
+                }
+            }
+
+            val stored = dao.getTask(taskId) ?: return@withTransaction AgentTaskRepositoryResult.NotFound
+            if (stored.revision != expectedRevision) {
+                return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_REVISION)
+            }
+            if (stored.phase != AgentPhase.VERIFYING.name) {
+                return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PHASE)
+            }
+            val canonicalPlan = AgentPlanJsonCodec.canonicalize(stored.planJson)
+                ?: return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
+            val planHash = AgentPlanJsonCodec.sha256(canonicalPlan)
+            if (canonicalPlan != stored.planJson || stored.planHash != planHash) {
+                return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
+            }
+            val plan = AgentPlanJsonCodec.decode(canonicalPlan)
+                ?: return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
+            val ledger = dao.getTaskSteps(taskId)
+            if (ledger.size != plan.steps.size ||
+                ledger.map { it.stepId to it.planHash } != plan.steps.map { it.id to planHash } ||
+                ledger.any { it.status != AgentTaskStepEntity.COMPLETED }
+            ) return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_VERIFICATION_EVIDENCE)
+
+            dao.deleteExpiredTaskCompletionEvidence(occurredAtEpochMillis)
+            val token = TaskCompletionEvidenceToken.create()
+            val evidenceHash = TaskCompletionEvidenceToken.digest(token)
+            dao.insertTaskCompletionEvidence(
+                TaskCompletionEvidenceEntity(
+                    evidenceHash = evidenceHash,
+                    taskId = taskId,
+                    expectedRevision = expectedRevision,
+                    planHash = planHash,
+                    verifierType = TaskCompletionEvidenceEntity.USER_REVIEW,
+                    verificationNote = "Пользователь подтвердил, что проверил результаты всех шагов.",
+                    issuedAtEpochMillis = occurredAtEpochMillis,
+                    expiresAtEpochMillis = occurredAtEpochMillis + COMPLETION_EVIDENCE_TTL_MILLIS
+                )
+            )
+            val result = transitionWithinTransaction(
+                AgentTaskTransitionRequest(
+                    taskId = taskId,
+                    command = AgentWorkflowCommand.COMPLETE,
+                    expectedRevision = expectedRevision,
+                    eventId = eventId,
+                    idempotencyKey = idempotencyKey,
+                    occurredAtEpochMillis = occurredAtEpochMillis,
+                    evidenceRef = token,
+                    planHash = planHash
+                )
+            )
+            if (result !is AgentTaskRepositoryResult.Applied) {
+                dao.deleteTaskCompletionEvidence(evidenceHash)
+            }
+            result
+        }
+    }
+
+    /**
      * Atomically moves an approved, hash-matched plan to RUNNING and creates its step ledger.
      * No tool is dispatched inside this transaction.
      */
@@ -408,11 +501,21 @@ class RoomAgentTaskRepository(
         if (request.command == AgentWorkflowCommand.COMPLETE) {
             val evidence = request.evidenceRef
                 ?: return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.VERIFICATION_EVIDENCE_REQUIRED)
-            if (evidence.isBlank() || !authorizationVerifier.isCompletionEvidenceValid(
-                    request.taskId, request.expectedRevision, evidence
-                )) {
-                return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_VERIFICATION_EVIDENCE)
-            }
+            val planHash = request.planHash
+                ?: return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
+            if (evidence.isBlank() || stored.phase != AgentPhase.VERIFYING.name ||
+                stored.revision != request.expectedRevision ||
+                stored.planHash != planHash ||
+                AgentPlanJsonCodec.canonicalize(stored.planJson) != stored.planJson ||
+                AgentPlanJsonCodec.sha256(stored.planJson) != planHash
+            ) return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_VERIFICATION_EVIDENCE)
+            val plan = AgentPlanJsonCodec.decode(stored.planJson)
+                ?: return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
+            val ledger = dao.getTaskSteps(request.taskId)
+            if (ledger.size != plan.steps.size ||
+                ledger.map { it.stepId to it.planHash } != plan.steps.map { it.id to planHash } ||
+                ledger.any { it.status != AgentTaskStepEntity.COMPLETED }
+            ) return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_VERIFICATION_EVIDENCE)
         }
 
         val currentState = try {
@@ -450,6 +553,21 @@ class RoomAgentTaskRepository(
             }
         }
 
+        if (request.command == AgentWorkflowCommand.COMPLETE) {
+            val evidence = request.evidenceRef
+                ?: return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.VERIFICATION_EVIDENCE_REQUIRED)
+            val planHash = request.planHash
+                ?: return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
+            if (!authorizationVerifier.consumeCompletionEvidence(
+                    request.taskId,
+                    request.expectedRevision,
+                    evidence,
+                    planHash,
+                    request.occurredAtEpochMillis
+                )
+            ) return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_VERIFICATION_EVIDENCE)
+        }
+
         val next = transition.state
         dao.saveTask(
             stored.copy(
@@ -477,6 +595,7 @@ class RoomAgentTaskRepository(
     private companion object {
         const val APPROVAL_TTL_MILLIS = 120_000L
         const val APPROVE_OPERATION = "APPROVE"
+        const val COMPLETION_EVIDENCE_TTL_MILLIS = 120_000L
     }
 
     private fun AgentTaskEntity.toWorkflowState(): AgentWorkflowState =
