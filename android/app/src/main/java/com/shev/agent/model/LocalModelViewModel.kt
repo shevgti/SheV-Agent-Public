@@ -20,7 +20,6 @@ import com.shev.agent.data.ConversationStateRepository
 import com.shev.agent.data.ConversationSummaryRead
 import com.shev.agent.data.AgentTaskDraftRequest
 import com.shev.agent.data.AgentTaskEntity
-import com.shev.agent.data.AgentTaskStepEntity
 import com.shev.agent.data.AgentTaskTransitionRequest
 import com.shev.agent.data.AgentTaskRepositoryResult
 import com.shev.agent.data.AgentTaskDraftResult
@@ -110,6 +109,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private val mutableState = MutableStateFlow(LocalModelUiState())
     val state: StateFlow<LocalModelUiState> = mutableState.asStateFlow()
     val tasks = dao.observeTasks()
+    val taskSteps = dao.observeAllTaskSteps()
     private var runtime: SheVAgentRuntime? = null
     private var toolExecutor: AgentToolExecutor? = null
     private var agentToolRegistry: AgentToolRegistry? = null
