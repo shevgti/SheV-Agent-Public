@@ -273,16 +273,14 @@ internal object AppUpdater {
         ) { "GitHub вернул файл, который не является корректным APK-архивом." }
     }
 
-    private companion object {
-        const val CONNECT_TIMEOUT_MS = 30_000
-        const val DOWNLOAD_READ_TIMEOUT_MS = 300_000
-        const val CHECKSUM_READ_TIMEOUT_MS = 20_000
-        const val DOWNLOAD_ATTEMPTS = 3
-        const val RETRY_DELAY_MS = 1_500L
-        const val PROGRESS_STEP_BYTES = 128L * 1024L
-        const val MAX_APK_BYTES = 512L * 1024L * 1024L
-        const val MAX_CHECKSUM_BYTES = 4_096
-        const val MAX_REDIRECTS = 5
-        val REDIRECT_STATUS_CODES = setOf(301, 302, 303, 307, 308)
-    }
+    private const val CONNECT_TIMEOUT_MS = 30_000
+    private const val DOWNLOAD_READ_TIMEOUT_MS = 300_000
+    private const val CHECKSUM_READ_TIMEOUT_MS = 20_000
+    private const val DOWNLOAD_ATTEMPTS = 3
+    private const val RETRY_DELAY_MS = 1_500L
+    private const val PROGRESS_STEP_BYTES = 128L * 1024L
+    private const val MAX_APK_BYTES = 512L * 1024L * 1024L
+    private const val MAX_CHECKSUM_BYTES = 4_096
+    private const val MAX_REDIRECTS = 5
+    private val REDIRECT_STATUS_CODES = setOf(301, 302, 303, 307, 308)
 }
