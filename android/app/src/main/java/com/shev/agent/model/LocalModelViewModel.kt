@@ -1029,6 +1029,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 require(account?.get("type")?.asString == "chatgpt") {
                     "Сначала подключи аккаунт ChatGPT в настройках Codex."
                 }
+                mutableState.update { it.copy(codexConnected = true, codexStatus = "Codex готов") }
                 val preferences = getApplication<Application>()
                     .getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
                 val modelId = preferences.getString("model_id", mutableState.value.codexModelId).orEmpty()
