@@ -4,6 +4,8 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.shev.agent.AgentCapability
+import com.shev.agent.AgentPlanJsonCodec
+import com.shev.agent.AgentPlanValidator
 import com.shev.agent.data.AgentTaskDraftRequest
 import com.shev.agent.data.AgentTaskDraftResult
 import com.shev.agent.data.RoomAgentTaskRepository
@@ -25,7 +27,12 @@ import java.util.UUID
  * Exposes only three bounded local tools to the OpenAI Responses API.
  * Every call is re-validated by SheV's existing AgentToolExecutor and capability policy.
  */
-class OpenAiLocalToolBridge(private val taskRepository: RoomAgentTaskRepository) {
+class OpenAiLocalToolBridge(
+    private val taskRepository: RoomAgentTaskRepository,
+    private val planValidator: AgentPlanValidator,
+    private val planToolDescriptors: List<AgentToolDescriptor>,
+    private val allowedPlanToolIds: Set<String>
+) {
     private val registry = AgentToolRegistry().apply {
         register(
             AgentToolDescriptor(
@@ -56,18 +63,25 @@ class OpenAiLocalToolBridge(private val taskRepository: RoomAgentTaskRepository)
                 description = "Сохраняет локальное поручение в ожидании подтверждения; ничего не выполняет",
                 capabilities = setOf(AgentCapability.CREATE_DRAFT),
                 inputSchema = ToolInputSchema(
-                    listOf(ToolInputField("title", ToolInputType.STRING, required = true, maxLength = 2_000))
+                    listOf(
+                        ToolInputField("title", ToolInputType.STRING, required = true, maxLength = 2_000),
+                        ToolInputField("planJson", ToolInputType.STRING, required = true, maxLength = AgentPlanJsonCodec.MAX_PLAN_JSON_CHARS)
+                    )
                 )
             )
         )
     }
 
     private val draftHandler = SuspendingAgentTool { input ->
-        val title = runCatching {
-            JsonParser.parseString(input).asJsonObject.get("title")?.asString
-        }.getOrNull()
+        val payload = runCatching { JsonParser.parseString(input).asJsonObject }.getOrNull()
+        val title = payload?.get("title")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
+        val rawPlan = payload?.get("planJson")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
+        val plan = rawPlan?.let(AgentPlanJsonCodec::decode)
+        val validation = plan?.let(planValidator::validate)
         if (title.isNullOrBlank()) {
             AgentToolResult(false, "Пустое или некорректное поручение.", "INVALID_TITLE")
+        } else if (plan == null || validation?.accepted != true || plan.steps.any { it.toolId !in allowedPlanToolIds }) {
+            AgentToolResult(false, "План не сохранён: проверь доступные инструменты, их возможности и формат шагов.", "INVALID_PLAN")
         } else {
             val now = System.currentTimeMillis()
             val requestBucket = now / 60_000L
@@ -79,16 +93,17 @@ class OpenAiLocalToolBridge(private val taskRepository: RoomAgentTaskRepository)
                     title = title,
                     eventId = eventId,
                     idempotencyKey = "task-create:$taskId",
-                    occurredAtEpochMillis = now
+                    occurredAtEpochMillis = now,
+                    planJson = AgentPlanJsonCodec.canonicalJson(plan)
                 )
             )) {
                 is AgentTaskDraftResult.Created -> AgentToolResult(
                     true,
-                    "Черновик поручения «${result.state.task.title}» сохранён. Он ожидает подтверждения во вкладке «Память». Никакое действие не запускалось."
+                    "Черновик поручения «${result.state.task.title}» сохранён. План показан во вкладке «Поручения» и ожидает подтверждения. Никакое действие не запускалось."
                 )
                 is AgentTaskDraftResult.Replayed -> AgentToolResult(
                     true,
-                    "Это поручение уже сохранено и ожидает подтверждения во вкладке «Память». Повторная запись не создана."
+                    "Это поручение уже сохранено во вкладке «Поручения». Повторная запись не создана."
                 )
                 AgentTaskDraftResult.InvalidRequest -> AgentToolResult(false, "Поручение не сохранено: некорректный запрос.", "INVALID_REQUEST")
                 AgentTaskDraftResult.Conflict -> AgentToolResult(false, "Поручение не сохранено: обнаружен конфликт записи.", "CONFLICT")
@@ -102,7 +117,9 @@ class OpenAiLocalToolBridge(private val taskRepository: RoomAgentTaskRepository)
         handlers = mapOf(
             TIME_TOOL_ID to AgentTool { _ -> AgentToolResult(true, LocalTimeTool().readCurrentTime()) },
             INSPECT_TOOL_ID to AgentTool {
-                AgentToolResult(true, registry.list().joinToString("\n") { "${it.title}: ${it.description}" })
+                AgentToolResult(true, planToolDescriptors.filter { it.id in allowedPlanToolIds }.joinToString("\n") { tool ->
+                    "${tool.id} | ${tool.title} | ${tool.capabilities.joinToString { it.name }} | ${tool.description}"
+                })
             }
         ),
         suspendingHandlers = mapOf(DRAFT_TOOL_ID to draftHandler)
@@ -125,9 +142,10 @@ class OpenAiLocalToolBridge(private val taskRepository: RoomAgentTaskRepository)
         ),
         OpenAiFunctionTool(
             name = "create_task_draft",
-            description = "Сохранить поручение как черновик во вкладке Память. Используй только если пользователь явно попросил сохранить или добавить поручение. Черновик не выполняет действия и ожидает подтверждения пользователя.",
+            description = "Сохранить поручение и точный пошаговый план как черновик во вкладке Поручения. Используй только по явной просьбе пользователя. Сначала вызови inspect_available_agent_tools; затем передай planJson как JSON с полями summary и steps, где каждый шаг имеет id, title, toolId, capability, input. Используй только идентификаторы и возможности из каталога. План будет показан пользователю; никакие действия не выполняются.",
             parameters = objectSchema(
-                "title" to stringSchema("Краткое описание поручения.", maxLength = 2000)
+                "title" to stringSchema("Краткое описание поручения.", maxLength = 2000),
+                "planJson" to stringSchema("JSON-план: {summary, steps:[{id,title,toolId,capability,input}]}. Только инструменты из каталога.", maxLength = AgentPlanJsonCodec.MAX_PLAN_JSON_CHARS)
             )
         )
     )
