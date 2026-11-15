@@ -14,6 +14,6 @@ data class AgentTaskEntity(
     val updatedAtEpochMillis: Long,
     @ColumnInfo(defaultValue = "0") val revision: Long = 0,
     val resumePhase: String? = null,
-    val planJson: String = "",
-    val planHash: String = ""
+    @ColumnInfo(defaultValue = "''") val planJson: String = "",
+    @ColumnInfo(defaultValue = "''") val planHash: String = ""
 )
