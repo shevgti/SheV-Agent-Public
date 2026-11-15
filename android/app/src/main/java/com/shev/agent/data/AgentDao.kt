@@ -84,6 +84,9 @@ interface AgentDao {
         finishedAtEpochMillis: Long
     ): Int
 
+    @Query("SELECT * FROM agent_tasks WHERE phase = :phase ORDER BY updatedAtEpochMillis ASC")
+    suspend fun getTasksByPhase(phase: String): List<AgentTaskEntity>
+
     @Query("SELECT * FROM agent_tasks WHERE id = :taskId LIMIT 1")
     suspend fun getTask(taskId: String): AgentTaskEntity?
 
