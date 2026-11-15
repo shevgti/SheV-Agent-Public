@@ -53,7 +53,9 @@ class AgentPlanExecutionEngine(
     suspend fun executeApprovedPlan(
         plan: AgentPlan,
         agentAllowedToolIds: Set<String>,
-        context: AgentToolExecutionContext
+        context: AgentToolExecutionContext,
+        onStepStarted: suspend (AgentPlanStep) -> Unit = {},
+        onStepFinished: suspend (AgentPlanStepExecution) -> Unit = {}
     ): AgentPlanExecutionResult {
         val validation = validator.validate(plan)
         if (!validation.accepted) {
@@ -76,6 +78,7 @@ class AgentPlanExecutionEngine(
         val results = mutableListOf<AgentPlanStepExecution>()
         for (step in plan.steps) {
             currentCoroutineContext().ensureActive()
+            onStepStarted(step)
             val execution = executor.executeSuspendingForAgent(
                 agentAllowedToolIds = agentAllowedToolIds,
                 request = AgentToolRequest(
@@ -96,6 +99,15 @@ class AgentPlanExecutionEngine(
                         AgentPlanExecutionStatus.AGENT_ALLOWLIST_DENIED
                     else -> AgentPlanExecutionStatus.STEP_FAILED
                 }
+                val failed = AgentPlanStepExecution(
+                    stepId = step.id,
+                    toolId = step.toolId,
+                    success = false,
+                    output = toolResult?.output.orEmpty().take(maxOutputChars),
+                    errorCode = toolResult?.errorCode ?: execution.status.name
+                )
+                results += failed
+                onStepFinished(failed)
                 return AgentPlanExecutionResult(
                     status = status,
                     steps = results,
@@ -104,13 +116,15 @@ class AgentPlanExecutionEngine(
             }
 
             val output = toolResult.output
-            results += AgentPlanStepExecution(
+            val completed = AgentPlanStepExecution(
                 stepId = step.id,
                 toolId = step.toolId,
                 success = true,
                 output = if (output.length <= maxOutputChars) output
                     else output.take(maxOutputChars) + "\n[результат сокращён]"
             )
+            results += completed
+            onStepFinished(completed)
         }
 
         return AgentPlanExecutionResult(
