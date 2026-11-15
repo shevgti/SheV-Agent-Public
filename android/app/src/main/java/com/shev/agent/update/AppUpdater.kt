@@ -26,6 +26,7 @@ internal data class AppUpdate(
     val versionName: String,
     val downloadUrl: String,
     val checksumUrl: String,
+    val expectedSizeBytes: Long,
     val notes: String
 )
 
@@ -61,19 +62,26 @@ internal object AppUpdater {
             val assets = release.optJSONArray("assets") ?: error("В релизе нет файлов")
             var apkUrl: String? = null
             var checksumUrl: String? = null
+            var apkSizeBytes = 0L
             for (i in 0 until assets.length()) {
                 val asset = assets.getJSONObject(i)
                 when (asset.optString("name")) {
-                    APK_NAME -> apkUrl = asset.optString("browser_download_url")
+                    APK_NAME -> {
+                        apkUrl = asset.optString("browser_download_url")
+                        apkSizeBytes = asset.optLong("size", 0L)
+                    }
                     CHECKSUM_NAME -> checksumUrl = asset.optString("browser_download_url")
                 }
             }
             if (apkUrl.isNullOrBlank()) error("В релизе нет файла $APK_NAME")
             if (checksumUrl.isNullOrBlank()) error("В релизе нет файла $CHECKSUM_NAME")
+            require(apkSizeBytes in 1..MAX_APK_BYTES) {
+                "GitHub указал некорректный размер APK."
+            }
             val trustedApkUrl = ReleaseDownloadPolicy.validate(URL(apkUrl!!)).toString()
             val trustedChecksumUrl = ReleaseDownloadPolicy.validate(URL(checksumUrl!!)).toString()
             if (versionCode <= installedVersionCode) null
-            else AppUpdate(versionCode, versionName, trustedApkUrl, trustedChecksumUrl, release.optString("body"))
+            else AppUpdate(versionCode, versionName, trustedApkUrl, trustedChecksumUrl, apkSizeBytes, releaseBody)
         } finally {
             connection.disconnect()
         }
@@ -110,7 +118,12 @@ internal object AppUpdater {
             for (attempt in 1..DOWNLOAD_ATTEMPTS) {
                 partial.delete()
                 try {
-                    val (downloaded, total) = downloadOnce(update.downloadUrl, partial, onProgress)
+                    val (downloaded, total) = downloadOnce(
+                        update.downloadUrl,
+                        partial,
+                        update.expectedSizeBytes,
+                        onProgress
+                    )
                     val expectedHash = readChecksum(update.checksumUrl)
                     val actualHash = sha256(partial)
                     check(expectedHash == actualHash) {
@@ -153,14 +166,21 @@ internal object AppUpdater {
     private suspend fun downloadOnce(
         url: String,
         destination: File,
+        expectedSizeBytes: Long,
         onProgress: (Long, Long) -> Unit
     ): Pair<Long, Long> {
         val connection = openTrustedConnection(url, DOWNLOAD_READ_TIMEOUT_MS)
         try {
             val status = connection.responseCode
             if (status !in 200..299) error("Загрузка ответила: HTTP $status")
-            val total = connection.contentLengthLong
-            require(total <= MAX_APK_BYTES) { "APK превышает допустимый размер 512 МБ." }
+            val contentLength = connection.contentLengthLong
+            if (contentLength > 0L && expectedSizeBytes > 0L) {
+                require(contentLength == expectedSizeBytes) {
+                    "Размер APK от GitHub не совпадает с метаданными релиза."
+                }
+            }
+            val total = if (contentLength > 0L) contentLength else expectedSizeBytes
+            require(total in 1..MAX_APK_BYTES) { "Не удалось определить допустимый размер APK." }
             var downloaded = 0L
             var reported = 0L
             withContext(Dispatchers.Main) { onProgress(0L, total.coerceAtLeast(0L)) }
@@ -186,11 +206,11 @@ internal object AppUpdater {
                     output.flush()
                 }
             }
-            require(downloaded > 0L && (total <= 0L || downloaded == total)) {
+            require(downloaded == total) {
                 "Загрузка APK завершилась не полностью: получено $downloaded из $total байт."
             }
             withContext(Dispatchers.Main) {
-                onProgress(downloaded, if (total > 0L) total else downloaded)
+                onProgress(downloaded, total)
             }
             return downloaded to total
         } finally {
