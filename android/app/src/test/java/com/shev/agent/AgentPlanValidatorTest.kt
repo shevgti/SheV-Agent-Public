@@ -1,5 +1,6 @@
 package com.shev.agent
 
+import com.shev.agent.model.SheVAgentSession
 import com.shev.agent.tools.AgentToolDescriptor
 import com.shev.agent.tools.AgentToolRegistry
 import com.shev.agent.tools.ToolInputField
@@ -30,6 +31,17 @@ class AgentPlanValidatorTest {
         capability = AgentCapability.READ_LOCAL_DATA,
         input = """{"query":"selected"}"""
     )
+
+    @Test fun chatTurnSessionIdsAreUniqueAndSeparateFromCreatorSessions() {
+        val chatIds = List(100) { SheVAgentSession.newChatTurnSessionId() }
+        val creatorIds = List(100) { SheVAgentSession.newCreatorSessionId() }
+
+        assertEquals(100, chatIds.toSet().size)
+        assertEquals(100, creatorIds.toSet().size)
+        assertTrue(chatIds.all { it.startsWith("chat-") })
+        assertTrue(creatorIds.all { it.startsWith("creator-") })
+        assertTrue(chatIds.toSet().intersect(creatorIds.toSet()).isEmpty())
+    }
 
     @Test fun acceptsPlanWithRegisteredToolAndDeclaredCapability() {
         val result = AgentPlanValidator(registry()).validate(
