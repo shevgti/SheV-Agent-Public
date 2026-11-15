@@ -179,14 +179,14 @@ jobs:
               #[cfg(target_os = "android")]
               { let _ = file; Ok(()) }
               #[cfg(not(target_os = "android"))]
-              { file.try_lock() }
+              { std::fs::File::try_lock(file) }
           }
 
           fn try_lock_shared(file: &File) -> Result<(), fs::TryLockError> {
               #[cfg(target_os = "android")]
               { let _ = file; Ok(()) }
               #[cfg(not(target_os = "android"))]
-              { file.try_lock_shared() }
+              { std::fs::File::try_lock_shared(file) }
           }
           """
           assert s.count(marker) == 1, "writer lock insertion point changed"
