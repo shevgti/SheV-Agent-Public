@@ -45,13 +45,19 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
 
     LaunchedEffect(preferences) {
         modelId = preferences.getString("model_id", "gpt-6.1-sol") ?: "gpt-6.1-sol"
-        val session = runCatching { ChatGptPlanOAuth(context, preferences).load() }.getOrNull()
-        connected = session != null
-        accountLabel = session?.email.orEmpty()
-        status = if (connected) {
-            "ChatGPT подключён: ${accountLabel.ifBlank { "аккаунт подтверждён" }}."
-        } else {
-            "Нажми «Войти через ChatGPT». API-ключ создавать не нужно."
+        try {
+            val session = ChatGptPlanOAuth(context, preferences).load()
+            connected = session != null
+            accountLabel = session?.email.orEmpty()
+            status = if (connected) {
+                "ChatGPT подключён: ${accountLabel.ifBlank { "аккаунт подтверждён" }}."
+            } else {
+                "Аккаунт ChatGPT ещё не подключён. Нажми «Войти через ChatGPT»."
+            }
+        } catch (error: Exception) {
+            connected = false
+            accountLabel = ""
+            status = "Не удалось прочитать сохранённую сессию ChatGPT: ${error.message ?: error.javaClass.simpleName}"
         }
     }
 
@@ -79,8 +85,13 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
                         try {
                             val oauth = ChatGptPlanOAuth(context, preferences)
                             val session = oauth.authorize()
+                            val persisted = oauth.load()
+                                ?: throw IllegalStateException("OpenAI подтвердил вход, но сохранённая сессия не найдена.")
+                            check(persisted.subject == session.subject) {
+                                "Сохранённая сессия относится к другому аккаунту. ChatGPT не включён."
+                            }
                             connected = true
-                            accountLabel = session.email
+                            accountLabel = persisted.email
                             val availableModels = runCatching { oauth.availableModels() }.getOrDefault(emptyList())
                             val selectedModel = availableModels.firstOrNull { it.id == modelId } ?: availableModels.firstOrNull()
                             if (selectedModel != null) {
