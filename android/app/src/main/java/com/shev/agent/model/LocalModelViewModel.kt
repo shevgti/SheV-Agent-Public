@@ -1168,6 +1168,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         streamingMessage = null,
                         codexApproval = null,
                         codexStatus = "Codex готов",
+                        codexConnected = true,
                         taskExecutionMessage = "План подготовлен ChatGPT и сохранён локально. Исполнение ожидает отдельного подтверждения."
                     )
                 }
@@ -1180,17 +1181,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     it.copy(
                         error = failure.message ?: failure.javaClass.simpleName + ": не удалось подготовить поручение.",
                         streamingMessage = null,
-                        codexApproval = null
-                    )
-                }
-            } finally {
-                mutableState.update {
-                    it.copy(
-                        busy = false,
-                        streamingMessage = null,
+                        codexApproval = null,
                         codexStatus = if (it.codexConnected) "Codex готов" else "Codex не подключён"
                     )
                 }
+            } finally {
+                mutableState.update { it.copy(busy = false, streamingMessage = null) }
             }
         }
     }
