@@ -57,7 +57,7 @@ object AgentPlanJsonCodec {
         return digest.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
     }
 
-    const val MAX_PLAN_JSON_CHARS = 24_000
+    const val MAX_PLAN_JSON_CHARS = 16_384
     const val MAX_SUMMARY_CHARS = 500
     const val MAX_STEP_TITLE_CHARS = 160
     const val MAX_TOOL_ID_CHARS = 128
