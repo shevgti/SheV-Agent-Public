@@ -52,9 +52,11 @@ internal object AppUpdater {
             if (release.optBoolean("draft") || release.optBoolean("prerelease")) return@withContext null
             val tag = release.optString("tag_name").trim()
             if (tag.isBlank()) error("Релиз не содержит номер версии")
-            val versionName = tag.removePrefix("v")
+            val releaseBody = release.optString("body")
+            val versionName = Regex("""(?im)^\s*versionName\s*:\s*(\S+)\s*$""")
+                .find(releaseBody)?.groupValues?.get(1) ?: tag.removePrefix("v")
             val versionCode = Regex("""(?im)^\s*versionCode\s*:\s*(\d+)\s*$""")
-                .find(release.optString("body"))?.groupValues?.get(1)?.toIntOrNull()
+                .find(releaseBody)?.groupValues?.get(1)?.toIntOrNull()
                 ?: error("В описании релиза отсутствует versionCode")
             val assets = release.optJSONArray("assets") ?: error("В релизе нет файлов")
             var apkUrl: String? = null
