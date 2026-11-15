@@ -17,7 +17,7 @@ object AgentPlanJsonCodec {
         require(json.isNotBlank() && json.length <= MAX_PLAN_JSON_CHARS)
         val root = JsonParser.parseString(json).asJsonObject
         require(root.keySet() == rootKeys)
-        val summary = root.get("summary").takeIf { it.isJsonPrimitive }?.asString
+        val summary = root.get("summary").takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
             ?: error("Plan summary is missing.")
         require(summary.isNotBlank() && summary.length <= MAX_SUMMARY_CHARS)
         val sourceSteps = root.get("steps").asJsonArray
@@ -25,12 +25,12 @@ object AgentPlanJsonCodec {
         val steps = sourceSteps.map { element ->
             val item = element.asJsonObject
             require(item.keySet() == stepKeys)
-            val id = item.get("id").takeIf { it.isJsonPrimitive }?.asString ?: error("Step id is missing.")
-            val title = item.get("title").takeIf { it.isJsonPrimitive }?.asString ?: error("Step title is missing.")
-            val toolId = item.get("toolId").takeIf { it.isJsonPrimitive }?.asString ?: error("Tool id is missing.")
-            val capabilityName = item.get("capability").takeIf { it.isJsonPrimitive }?.asString
+            val id = item.get("id").takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString ?: error("Step id is missing.")
+            val title = item.get("title").takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString ?: error("Step title is missing.")
+            val toolId = item.get("toolId").takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString ?: error("Tool id is missing.")
+            val capabilityName = item.get("capability").takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
                 ?: error("Capability is missing.")
-            val input = item.get("input").takeIf { it.isJsonPrimitive }?.asString ?: error("Tool input is missing.")
+            val input = item.get("input").takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString ?: error("Tool input is missing.")
             require(id.matches(Regex("[a-zA-Z0-9_-]{1,48}")))
             require(title.isNotBlank() && title.length <= MAX_STEP_TITLE_CHARS)
             require(toolId.isNotBlank() && toolId.length <= MAX_TOOL_ID_CHARS)
