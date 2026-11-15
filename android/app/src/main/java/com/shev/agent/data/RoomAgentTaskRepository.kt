@@ -456,10 +456,12 @@ class RoomAgentTaskRepository(
         request: AgentTaskTransitionRequest
     ): AgentTaskRepositoryResult {
         val dao = database.agentDao()
-        val eventEvidenceRef = if (request.command == AgentWorkflowCommand.APPROVE) {
-            request.evidenceRef?.let { runCatching { ApprovalEvidenceToken.digest(it) }.getOrNull() }
-        } else {
-            request.evidenceRef
+        val eventEvidenceRef = when (request.command) {
+            AgentWorkflowCommand.APPROVE ->
+                request.evidenceRef?.let { runCatching { ApprovalEvidenceToken.digest(it) }.getOrNull() }
+            AgentWorkflowCommand.COMPLETE ->
+                request.evidenceRef?.let { runCatching { TaskCompletionEvidenceToken.digest(it) }.getOrNull() }
+            else -> request.evidenceRef
         }
         if (request.command == AgentWorkflowCommand.APPROVE && eventEvidenceRef == null) {
             return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_APPROVAL_EVIDENCE)
