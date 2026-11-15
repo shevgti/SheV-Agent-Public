@@ -5,6 +5,8 @@ on:
     branches:
       - main
       - fix/android-codex-file-locks
+      - release/0.3.2-build.39
+      - feat/release-0.3.2-chatgpt-deepseek
     paths:
       - 'android/**'
       - 'scripts/**'
@@ -15,6 +17,7 @@ on:
   pull_request:
     branches:
       - main
+      - release/0.3.2-build.39
     paths:
       - 'android/**'
       - '.github/workflows/shev-agent-android.yml'
@@ -268,7 +271,7 @@ jobs:
       - name: Upload debug test package
         uses: actions/upload-artifact@v4
         with:
-          name: shev-agent-debug
+          name: shev-agent-installable-test
           path: shev-agent-package/*
           if-no-files-found: error
           retention-days: 7
@@ -288,7 +291,7 @@ jobs:
       - name: Download verified APK package
         uses: actions/download-artifact@v4
         with:
-          name: shev-agent-debug
+          name: shev-agent-installable-test
           path: release-package
       - name: Verify package metadata, checksum, and embedded Codex runtime
         shell: bash

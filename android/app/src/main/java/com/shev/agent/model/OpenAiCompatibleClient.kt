@@ -17,7 +17,8 @@ data class OpenAiCompatibleConfig(
     val baseUrl: String,
     val modelId: String,
     val apiToken: String,
-    val providerName: String = "AI-провайдер"
+    val providerName: String = "AI-провайдер",
+    val appendV1IfMissing: Boolean = true
 ) {
     fun validatedBaseUrl(): String {
         require(baseUrl.length <= MAX_BASE_URL_LENGTH) { "Адрес сервера слишком длинный." }
@@ -36,8 +37,12 @@ data class OpenAiCompatibleConfig(
         }
         require(modelId.isNotBlank() && modelId.length <= MAX_MODEL_ID_LENGTH) { "Некорректный идентификатор модели." }
         require(apiToken.isNotBlank() && apiToken.length <= MAX_TOKEN_LENGTH) { "Не задан API-токен провайдера." }
-        val normalizedPath = path.ifEmpty { "/v1" }
-        return "${uri.scheme}://${uri.rawAuthority}$normalizedPath"
+        val normalizedPath = if (path.isNotEmpty()) path else if (appendV1IfMissing) "/v1" else ""
+        return if (normalizedPath.isEmpty()) {
+            "${uri.scheme}://${uri.rawAuthority}"
+        } else {
+            "${uri.scheme}://${uri.rawAuthority}$normalizedPath"
+        }
     }
 
     private companion object {

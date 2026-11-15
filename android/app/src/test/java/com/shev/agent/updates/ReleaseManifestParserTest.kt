@@ -23,7 +23,8 @@ class ReleaseManifestParserTest {
             version = "0.3.2",
             versionCode = 33,
             apkUrl = "https://github.com/shevgti/SheV-Agent-Public/releases/download/v0.3.2-build.33/app-debug.apk",
-            checksumUrl = "https://github.com/shevgti/SheV-Agent-Public/releases/download/v0.3.2-build.33/app-debug.apk.sha256"
+            checksumUrl = "https://github.com/shevgti/SheV-Agent-Public/releases/download/v0.3.2-build.33/app-debug.apk.sha256",
+            apkSizeBytes = 212_217_126L
         ), parsed)
     }
 
@@ -72,6 +73,17 @@ class ReleaseManifestParserTest {
         }
     }
 
+    @Test fun rejectsMissingOrOversizedApkAssetSize() {
+        listOf(0L, 512L * 1024L * 1024L + 1L).forEach { size ->
+            assertThrows(IllegalStateException::class.java) {
+                ReleaseManifestParser.parse(
+                    release("v0.3.2-build.33", "versionName: 0.3.2\nversionCode: 33", apkSizeBytes = size),
+                    currentVersionCode = 32
+                )
+            }
+        }
+    }
+
     @Test fun rejectsMalformedOrMissingVersionCode() {
         listOf("versionCode: zero", "versionName: 0.3.2", "versionCode: -1").forEach { body ->
             assertThrows(IllegalStateException::class.java) {
@@ -86,7 +98,8 @@ class ReleaseManifestParserTest {
     private fun release(
         tag: String,
         body: String,
-        includeChecksum: Boolean = true
+        includeChecksum: Boolean = true,
+        apkSizeBytes: Long = 212_217_126L
     ) = JSONObject().apply {
         put("tag_name", tag)
         put("body", body)
@@ -96,6 +109,7 @@ class ReleaseManifestParserTest {
             JSONObject()
                 .put("name", "app-debug.apk")
                 .put("browser_download_url", "https://github.com/shevgti/SheV-Agent-Public/releases/download/$tag/app-debug.apk")
+                .put("size", apkSizeBytes)
         )
         if (includeChecksum) {
             assets.put(

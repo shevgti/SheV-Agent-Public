@@ -29,16 +29,21 @@ internal object ReleaseManifestParser {
             ?: error("В релизе отсутствует список файлов.")
         var apkUrl: String? = null
         var checksumUrl: String? = null
+        var apkSizeBytes = 0L
         for (index in 0 until assets.length()) {
             val asset = assets.optJSONObject(index) ?: continue
             when (asset.optString("name")) {
-                APK_ASSET -> apkUrl = asset.optString("browser_download_url")
+                APK_ASSET -> {
+                    apkUrl = asset.optString("browser_download_url")
+                    apkSizeBytes = asset.optLong("size", 0L)
+                }
                 CHECKSUM_ASSET -> checksumUrl = asset.optString("browser_download_url")
             }
         }
         check(!apkUrl.isNullOrBlank()) { "В релизе отсутствует APK $APK_ASSET." }
         check(!checksumUrl.isNullOrBlank()) { "В релизе отсутствует контрольная сумма SHA-256." }
+        check(apkSizeBytes in 1L..(512L * 1024L * 1024L)) { "GitHub вернул некорректный размер APK." }
 
-        return ReleaseInfo(version, versionCode, apkUrl!!, checksumUrl!!)
+        return ReleaseInfo(version, versionCode, apkUrl!!, checksumUrl!!, apkSizeBytes)
     }
 }
