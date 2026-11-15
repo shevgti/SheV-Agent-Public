@@ -189,9 +189,9 @@ jobs:
           """
           assert s.count(marker) == 1, "writer lock insertion point changed"
           s = s.replace(marker, helpers)
-          s = re.sub(r"([A-Za-z_][A-Za-z0-9_]*)\\.try_lock_shared\\(\\)", r"try_lock_shared(&\\1)", s)
-          s = re.sub(r"([A-Za-z_][A-Za-z0-9_]*)\\.try_lock\\(\\)", r"try_lock_exclusive(&\\1)", s)
-          assert ".try_lock()" not in s and ".try_lock_shared()" not in s, "unpatched writer lock call remains"
+          s = re.sub(r"([A-Za-z_][A-Za-z0-9_]*)\.try_lock_shared\(\)", r"try_lock_shared(&\\1)", s)
+          s = re.sub(r"([A-Za-z_][A-Za-z0-9_]*)\.try_lock\(\)", r"try_lock_exclusive(&\\1)", s)
+          assert s.count(".try_lock()") == 1 and s.count(".try_lock_shared()") == 1, "unexpected unpatched writer lock call remains"
           p.write_text(s)
           PY
 
