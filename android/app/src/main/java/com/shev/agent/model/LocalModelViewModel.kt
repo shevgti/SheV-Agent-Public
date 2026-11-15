@@ -1385,7 +1385,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             registry,
             mapOf(
                 SheVAgentAdkTools.TOOL_ID to AgentTool {
-                    AgentToolResult(true, registry.list().joinToString { it.id })
+                    AgentToolResult(true, registry.list().joinToString("\n") { tool -> "${tool.id} | ${tool.title} | ${tool.capabilities.joinToString { it.name }} | ${tool.description} | input: ${tool.inputSchema?.describe() ?: "schema unavailable"}" })
                 },
                 SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to currentTimeHandler
             ),
