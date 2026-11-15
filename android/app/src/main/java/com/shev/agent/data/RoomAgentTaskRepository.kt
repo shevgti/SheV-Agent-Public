@@ -301,6 +301,9 @@ class RoomAgentTaskRepository(
                 return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PHASE)
             }
             val existingSteps = dao.getTaskSteps(taskId)
+            if (previousStart != null && existingSteps.isEmpty()) {
+                return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
+            }
             if (existingSteps.isNotEmpty()) {
                 val samePlan = existingSteps.size == plan.steps.size &&
                     existingSteps.map { it.stepId to it.planHash } ==
