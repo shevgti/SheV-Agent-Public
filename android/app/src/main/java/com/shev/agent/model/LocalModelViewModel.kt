@@ -1224,7 +1224,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     }
                     "item/started" -> {
                         val itemType = params.getAsJsonObject("item")?.get("type")?.asString
-                        if (eventTurnId == turnId && itemType in setOf("commandExecution", "fileChange")) {
+                        if (eventTurnId == turnId && itemType in setOf("commandExecution", "fileChange", "webSearch", "mcpToolCall", "toolCall")) {
                             completed.completeExceptionally(
                                 IllegalStateException("Планировщик попытался запустить команду или изменить файлы. Запрос остановлен.")
                             )
