@@ -77,7 +77,7 @@ class ReleaseManifestParserTest {
         listOf(0L, 512L * 1024L * 1024L + 1L).forEach { size ->
             assertThrows(IllegalStateException::class.java) {
                 ReleaseManifestParser.parse(
-                    release("v0.3.2-build.33", "versionName: 0.3.2\\nversionCode: 33", apkSizeBytes = size),
+                    release("v0.3.2-build.33", "versionName: 0.3.2\nversionCode: 33", apkSizeBytes = size),
                     currentVersionCode = 32
                 )
             }
