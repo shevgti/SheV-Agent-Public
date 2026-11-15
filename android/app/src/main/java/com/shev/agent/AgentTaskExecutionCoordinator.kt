@@ -89,7 +89,7 @@ class AgentTaskExecutionCoordinator(
         val storedSteps = dao.getTaskSteps(taskId)
         if (storedSteps.size != plan.steps.size ||
             storedSteps.map { it.stepId to it.planHash } != plan.steps.map { it.id to planHash }
-        ) return failRunning(taskId, revision, "Журнал шагов не совпадает с одобренным планом.")
+        ) return failRunning(taskId, "Журнал шагов не совпадает с одобренным планом.")
 
         val completedIds = storedSteps.filter { it.status == AgentTaskStepEntity.COMPLETED }
             .mapTo(mutableSetOf()) { it.stepId }
@@ -142,7 +142,6 @@ class AgentTaskExecutionCoordinator(
             } else {
                 failRunning(
                     taskId,
-                    revision,
                     "Выполнение заблокировано: ${execution.status}" +
                         (execution.failedStepId?.let { " · шаг $it" } ?: "")
                 )
@@ -159,7 +158,6 @@ class AgentTaskExecutionCoordinator(
         } catch (failure: Throwable) {
             failRunning(
                 taskId,
-                revision,
                 failure.message ?: failure.javaClass.simpleName
             )
         }
@@ -199,7 +197,6 @@ class AgentTaskExecutionCoordinator(
 
     private suspend fun failRunning(
         taskId: String,
-        revision: Long,
         reason: String
     ): AgentTaskExecutionCoordinatorResult {
         val current = dao.getTask(taskId)
