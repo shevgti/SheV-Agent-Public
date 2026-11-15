@@ -36,6 +36,19 @@ class OpenAiCompatibleConfigTest {
         assertFalse(runCatching { config("http://192.168.1.20:1234/v1").validatedBaseUrl() }.isSuccess)
     }
 
+    @Test fun supportsDeepSeekRootEndpointWithoutAddingV1() {
+        assertEquals(
+            "https://api.deepseek.com",
+            OpenAiCompatibleConfig(
+                "https://api.deepseek.com",
+                "deepseek-flash",
+                "secret-token",
+                "DeepSeek",
+                appendV1IfMissing = false
+            ).validatedBaseUrl()
+        )
+    }
+
     @Test fun rejectsUserInfoQueryAndFragment() {
         listOf(
             "https://user:pass@agent.example/v1",
