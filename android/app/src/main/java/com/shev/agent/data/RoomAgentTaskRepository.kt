@@ -297,10 +297,14 @@ class RoomAgentTaskRepository(
                 if (!sameRequest) return@withTransaction AgentTaskRepositoryResult.IdempotencyConflict
                 val evidence = dao.getTaskCompletionEvidence(previous.evidenceRef!!)
                     ?: return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_VERIFICATION_EVIDENCE)
-                if (evidence.verifierType != TaskCompletionEvidenceEntity.USER_REVIEW ||
-                    evidence.consumedAtEpochMillis == null
-                ) return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_VERIFICATION_EVIDENCE)
                 val current = dao.getTask(taskId) ?: return@withTransaction AgentTaskRepositoryResult.NotFound
+                if (evidence.taskId != taskId || evidence.expectedRevision != expectedRevision ||
+                    evidence.planHash != current.planHash ||
+                    evidence.verifierType != TaskCompletionEvidenceEntity.USER_REVIEW ||
+                    evidence.consumedAtEpochMillis == null ||
+                    current.phase != AgentPhase.COMPLETED.name ||
+                    current.revision != expectedRevision + 1L
+                ) return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_VERIFICATION_EVIDENCE)
                 return@withTransaction try {
                     AgentTaskRepositoryResult.Replayed(current.toWorkflowState())
                 } catch (_: IllegalArgumentException) {
