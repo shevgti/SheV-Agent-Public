@@ -890,7 +890,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
 
                         when (method) {
                             "item/agentMessage/delta" -> {
-                                if (eventTurnId == null || eventTurnId == turnId) {
+                                if (eventTurnId == turnId) {
                                     val delta = params.get("delta")?.asString.orEmpty()
                                     if (delta.isNotEmpty()) {
                                         answer.append(delta)
@@ -902,7 +902,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                             }
                             "item/completed" -> {
                                 val item = params.getAsJsonObject("item")
-                                if (item?.get("type")?.asString == "agentMessage" && answer.isEmpty()) {
+                                if (eventTurnId == turnId && item?.get("type")?.asString == "agentMessage" && answer.isEmpty()) {
                                     val text = item.getAsJsonArray("content")?.mapNotNull { part ->
                                         part.takeIf { it.isJsonObject }?.asJsonObject
                                             ?.get("text")?.asString
@@ -1185,7 +1185,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     it.copy(
                         busy = false,
                         streamingMessage = null,
-                        codexStatus = if (it.codexConnected) "Codex готов" else it.codexStatus
+                        codexStatus = if (it.codexConnected) "Codex готов" else "Codex не подключён"
                     )
                 }
             }
