@@ -11,7 +11,7 @@ internal data class ParsedCodexTaskDraft(
 /** Strict parser and explicit-intent gate for ChatGPT/Codex task drafting. */
 internal object CodexTaskDraftResponseParser {
     private val taskIntent = Regex(
-        """(?iu)\b(?:сохрани|сохранить|создай|создать|добавь|добавить|поставь|поставить|оформи|оформить)\b.{0,64}\b(?:поручение|задачу|задание)\b"""
+        """(?iu)\b(?:сохрани|сохранить|создай|создать|добавь|добавить|поставь|поставить|оформи|оформить|сделай|сделать|запиши|записать)\b.{0,64}\b(?:поручение|задачу|задание)\b"""
     )
     private val negatedIntent = Regex(
         """(?iu)\b(?:не надо|не нужно|не хочу|не просил(?:а|и)?)\b.{0,64}\b(?:сохранять|создавать|добавлять|поручение|задачу|задание)\b"""
