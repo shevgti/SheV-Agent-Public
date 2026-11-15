@@ -873,6 +873,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                         voiceConversation && listening -> "Слушаю тебя"
                         voiceConversation && state.busy -> "Готовлю ответ"
                         voiceConversation -> "Голосовой диалог включён"
+                        state.useCodex -> "Codex · агент"
                         state.useOpenAI -> "ChatGPT · OAuth / OpenAI"
                         state.useDeepSeek -> "DeepSeek · API"
                         state.useOpenRouter -> "Бесплатные модели · OpenRouter"
