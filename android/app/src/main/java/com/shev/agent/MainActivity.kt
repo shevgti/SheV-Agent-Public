@@ -303,7 +303,7 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
                         when (task.phase) {
                             AgentPhase.WAITING_APPROVAL.name -> {
                                 Text(
-                                    "Проверь поручение. Подтверждение переведёт его в очередь ожидания исполнителя, но не выполнит действие.",
+                                    "Проверь формулировку поручения. Подтверждение переведёт его в очередь ожидания исполнителя, но не выполнит действие.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
