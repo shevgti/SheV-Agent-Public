@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -18,6 +19,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.MaterialTheme
 import com.shev.agent.BuildConfig
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+
+private fun formatBytes(bytes: Long): String = "%.1f МиБ".format(bytes / (1024.0 * 1024.0))
 
 @Composable
 fun ReleaseUpdateCard() {
@@ -25,6 +30,8 @@ fun ReleaseUpdateCard() {
     val scope = rememberCoroutineScope()
     var checking by remember { mutableStateOf(false) }
     var downloading by remember { mutableStateOf(false) }
+    var downloadedBytes by remember { mutableLongStateOf(0L) }
+    var totalBytes by remember { mutableLongStateOf(0L) }
     var release by remember { mutableStateOf<ReleaseInfo?>(null) }
     var message by remember { mutableStateOf("Проверяйте новые версии из публичного GitHub Releases.") }
 
@@ -36,8 +43,13 @@ fun ReleaseUpdateCard() {
             Text("Обновления SheV Agent", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text("Установлена версия ${BuildConfig.VERSION_NAME} (сборка ${BuildConfig.VERSION_CODE})")
             Text(message, style = MaterialTheme.typography.bodyMedium)
-            if (checking || downloading) {
+            if (checking) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+            }
+            if (downloading) {
+                val fraction = if (totalBytes > 0L) (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f) else 0f
+                LinearProgressIndicator(progress = fraction, modifier = Modifier.fillMaxWidth())
+                Text("${(fraction * 100f).toInt()}% · ${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)}")
             }
             Button(
                 onClick = {
@@ -67,9 +79,16 @@ fun ReleaseUpdateCard() {
                     onClick = {
                         scope.launch {
                             downloading = true
+                            downloadedBytes = 0L
+                            totalBytes = available.apkSizeBytes
                             message = "Скачиваю APK и проверяю контрольную сумму…"
                             try {
-                                val installerOpened = ReleaseUpdater.downloadAndPromptInstall(context, available)
+                                val installerOpened = ReleaseUpdater.downloadAndPromptInstall(context, available) { downloaded, total ->
+                                    withContext(Dispatchers.Main) {
+                                        downloadedBytes = downloaded
+                                        totalBytes = total
+                                    }
+                                }
                                 message = if (installerOpened) "Проверка пройдена. Подтверди установку в системном окне Android." else "Разреши SheV Agent устанавливать обновления в настройках Android, вернись сюда и нажми кнопку установки ещё раз."
                             } catch (error: Exception) {
                                 message = "Установка не подготовлена: ${error.message ?: "ошибка"}"
