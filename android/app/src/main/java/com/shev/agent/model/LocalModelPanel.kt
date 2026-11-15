@@ -778,12 +778,12 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                                 modifier = Modifier.fillMaxWidth()
                             )
                             val percent = (updateDownloaded * 100L / updateTotal).toInt().coerceIn(0, 100)
-                            val downloadedMb = updateDownloaded.toDouble() / (1024.0 * 1024.0)
-                            val totalMb = updateTotal.toDouble() / (1024.0 * 1024.0)
+                            val downloadedMb = updateDownloaded.toDouble() / (1_000_000.0)
+                            val totalMb = updateTotal.toDouble() / (1_000_000.0)
                             Text("Загружено ${percent}% · ${String.format(Locale.getDefault(), "%.1f", downloadedMb)} МБ из ${String.format(Locale.getDefault(), "%.1f", totalMb)} МБ")
                         } else {
                             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                            Text("Загружено ${String.format(Locale.getDefault(), "%.1f", updateDownloaded.toDouble() / (1024.0 * 1024.0))} МБ")
+                            Text("Загружено ${String.format(Locale.getDefault(), "%.1f", updateDownloaded.toDouble() / (1_000_000.0))} МБ")
                         }
                     }
                     updateMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
