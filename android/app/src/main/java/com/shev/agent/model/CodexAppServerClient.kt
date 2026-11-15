@@ -147,7 +147,10 @@ internal class CodexAppServerClient(
         addProperty("includeHidden", false)
     })
 
-    suspend fun startThread(model: String): String {
+    suspend fun startThread(
+        model: String,
+        developerInstructions: String = CodexRuntimeConfig.DEVELOPER_INSTRUCTIONS
+    ): String {
         val workspace = java.io.File(appContext.noBackupFilesDir, "codex-workspace").apply { mkdirs() }
         val result = request(
             "thread/start",
@@ -156,7 +159,7 @@ internal class CodexAppServerClient(
                 addProperty("cwd", workspace.absolutePath)
                 addProperty("sandbox", "read-only")
                 addProperty("serviceName", "shev_agent")
-                addProperty("developerInstructions", CodexRuntimeConfig.DEVELOPER_INSTRUCTIONS)
+                addProperty("developerInstructions", developerInstructions)
             }
         )
         return result.get("thread")?.takeIf { it.isJsonObject }?.asJsonObject?.get("id")?.asString
