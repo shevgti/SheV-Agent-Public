@@ -20,7 +20,7 @@ concurrency:
 jobs:
   release:
     name: Build and publish installable APK
-    if: (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') && (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main')
+    if: (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') && (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/release/0.3.2-build.39')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -162,7 +162,8 @@ jobs:
               raise SystemExit("No published release contains a valid versionCode; refusing to guess.")
 
           previous = max(published_codes)
-          next_code = max(baseline, previous) + 1
+          # Leave one versionCode for the installable test APK produced by SheV Agent Android.
+          next_code = max(baseline, previous) + 2
           if next_code > 2_100_000_000:
               raise SystemExit("Android versionCode limit reached.")
 
