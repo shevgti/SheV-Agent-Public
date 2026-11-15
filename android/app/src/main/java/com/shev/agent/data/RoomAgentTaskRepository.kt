@@ -296,6 +296,10 @@ class RoomAgentTaskRepository(
 
             val plan = AgentPlanJsonCodec.decode(canonicalPlan)
                 ?: return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
+            val previousStart = dao.findEventByIdempotencyKey(idempotencyKey)
+            if (previousStart == null && stored.phase != AgentPhase.APPROVED.name) {
+                return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PHASE)
+            }
             val existingSteps = dao.getTaskSteps(taskId)
             if (existingSteps.isNotEmpty()) {
                 val samePlan = existingSteps.size == plan.steps.size &&
@@ -379,6 +383,12 @@ class RoomAgentTaskRepository(
             if (stored.planHash != planHash || stored.planJson.isBlank() ||
                 AgentPlanJsonCodec.canonicalize(stored.planJson) != stored.planJson ||
                 AgentPlanJsonCodec.sha256(stored.planJson) != planHash
+            ) return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
+            val plan = AgentPlanJsonCodec.decode(stored.planJson)
+                ?: return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
+            val ledger = dao.getTaskSteps(request.taskId)
+            if (ledger.size != plan.steps.size ||
+                ledger.map { it.stepId to it.planHash } != plan.steps.map { it.id to planHash }
             ) return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
         }
 
