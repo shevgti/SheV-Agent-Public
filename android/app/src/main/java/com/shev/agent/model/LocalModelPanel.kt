@@ -12,6 +12,7 @@ import android.speech.tts.UtteranceProgressListener
 import android.os.Handler
 import android.os.Build
 import android.os.Looper
+import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -102,6 +103,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var enabledAgentSkills by remember { mutableStateOf(agentTeamPrefs.getStringSet("enabled_skills", null)?.toSet() ?: SheVAgentModelFactory.DEFAULT_SKILLS) }
     var showGatewaySettings by remember { mutableStateOf(false) }
     var showOpenAISettings by remember { mutableStateOf(false) }
+    var showDeepSeekSettings by remember { mutableStateOf(false) }
     var showCodexSettings by remember { mutableStateOf(true) }
     var showGeminiSettings by remember { mutableStateOf(false) }
     var showOpenRouterSettings by remember { mutableStateOf(false) }
@@ -366,7 +368,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                             Text("Приложение", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text("Установленная версия: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", style = MaterialTheme.typography.bodyMedium)
                             if (updateInfo != null) {
-                                Text("Доступна версия: ${updateInfo!!.versionName}", color = Color(0xFF16834A), fontWeight = FontWeight.SemiBold)
+                                Text("Доступна версия: ${updateInfo!!.versionName} (${updateInfo!!.versionCode})", color = Color(0xFF16834A), fontWeight = FontWeight.SemiBold)
                                 Button(onClick = { showUpdateDialog = true }, enabled = !downloadingUpdate, modifier = Modifier.fillMaxWidth()) { Text("Скачать и установить") }
                             } else {
                                 Text("Обновление: ${if (checkingUpdate) "проверяю…" else "последняя версия или нет опубликованного релиза"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -396,7 +398,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                             Text("Выбери, кто будет отвечать в основном чате. Активным может быть один основной провайдер.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("OpenAI Codex · полноценный AI-агент", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text(
-                                if (state.useCodex) "Сейчас выбран Codex" else "Официальный вход через ChatGPT · без API-ключа и Termux",
+                                if (state.useCodex) "Сейчас выбран Codex" else "Отдельный агент Codex с официальным входом ChatGPT; проверка аккаунта выполняется OpenAI.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -415,7 +417,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                             Text("Gemma · локально на телефоне", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text(
                                 when {
-                                    state.useCodex || state.useGemini || state.useOpenAI || state.useOpenRouter || state.useOmniRoute -> "Сейчас выбран облачный провайдер"
+                                    state.useCodex || state.useGemini || state.useOpenAI || state.useDeepSeek || state.useOpenRouter || state.useOmniRoute -> "Сейчас выбран облачный провайдер"
                                     state.ready -> "Gemma запущена и выбрана для локальной работы"
                                     state.verified -> "Модель загружена и проверена"
                                     else -> "Модель ещё не загружена · размер около 2,58 ГБ"
@@ -436,7 +438,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                                 }
                             } else {
                                 Button(onClick = viewModel::selectLocalModel, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-                                    Text(if (state.ready && !state.useCodex && !state.useGemini && !state.useOpenAI && !state.useOpenRouter && !state.useOmniRoute) "Gemma выбрана" else "Выбрать Gemma")
+                                    Text(if (state.ready && !state.useCodex && !state.useGemini && !state.useOpenAI && !state.useDeepSeek && !state.useOpenRouter && !state.useOmniRoute) "Gemma выбрана" else "Выбрать Gemma")
                                 }
                                 OutlinedButton(onClick = viewModel::deleteModel, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
                                     Text("Удалить Gemma с телефона")
@@ -704,12 +706,22 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     }
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Подключение ChatGPT", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Прямой доступ к OpenAI API с отдельным ключом. Подписка ChatGPT не заменяет API-биллинг.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("ChatGPT · обычный чат (OAuth)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Альтернативный официальный вход для основного чата; Codex остаётся отдельным агентом. API-ключ не нужен. Если OpenAI запросит подтверждение телефона, его нужно пройти в браузере.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             OutlinedButton(onClick = { showOpenAISettings = !showOpenAISettings }, modifier = Modifier.fillMaxWidth()) {
                                 Text(if (showOpenAISettings) "Скрыть настройки OpenAI" else "Настроить ChatGPT / OpenAI")
                             }
                             if (showOpenAISettings) OpenAIProviderPanel(viewModel)
+                        }
+                    }
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Подключение DeepSeek", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text(if (state.useDeepSeek) "DeepSeek выбран для основного чата" else "Подключи API-ключ DeepSeek, проверь соединение и выбери модель.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            OutlinedButton(onClick = { showDeepSeekSettings = !showDeepSeekSettings }, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (showDeepSeekSettings) "Скрыть настройки DeepSeek" else "Настроить DeepSeek")
+                            }
+                            if (showDeepSeekSettings) DeepSeekProviderPanel(viewModel)
                         }
                     }
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -787,20 +799,24 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
         val update = updateInfo!!
         AlertDialog(
             onDismissRequest = { if (!downloadingUpdate) showUpdateDialog = false },
-            title = { Text("Доступно обновление ${update.versionName}") },
+            title = { Text("Доступно обновление ${update.versionName} · сборка ${update.versionCode}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(update.notes.lineSequence().firstOrNull { it.isNotBlank() } ?: "Новая версия SheV Agent готова.")
-                    Text("Текущая версия: ${BuildConfig.VERSION_NAME}")
+                    Text("Текущая версия: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
                     if (downloadingUpdate) {
                         if (updateTotal > 0L) {
                             LinearProgressIndicator(
                                 progress = { (updateDownloaded.toFloat() / updateTotal.toFloat()).coerceIn(0f, 1f) },
                                 modifier = Modifier.fillMaxWidth()
                             )
-                            Text("Загружено ${(updateDownloaded * 100L / updateTotal).toInt()}%")
+                            val percent = (updateDownloaded * 100L / updateTotal).toInt().coerceIn(0, 100)
+                            val downloadedMb = updateDownloaded.toDouble() / 1_000_000.0
+                            val totalMb = updateTotal.toDouble() / 1_000_000.0
+                            Text("Загружено ${percent}% · ${String.format(Locale.getDefault(), "%.1f", downloadedMb)} МБ из ${String.format(Locale.getDefault(), "%.1f", totalMb)} МБ")
                         } else {
                             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            Text("Загружено ${String.format(Locale.getDefault(), "%.1f", updateDownloaded.toDouble() / 1_000_000.0)} МБ")
                         }
                     }
                     updateMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -812,6 +828,8 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     onClick = {
                         scope.launch {
                             downloadingUpdate = true
+                            updateDownloaded = 0L
+                            updateTotal = update.expectedSizeBytes
                             updateMessage = null
                             try {
                                 val started = AppUpdater.downloadAndInstall(context, update) { done, total ->
@@ -827,7 +845,12 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                             }
                         }
                     }
-                ) { Text(if (downloadingUpdate) "Загрузка…" else "Скачать и установить") }
+                ) {
+                    val progressLabel = if (updateTotal > 0L) {
+                        "Загрузка ${(updateDownloaded * 100L / updateTotal).toInt().coerceIn(0, 100)}%"
+                    } else "Загрузка…"
+                    Text(if (downloadingUpdate) progressLabel else "Скачать и установить")
+                }
             },
             dismissButton = {
                 TextButton(onClick = { showUpdateDialog = false }, enabled = !downloadingUpdate) { Text("Позже") }
@@ -850,7 +873,8 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                         voiceConversation && listening -> "Слушаю тебя"
                         voiceConversation && state.busy -> "Готовлю ответ"
                         voiceConversation -> "Голосовой диалог включён"
-                        state.useOpenAI -> "ChatGPT · OpenAI"
+                        state.useOpenAI -> "ChatGPT · OAuth / OpenAI"
+                        state.useDeepSeek -> "DeepSeek · API"
                         state.useOpenRouter -> "Бесплатные модели · OpenRouter"
                         state.useOmniRoute -> "Удалённый AI · OmniRoute"
                         state.ready -> "Личный помощник"
@@ -873,7 +897,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
         }
 
 
-        if (!state.ready && !state.useOmniRoute && !state.useOpenAI && !state.useGemini && !state.useOpenRouter) {
+        if (!state.ready && !state.useOmniRoute && !state.useOpenAI && !state.useDeepSeek && !state.useGemini && !state.useOpenRouter && !state.useCodex) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(22.dp),
