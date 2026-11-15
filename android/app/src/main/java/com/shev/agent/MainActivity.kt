@@ -523,21 +523,39 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
                                     persistedSteps.all {
                                         it.status == AgentTaskStepEntity.COMPLETED && it.planHash == task.planHash && it.output.isNotBlank()
                                     }
-                                Button(
-                                    enabled = actingTaskId == null && allStepsReviewed,
-                                    onClick = {
-                                        scope.launch {
-                                            actingTaskId = task.id
-                                            try {
-                                                actionMessage = completionActionMessage(
-                                                    viewModel.completeTaskAfterUserReview(task)
-                                                )
-                                            } finally {
-                                                actingTaskId = null
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        enabled = actingTaskId == null && allStepsReviewed,
+                                        onClick = {
+                                            scope.launch {
+                                                actingTaskId = task.id
+                                                try {
+                                                    actionMessage = completionActionMessage(
+                                                        viewModel.completeTaskAfterUserReview(task)
+                                                    )
+                                                } finally {
+                                                    actingTaskId = null
+                                                }
                                             }
                                         }
-                                    }
-                                ) { Text("Я проверил результат — завершить") }
+                                    ) { Text("Я проверил результат — завершить") }
+                                    TextButton(
+                                        enabled = actingTaskId == null,
+                                        onClick = {
+                                            scope.launch {
+                                                actingTaskId = task.id
+                                                try {
+                                                    actionMessage = taskActionMessage(
+                                                        viewModel.cancelTaskFromUser(task),
+                                                        approved = false
+                                                    )
+                                                } finally {
+                                                    actingTaskId = null
+                                                }
+                                            }
+                                        }
+                                    ) { Text("Не принимать результат") }
+                                }
                             }
                             AgentPhase.PLANNING.name -> {
                                 TextButton(
