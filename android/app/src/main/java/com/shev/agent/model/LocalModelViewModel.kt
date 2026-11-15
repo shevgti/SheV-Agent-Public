@@ -9,11 +9,15 @@ import com.google.adk.kt.events.Event
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.shev.agent.AgentCapability
+import com.shev.agent.AgentWorkflowCommand
 import com.shev.agent.data.AgentSkillLibrary
 import com.shev.agent.data.ConversationMessageEntity
 import com.shev.agent.data.ConversationStateRepository
 import com.shev.agent.data.ConversationSummaryRead
 import com.shev.agent.data.AgentTaskDraftRequest
+import com.shev.agent.data.AgentTaskEntity
+import com.shev.agent.data.AgentTaskTransitionRequest
+import com.shev.agent.data.AgentTaskRepositoryResult
 import com.shev.agent.data.AgentTaskDraftResult
 import com.shev.agent.data.RoomAgentTaskAuthorizationVerifier
 import com.shev.agent.data.RoomAgentTaskRepository
@@ -97,6 +101,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     )
     private val mutableState = MutableStateFlow(LocalModelUiState())
     val state: StateFlow<LocalModelUiState> = mutableState.asStateFlow()
+    val tasks = dao.observeTasks()
     private var runtime: SheVAgentRuntime? = null
     private var toolExecutor: AgentToolExecutor? = null
     private var codexClient: CodexAppServerClient? = null
@@ -1312,11 +1317,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 )) {
                     is AgentTaskDraftResult.Created -> AgentToolResult(
                         true,
-                        "Черновик поручения «${result.state.task.title}» сохранён. Он ожидает подтверждения во вкладке «Память». Никакое действие не запускалось."
+                        "Черновик поручения «${result.state.task.title}» сохранён. Он ожидает подтверждения во вкладке «Поручения». Никакое действие не запускалось."
                     )
                     is AgentTaskDraftResult.Replayed -> AgentToolResult(
                         true,
-                        "Это поручение уже сохранено и ожидает подтверждения во вкладке «Память». Повторная запись не создана."
+                        "Это поручение уже сохранено и ожидает подтверждения во вкладке «Поручения». Повторная запись не создана."
                     )
                     AgentTaskDraftResult.InvalidRequest -> AgentToolResult(false, "Поручение не сохранено: некорректный запрос.", "INVALID_REQUEST")
                     AgentTaskDraftResult.Conflict -> AgentToolResult(false, "Поручение не сохранено: обнаружен конфликт записи.", "CONFLICT")
@@ -1427,6 +1432,29 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
 
     fun availableAgentToolIds(): Set<String> =
         availableAgentTools().mapTo(linkedSetOf()) { it.id }
+
+    /** Approval is created only by the explicit action in the task inbox UI. */
+    suspend fun approveTaskFromUser(task: AgentTaskEntity): AgentTaskRepositoryResult =
+        taskRepository.approveFromUser(
+            taskId = task.id,
+            expectedRevision = task.revision,
+            eventId = UUID.randomUUID().toString(),
+            idempotencyKey = "user-approve:${task.id}:${task.revision}",
+            occurredAtEpochMillis = System.currentTimeMillis()
+        )
+
+    /** Declines a waiting draft or cancels an already approved/running task. */
+    suspend fun cancelTaskFromUser(task: AgentTaskEntity): AgentTaskRepositoryResult =
+        taskRepository.transition(
+            AgentTaskTransitionRequest(
+                taskId = task.id,
+                command = AgentWorkflowCommand.CANCEL,
+                expectedRevision = task.revision,
+                eventId = UUID.randomUUID().toString(),
+                idempotencyKey = "user-cancel:${task.id}:${task.revision}",
+                occurredAtEpochMillis = System.currentTimeMillis()
+            )
+        )
 
     /** Runs only an explicitly approved, offline, tool-free specialist definition. */
     suspend fun runApprovedSpecialist(manifestJson: String, input: String): String {
