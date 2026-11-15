@@ -680,7 +680,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                             )
                         }
                     }
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    VoiceEnginesPanel()\n                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Бесплатные AI-модели · OpenRouter", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text("Единый доступ к бесплатным моделям разных разработчиков. По умолчанию используется автоматический бесплатный маршрутизатор.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
