@@ -11,7 +11,7 @@ object AgentTaskPresentation {
         AgentPhase.APPROVED.name -> "Одобрена — готова к запуску"
         AgentPhase.RUNNING.name -> "Выполняется"
         AgentPhase.VERIFYING.name -> "Проверка"
-        AgentPhase.COMPLETED.name -> "Завершена"
+        AgentPhase.COMPLETED.name -> "Завершена после проверки"
         AgentPhase.FAILED.name -> "Ошибка"
         AgentPhase.PAUSED.name -> "Приостановлена"
         AgentPhase.CANCELLED.name -> "Отменена"
@@ -26,5 +26,5 @@ object AgentTaskPresentation {
         }
     }
 
-    val filters = listOf("Все", "Черновик", "Ожидает подтверждения", "Одобрена — готова к запуску", "Выполняется", "Проверка", "Приостановлена", "Завершена", "Ошибка", "Отменена")
+    val filters = listOf("Все", "Черновик", "Ожидает подтверждения", "Одобрена — готова к запуску", "Выполняется", "Проверка", "Приостановлена", "Завершена после проверки", "Ошибка", "Отменена")
 }
