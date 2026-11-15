@@ -20,7 +20,7 @@ data class ApprovalEvidenceEntity(
     val taskId: String,
     val expectedRevision: Long,
     val operation: String,
-    val planHash: String = "",
+    @androidx.room.ColumnInfo(defaultValue = "''") val planHash: String = "",
     val issuedAtEpochMillis: Long,
     val expiresAtEpochMillis: Long,
     val consumedAtEpochMillis: Long? = null
