@@ -155,7 +155,7 @@ class AgentTaskExecutionCoordinator(
                 }
             }
             throw cancelled
-        } catch (failure: Throwable) {
+        } catch (failure: Exception) {
             failRunning(
                 taskId,
                 failure.message ?: failure.javaClass.simpleName
