@@ -693,8 +693,8 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     }
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Подключение ChatGPT", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Официальный вход через аккаунт ChatGPT. API-ключ создавать не нужно; подтверждение аккаунта выполняется на стороне OpenAI.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("ChatGPT · альтернативный вход", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Альтернативный официальный OAuth-вход для обычного чата через план ChatGPT. Codex остаётся отдельным агентом; если OpenAI запросит подтверждение телефона, его нужно пройти в браузере.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             OutlinedButton(onClick = { showOpenAISettings = !showOpenAISettings }, modifier = Modifier.fillMaxWidth()) {
                                 Text(if (showOpenAISettings) "Скрыть настройки OpenAI" else "Настроить ChatGPT / OpenAI")
                             }
