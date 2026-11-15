@@ -12,7 +12,6 @@ import android.speech.tts.UtteranceProgressListener
 import android.os.Handler
 import android.os.Build
 import android.os.Looper
-import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
