@@ -156,6 +156,11 @@ internal class ChatGptPlanOAuth(
             val idToken = tokenResponse.get("id_token")?.asString
                 ?: throw IllegalStateException("OpenAI не вернул ID token.")
             val identity = validateIdToken(idToken, callback.second, nonce)
+            if (existingSession != null) {
+                require(identity.first == existingSession.subject) {
+                    "OpenAI вернул другой аккаунт. Старая сессия не будет заменена."
+                }
+            }
             val accessToken = tokenResponse.get("access_token")?.asString
                 ?: throw IllegalStateException("OpenAI не вернул access token.")
             val refreshToken = tokenResponse.get("refresh_token")?.asString
