@@ -67,7 +67,7 @@ internal object TaskCompletionEvidenceToken {
     }
 }
 
-/** Room-backed verifier consumes the approval row with one conditional UPDATE. */
+/** Room-backed verifier consumes approval and completion evidence with conditional one-use UPDATEs. */
 class RoomAgentTaskAuthorizationVerifier(
     private val dao: AgentDao
 ) : AgentTaskAuthorizationVerifier {
