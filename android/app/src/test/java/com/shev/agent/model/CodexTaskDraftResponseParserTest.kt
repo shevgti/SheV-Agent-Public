@@ -37,6 +37,6 @@ class CodexTaskDraftResponseParserTest {
     @Test
     fun rejectsExtraFieldsAndInvalidPlans() {
         assertNull(CodexTaskDraftResponseParser.parse("""{"title":"x","plan":{"summary":"x","steps":[]},"extra":"no"}"""))
-        assertNull(CodexTaskDraftResponseParser.parse("""{"title":"x","plan":{"summary":"x","steps":[{"id":"s","title":"bad","toolId":"unknown","capability":"READ_REMOTE_DATA","input":"{}"}]}}""").takeIf { it?.planJson?.isNotBlank() != true })
+        assertNull(CodexTaskDraftResponseParser.parse("""{"title":"x","plan":{"summary":"x","steps":[]}}"""))
     }
 }
