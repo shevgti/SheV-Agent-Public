@@ -95,9 +95,9 @@ if "libc = { workspace = true }" not in cargo:
 p = Path("codex/codex-rs/runtime-agent-instance/src/installation_id.rs")
 s = p.read_text()
 if "use std::fs::File;" not in s:
-    import_marker = "use std::fs::OpenOptions;\\n"
+    import_marker = "use std::fs::OpenOptions;"
     assert s.count(import_marker) == 1, "installation ID File import point changed"
-    s = s.replace(import_marker, import_marker + "use std::fs::File;\\n", 1)
+    s = s.replace(import_marker, import_marker + "\\nuse std::fs::File;", 1)
 marker = 'const INSTALLATION_ID_FILENAME: &str = "installation_id";'
 assert s.count(marker) == 1, "installation ID insertion point changed"
 if "fn android_file_lock" not in s:
