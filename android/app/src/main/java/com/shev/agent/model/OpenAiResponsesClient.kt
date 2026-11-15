@@ -201,7 +201,7 @@ class OpenAiResponsesClient(
             instanceFollowRedirects = false
             useCaches = false
             doOutput = true
-            setRequestProperty("Accept", "application/json")
+            setRequestProperty("Accept", if (chatGptPlanUsage) "text/event-stream" else "application/json")
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
             setRequestProperty("Authorization", "Bearer ${config.apiToken}")
         }
