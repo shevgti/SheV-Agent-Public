@@ -275,7 +275,7 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            "Важно: подтверждение пока только фиксирует твоё решение. Само поручение не запускается, пока не подключён исполнитель и проверка результата.",
+            "Одобрение само по себе не завершает поручение. После запуска здесь виден ход каждого шага; статус «Выполнено» появится только после отдельной проверки результата.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall
         )
