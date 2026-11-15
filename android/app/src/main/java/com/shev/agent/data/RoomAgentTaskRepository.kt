@@ -212,6 +212,10 @@ class RoomAgentTaskRepository(
                     previous.evidenceRef?.matches(Regex("[0-9a-f]{64}")) == true
                 if (!sameRequest) return@withTransaction AgentTaskRepositoryResult.IdempotencyConflict
                 val current = dao.getTask(taskId) ?: return@withTransaction AgentTaskRepositoryResult.NotFound
+                if (current.planJson.isBlank() || current.planHash.isBlank() ||
+                    AgentPlanJsonCodec.canonicalize(current.planJson) != current.planJson ||
+                    AgentPlanJsonCodec.sha256(current.planJson) != current.planHash
+                ) return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
                 return@withTransaction try {
                     AgentTaskRepositoryResult.Replayed(current.toWorkflowState())
                 } catch (_: IllegalArgumentException) {
