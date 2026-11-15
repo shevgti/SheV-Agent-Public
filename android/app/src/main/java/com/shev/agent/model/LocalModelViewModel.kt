@@ -1318,9 +1318,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 AgentToolResult(false, "План не сохранён: используй только инструменты из каталога и корректные параметры.", "INVALID_PLAN")
             } else {
                 val now = System.currentTimeMillis()
-                // Stable for one minute: a retried tool call cannot create duplicate drafts.
+                val canonicalPlan = AgentPlanJsonCodec.canonicalJson(plan)
+                val planHash = AgentPlanJsonCodec.sha256(canonicalPlan)
+                // Retries of the exact same plan are idempotent; changed plans get a new draft.
                 val requestBucket = now / 60_000L
-                val requestSeed = "shev-task-draft-v1:$requestBucket:$title"
+                val requestSeed = "shev-task-draft-v2:$requestBucket:$title:$planHash"
                 val taskId = UUID.nameUUIDFromBytes(requestSeed.toByteArray()).toString()
                 val eventId = UUID.nameUUIDFromBytes("event:$taskId".toByteArray()).toString()
                 when (val result = taskRepository.createDraft(
@@ -1330,7 +1332,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         eventId = eventId,
                         idempotencyKey = "task-create:$taskId",
                         occurredAtEpochMillis = now,
-                        planJson = AgentPlanJsonCodec.canonicalJson(plan)
+                        planJson = canonicalPlan
                     )
                 )) {
                     is AgentTaskDraftResult.Created -> AgentToolResult(
