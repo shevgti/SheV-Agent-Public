@@ -7,7 +7,11 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import com.shev.agent.updates.ReleaseDownloadPolicy
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
@@ -20,6 +24,7 @@ internal data class AppUpdate(
     val versionName: String,
     val downloadUrl: String,
     val checksumUrl: String,
+    val expectedSizeBytes: Long,
     val notes: String
 )
 
@@ -30,8 +35,14 @@ internal object AppUpdater {
     private const val PREFS = "shev_downloaded_update"
     private const val KEY_VERSION_CODE = "version_code"
     private const val KEY_VERSION_NAME = "version_name"
-    private const val MAX_APK_BYTES = 200L * 1024L * 1024L
+    private const val MAX_APK_BYTES = 512L * 1024L * 1024L
     private const val MAX_REDIRECTS = 5
+    private const val DOWNLOAD_ATTEMPTS = 3
+    private const val CONNECT_TIMEOUT_MS = 30_000
+    private const val DOWNLOAD_READ_TIMEOUT_MS = 300_000
+    private const val CHECKSUM_READ_TIMEOUT_MS = 20_000
+    private const val RETRY_DELAY_MS = 1_500L
+    private const val PROGRESS_STEP_BYTES = 512L * 1024L
 
     suspend fun check(installedVersionCode: Int): AppUpdate? = withContext(Dispatchers.IO) {
         val connection = (URL(RELEASE_API).openConnection() as HttpURLConnection).apply {
@@ -49,24 +60,31 @@ internal object AppUpdater {
             if (release.optBoolean("draft") || release.optBoolean("prerelease")) return@withContext null
             val tag = release.optString("tag_name").trim()
             if (tag.isBlank()) error("Релиз не содержит номер версии")
-            val versionName = tag.removePrefix("v")
+            val releaseBody = release.optString("body")
+            val versionName = Regex("""(?im)^\s*versionName\s*:\s*(\S+)\s*$""")
+                .find(releaseBody)?.groupValues?.get(1) ?: tag.removePrefix("v")
             val versionCode = Regex("""(?im)^\s*versionCode\s*:\s*(\d+)\s*$""")
-                .find(release.optString("body"))?.groupValues?.get(1)?.toIntOrNull()
+                .find(releaseBody)?.groupValues?.get(1)?.toIntOrNull()
                 ?: error("В описании релиза отсутствует versionCode")
             val assets = release.optJSONArray("assets") ?: error("В релизе нет файлов")
             var apkUrl: String? = null
             var checksumUrl: String? = null
+            var apkSizeBytes = 0L
             for (i in 0 until assets.length()) {
                 val asset = assets.getJSONObject(i)
                 when (asset.optString("name")) {
-                    APK_NAME -> apkUrl = asset.optString("browser_download_url")
+                    APK_NAME -> {
+                        apkUrl = asset.optString("browser_download_url")
+                        apkSizeBytes = asset.optLong("size", 0L)
+                    }
                     CHECKSUM_NAME -> checksumUrl = asset.optString("browser_download_url")
                 }
             }
             if (apkUrl.isNullOrBlank()) error("В релизе нет файла $APK_NAME")
             if (checksumUrl.isNullOrBlank()) error("В релизе нет контрольной суммы $CHECKSUM_NAME")
+            require(apkSizeBytes in 1L..MAX_APK_BYTES) { "GitHub указал некорректный размер APK." }
             if (versionCode <= installedVersionCode) null
-            else AppUpdate(versionCode, versionName, apkUrl, checksumUrl, release.optString("body"))
+            else AppUpdate(versionCode, versionName, apkUrl, checksumUrl, apkSizeBytes, releaseBody)
         } finally {
             connection.disconnect()
         }
@@ -91,63 +109,98 @@ internal object AppUpdater {
             return@withContext apk
         }
 
-        partial.delete()
-        try {
-            val connection = openTrustedConnection(update.downloadUrl, 180_000)
+        var lastFailure: Exception? = null
+        for (attempt in 1..DOWNLOAD_ATTEMPTS) {
+            partial.delete()
             try {
-                if (connection.responseCode !in 200..299) error("Загрузка APK ответила: HTTP ${connection.responseCode}")
-                val expectedLength = connection.contentLengthLong
-                require(expectedLength < 0L || expectedLength <= MAX_APK_BYTES) {
-                    "APK превышает допустимый размер."
-                }
+                val connection = openTrustedConnection(update.downloadUrl, DOWNLOAD_READ_TIMEOUT_MS)
                 var downloaded = 0L
-                var lastReported = 0L
-                connection.inputStream.buffered().use { input ->
-                    partial.outputStream().buffered().use { output ->
-                        val buffer = ByteArray(128 * 1024)
-                        while (true) {
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            downloaded += count
-                            require(downloaded <= MAX_APK_BYTES) { "APK превышает допустимый размер." }
-                            output.write(buffer, 0, count)
-                            if (downloaded - lastReported >= 256 * 1024) {
-                                lastReported = downloaded
-                                onProgress?.let { callback -> withContext(Dispatchers.Main) { callback(downloaded, expectedLength) } }
-                            }
+                var expectedLength = update.expectedSizeBytes
+                try {
+                    if (connection.responseCode !in 200..299) {
+                        error("Загрузка APK ответила: HTTP ${connection.responseCode}")
+                    }
+                    val contentLength = connection.contentLengthLong
+                    if (contentLength > 0L && update.expectedSizeBytes > 0L) {
+                        require(contentLength == update.expectedSizeBytes) {
+                            "Размер APK от GitHub не совпадает с метаданными релиза."
                         }
                     }
+                    expectedLength = if (contentLength > 0L) contentLength else update.expectedSizeBytes
+                    require(expectedLength in 1L..MAX_APK_BYTES) {
+                        "Не удалось определить допустимый размер APK."
+                    }
+                    onProgress?.let { callback ->
+                        withContext(Dispatchers.Main) { callback(0L, expectedLength) }
+                    }
+                    var lastReported = 0L
+                    connection.inputStream.buffered().use { input ->
+                        partial.outputStream().buffered().use { output ->
+                            val buffer = ByteArray(128 * 1024)
+                            while (true) {
+                                currentCoroutineContext().ensureActive()
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                downloaded += count
+                                require(downloaded <= MAX_APK_BYTES) {
+                                    "APK превышает допустимый размер 512 МиБ."
+                                }
+                                output.write(buffer, 0, count)
+                                if (downloaded - lastReported >= PROGRESS_STEP_BYTES) {
+                                    lastReported = downloaded
+                                    onProgress?.let { callback ->
+                                        withContext(Dispatchers.Main) { callback(downloaded, expectedLength) }
+                                    }
+                                }
+                            }
+                            output.flush()
+                        }
+                    }
+                    require(downloaded == expectedLength) {
+                        "Загрузка APK завершилась не полностью: получено $downloaded из $expectedLength байт."
+                    }
+                } finally {
+                    connection.disconnect()
                 }
-                require(downloaded >= 2L && (expectedLength < 0L || downloaded == expectedLength)) {
-                    "Загрузка APK завершилась не полностью."
+
+                val magic = partial.inputStream().use {
+                    ByteArray(4) { it.read().toByte() }
                 }
-            } finally {
-                connection.disconnect()
+                require(
+                    magic[0] == 0x50.toByte() && magic[1] == 0x4B.toByte() &&
+                        magic[2] == 0x03.toByte() && magic[3] == 0x04.toByte()
+                ) { "GitHub вернул файл, который не является корректным APK-архивом." }
+
+                val checksumText = readTrustedText(update.checksumUrl)
+                val expectedHash = Regex("""(?i)\b[a-f0-9]{64}\b""")
+                    .find(checksumText)?.value?.lowercase()
+                    ?: error("Файл контрольной суммы не содержит SHA-256.")
+                val actualHash = sha256(partial)
+                require(expectedHash == actualHash) { "Контрольная сумма APK не совпадает." }
+
+                if (apk.exists() && !apk.delete()) error("Не удалось заменить предыдущий APK.")
+                if (!partial.renameTo(apk)) error("Не удалось сохранить скачанный APK.")
+                onProgress?.let { callback ->
+                    withContext(Dispatchers.Main) { callback(apk.length(), expectedLength) }
+                }
+                prefs.edit()
+                    .putInt(KEY_VERSION_CODE, update.versionCode)
+                    .putString(KEY_VERSION_NAME, update.versionName)
+                    .apply()
+                return@withContext apk
+            } catch (cancelled: CancellationException) {
+                partial.delete()
+                throw cancelled
+            } catch (failure: Exception) {
+                partial.delete()
+                lastFailure = failure
+                if (attempt < DOWNLOAD_ATTEMPTS) delay(RETRY_DELAY_MS * attempt)
             }
-
-            val magic = partial.inputStream().use { byteArrayOf(it.read().toByte(), it.read().toByte()) }
-            require(magic[0] == 0x50.toByte() && magic[1] == 0x4B.toByte()) {
-                "GitHub вернул файл, который не похож на APK."
-            }
-
-            val checksumText = readTrustedText(update.checksumUrl)
-            val expectedHash = Regex("""(?i)\b[a-f0-9]{64}\b""").find(checksumText)?.value?.lowercase()
-                ?: error("Файл контрольной суммы не содержит SHA-256.")
-            val actualHash = sha256(partial)
-            require(expectedHash == actualHash) { "Контрольная сумма APK не совпадает." }
-
-            if (apk.exists() && !apk.delete()) error("Не удалось заменить предыдущий APK.")
-            if (!partial.renameTo(apk)) error("Не удалось сохранить скачанный APK.")
-            onProgress?.let { callback -> withContext(Dispatchers.Main) { callback(apk.length(), apk.length()) } }
-            prefs.edit()
-                .putInt(KEY_VERSION_CODE, update.versionCode)
-                .putString(KEY_VERSION_NAME, update.versionName)
-                .apply()
-            apk
-        } catch (failure: Exception) {
-            partial.delete()
-            throw failure
         }
+        throw IllegalStateException(
+            "Не удалось скачать и проверить обновление после $DOWNLOAD_ATTEMPTS попыток: ${lastFailure?.message ?: "ошибка сети"}",
+            lastFailure
+        )
     }
 
     /** Backward-compatible foreground flow used by the in-chat update dialog. */
@@ -193,7 +246,7 @@ internal object AppUpdater {
     }
 
     private fun readTrustedText(url: String): String {
-        val connection = openTrustedConnection(url, 15_000)
+        val connection = openTrustedConnection(url, CHECKSUM_READ_TIMEOUT_MS)
         try {
             if (connection.responseCode !in 200..299) error("Не удалось скачать SHA-256: HTTP ${connection.responseCode}")
             return connection.inputStream.bufferedReader().use { it.readText().take(1024) }
@@ -206,9 +259,10 @@ internal object AppUpdater {
         var current = ReleaseDownloadPolicy.validate(URL(initialUrl))
         repeat(MAX_REDIRECTS + 1) { hop ->
             val connection = (current.openConnection() as HttpURLConnection).apply {
-                connectTimeout = 15_000
+                connectTimeout = CONNECT_TIMEOUT_MS
                 readTimeout = readTimeoutMs
                 instanceFollowRedirects = false
+                useCaches = false
                 setRequestProperty("User-Agent", "SheV-Agent-Android")
                 setRequestProperty("Accept", "application/octet-stream")
             }
