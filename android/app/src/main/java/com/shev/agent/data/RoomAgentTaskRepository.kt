@@ -300,6 +300,9 @@ class RoomAgentTaskRepository(
             if (previousStart == null && stored.phase != AgentPhase.APPROVED.name) {
                 return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PHASE)
             }
+            if (previousStart == null && stored.revision != expectedRevision) {
+                return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_REVISION)
+            }
             val existingSteps = dao.getTaskSteps(taskId)
             if (previousStart != null && existingSteps.isEmpty()) {
                 return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
