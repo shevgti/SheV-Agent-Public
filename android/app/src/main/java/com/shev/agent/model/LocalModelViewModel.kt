@@ -9,6 +9,8 @@ import com.google.adk.kt.events.Event
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.shev.agent.AgentCapability
+import com.shev.agent.AgentPhase
+import com.shev.agent.AgentTaskExecutionCoordinator
 import com.shev.agent.AgentPlanJsonCodec
 import com.shev.agent.AgentPlanValidator
 import com.shev.agent.AgentWorkflowCommand
@@ -18,6 +20,7 @@ import com.shev.agent.data.ConversationStateRepository
 import com.shev.agent.data.ConversationSummaryRead
 import com.shev.agent.data.AgentTaskDraftRequest
 import com.shev.agent.data.AgentTaskEntity
+import com.shev.agent.data.AgentTaskStepEntity
 import com.shev.agent.data.AgentTaskTransitionRequest
 import com.shev.agent.data.AgentTaskRepositoryResult
 import com.shev.agent.data.AgentTaskDraftResult
@@ -44,6 +47,7 @@ import com.shev.agent.tools.SheVAgentAdkTools
 import java.util.UUID
 import com.google.gson.JsonParser
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +60,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.collect
+import java.util.concurrent.ConcurrentHashMap
 
 data class CodexApproval(
     val requestId: Long,
@@ -87,7 +92,8 @@ data class LocalModelUiState(
     val backendName: String? = null,
     val deviceSummary: String = "Проверяю характеристики устройства…",
     val prompt: String = "",
-    val messages: List<String> = emptyList()
+    val messages: List<String> = emptyList(),
+    val taskExecutionMessage: String? = null
 )
 
 /** Owns the native runtime for the Activity lifetime, not a recyclable Compose list item. */
@@ -107,6 +113,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private var runtime: SheVAgentRuntime? = null
     private var toolExecutor: AgentToolExecutor? = null
     private var agentToolRegistry: AgentToolRegistry? = null
+    private var agentExecutionContext: AgentToolExecutionContext? = null
+    private val taskExecutionJobs = ConcurrentHashMap<String, Job>()
     private var codexClient: CodexAppServerClient? = null
     private var codexActiveThreadId: String? = null
     private var codexActiveTurnId: String? = null
@@ -130,6 +138,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             val available = store.findVerifiedModel() != null
             try {
                 dao.markInterruptedConversationMessagesFailed()
+                recoverInterruptedAgentTasks()
                 // Load only completed conversational turns. Pending/failed rows are not display history.
                 val history = dao.getRecentCompletedConversationMessages(HISTORY_DISPLAY_LIMIT).asReversed()
                     .map { it.copy(content = LocalMessageCipher.decrypt(it.content)) }
@@ -1427,20 +1436,22 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
 
             )
         )
+        val executionContext = AgentToolExecutionContext(
+            grantedCapabilities = setOf(
+                AgentCapability.ANALYZE_DATA,
+                AgentCapability.CREATE_DRAFT,
+                AgentCapability.READ_REMOTE_DATA
+            ),
+            explicitlyApprovedCapabilities = setOf(AgentCapability.READ_REMOTE_DATA)
+        )
         val tools = SheVAgentAdkTools(
             executor,
-            AgentToolExecutionContext(
-                grantedCapabilities = setOf(
-                    AgentCapability.ANALYZE_DATA,
-                    AgentCapability.CREATE_DRAFT,
-                    AgentCapability.READ_REMOTE_DATA
-                ),
-                explicitlyApprovedCapabilities = setOf(AgentCapability.READ_REMOTE_DATA)
-            ),
+            executionContext,
             skillLibrary = skillLibrary
         )
         toolExecutor = executor
         agentToolRegistry = registry
+        agentExecutionContext = executionContext
         return tools
     }
 
@@ -1472,6 +1483,73 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     fun availableAgentToolIds(): Set<String> =
         availableAgentTools().mapTo(linkedSetOf()) { it.id }
 
+    fun observeTaskSteps(taskId: String) = dao.observeTaskSteps(taskId)
+
+    fun startTaskExecution(task: AgentTaskEntity): Job {
+        taskExecutionJobs[task.id]?.takeIf { it.isActive }?.let { return it }
+        if (toolExecutor == null || agentToolRegistry == null || agentExecutionContext == null) {
+            createAgentToolHost()
+        }
+        val executor = checkNotNull(toolExecutor)
+        val registry = checkNotNull(agentToolRegistry)
+        val context = checkNotNull(agentExecutionContext)
+        val blocked = setOf(
+            SheVAgentAdkTools.TOOL_ID,
+            SheVAgentAdkTools.CURRENT_TIME_TOOL_ID,
+            SheVAgentAdkTools.CREATE_TASK_DRAFT_ID,
+            SheVAgentAdkTools.SAVE_SKILL_DRAFT_TOOL_ID
+        )
+        val allowed = registry.list().mapTo(linkedSetOf()) { it.id } - blocked
+        val coordinator = AgentTaskExecutionCoordinator(
+            dao = dao,
+            taskRepository = taskRepository,
+            validator = AgentPlanValidator(registry),
+            executor = executor,
+            agentAllowedToolIds = allowed,
+            executionContext = context
+        )
+        val job = viewModelScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
+            try {
+                val outcome = coordinator.execute(task.id, task.revision)
+                mutableState.update { it.copy(taskExecutionMessage = outcome.message) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } finally {
+                taskExecutionJobs.remove(task.id)
+            }
+        }
+        taskExecutionJobs[task.id] = job
+        job.start()
+        return job
+    }
+
+    private suspend fun recoverInterruptedAgentTasks() {
+        val interrupted = dao.getTasksByPhase(AgentPhase.RUNNING.name)
+        for (task in interrupted) {
+            try {
+                dao.markRunningTaskStepsInterrupted(
+                    taskId = task.id,
+                    planHash = task.planHash,
+                    finishedAtEpochMillis = System.currentTimeMillis()
+                )
+                taskRepository.transition(
+                    AgentTaskTransitionRequest(
+                        taskId = task.id,
+                        command = AgentWorkflowCommand.PAUSE,
+                        expectedRevision = task.revision,
+                        eventId = UUID.randomUUID().toString(),
+                        idempotencyKey = "recover-pause:${task.id}:${task.revision}",
+                        occurredAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Keep the durable RUNNING state visible if recovery cannot be committed.
+            }
+        }
+    }
+
     /** Approval is created only by the explicit action in the task inbox UI. */
     suspend fun approveTaskFromUser(task: AgentTaskEntity): AgentTaskRepositoryResult =
         taskRepository.approveFromUser(
@@ -1483,8 +1561,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         )
 
     /** Declines a waiting draft or cancels an already approved/running task. */
-    suspend fun cancelTaskFromUser(task: AgentTaskEntity): AgentTaskRepositoryResult =
-        taskRepository.transition(
+    suspend fun cancelTaskFromUser(task: AgentTaskEntity): AgentTaskRepositoryResult {
+        val result = taskRepository.transition(
             AgentTaskTransitionRequest(
                 taskId = task.id,
                 command = AgentWorkflowCommand.CANCEL,
@@ -1494,6 +1572,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 occurredAtEpochMillis = System.currentTimeMillis()
             )
         )
+        if (result is AgentTaskRepositoryResult.Applied || result is AgentTaskRepositoryResult.Replayed) {
+            taskExecutionJobs[task.id]?.cancel()
+        }
+        return result
+    }
 
     /** Runs only an explicitly approved, offline, tool-free specialist definition. */
     suspend fun runApprovedSpecialist(manifestJson: String, input: String): String {
