@@ -50,7 +50,7 @@ fun VoiceEnginesPanel() {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Голосовые движки и языки", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("Каталог четырёх движков. Русский язык, лицензии и способ запуска проверяются отдельно для каждой модели.",
+            Text("Четыре перспективных нейросетевых движка. Эти модели запускаются через Python/PyTorch на отдельном компьютере или сервере; они не устанавливаются напрямую как Android-пакеты.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             engines.forEach { engine ->
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
