@@ -80,6 +80,7 @@ data class LocalModelUiState(
     val ready: Boolean = false,
     val useOmniRoute: Boolean = false,
     val useOpenAI: Boolean = false,
+    val useDeepSeek: Boolean = false,
     val useGemini: Boolean = false,
     val useOpenRouter: Boolean = false,
     val useCodex: Boolean = false,
@@ -131,13 +132,26 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val openAiPreferences = application.getSharedPreferences("shev_openai", Application.MODE_PRIVATE)
         val geminiPreferences = application.getSharedPreferences("shev_gemini", Application.MODE_PRIVATE)
         val openRouterPreferences = application.getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
+        val deepSeekPreferences = application.getSharedPreferences("shev_deepseek", Application.MODE_PRIVATE)
         val codexPreferences = application.getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
         val useCodex = codexPreferences.getBoolean("use_for_primary_chat", false)
         val useOpenRouter = !useCodex && openRouterPreferences.getBoolean("use_for_primary_chat", false)
         val useGemini = !useCodex && !useOpenRouter && geminiPreferences.getBoolean("use_for_primary_chat", false)
         val useOpenAI = !useCodex && !useOpenRouter && !useGemini && openAiPreferences.getBoolean("use_for_primary_chat", false)
-        val useOmniRoute = !useCodex && !useOpenRouter && !useGemini && !useOpenAI && gatewayPreferences.getBoolean("use_for_primary_chat", false)
-        mutableState.update { it.copy(useCodex = useCodex, useOmniRoute = useOmniRoute, useOpenAI = useOpenAI, useGemini = useGemini, useOpenRouter = useOpenRouter) }
+        val useDeepSeek = !useCodex && !useOpenRouter && !useGemini && !useOpenAI &&
+            deepSeekPreferences.getBoolean("use_for_primary_chat", false)
+        val useOmniRoute = !useCodex && !useOpenRouter && !useGemini && !useOpenAI && !useDeepSeek &&
+            gatewayPreferences.getBoolean("use_for_primary_chat", false)
+        mutableState.update {
+            it.copy(
+                useCodex = useCodex,
+                useOmniRoute = useOmniRoute,
+                useOpenAI = useOpenAI,
+                useDeepSeek = useDeepSeek,
+                useGemini = useGemini,
+                useOpenRouter = useOpenRouter
+            )
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val deviceSummary = DeviceDiagnostics.summary(getApplication())
             val available = store.findVerifiedModel() != null
@@ -320,7 +334,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val preferences = getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
         preferences.edit().putBoolean("use_for_primary_chat", enabled).apply()
         if (enabled) {
-            listOf("shev_omniroute", "shev_openai", "shev_gemini", "shev_openrouter").forEach { name ->
+            listOf("shev_omniroute", "shev_openai", "shev_gemini", "shev_openrouter", "shev_deepseek").forEach { name ->
                 getApplication<Application>().getSharedPreferences(name, Application.MODE_PRIVATE)
                     .edit().putBoolean("use_for_primary_chat", false).apply()
             }
@@ -331,7 +345,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 useOmniRoute = if (enabled) false else it.useOmniRoute,
                 useOpenAI = if (enabled) false else it.useOpenAI,
                 useGemini = if (enabled) false else it.useGemini,
-                useOpenRouter = if (enabled) false else it.useOpenRouter
+                useOpenRouter = if (enabled) false else it.useOpenRouter,
+                useDeepSeek = if (enabled) false else it.useDeepSeek
             )
         }
     }
@@ -351,10 +366,13 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 .edit().putBoolean("use_for_primary_chat", false).apply()
             getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
+            getApplication<Application>().getSharedPreferences("shev_deepseek", Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
         }
         mutableState.update {
             it.copy(
                 useCodex = if (enabled) false else it.useCodex,
+                useDeepSeek = if (enabled) false else it.useDeepSeek,
                 useOmniRoute = enabled,
                 useOpenAI = if (enabled) false else it.useOpenAI,
                 useGemini = if (enabled) false else it.useGemini,
@@ -378,10 +396,13 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 .edit().putBoolean("use_for_primary_chat", false).apply()
             getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
+            getApplication<Application>().getSharedPreferences("shev_deepseek", Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
         }
         mutableState.update {
             it.copy(
                 useCodex = if (enabled) false else it.useCodex,
+                useDeepSeek = if (enabled) false else it.useDeepSeek,
                 useOpenAI = enabled,
                 useOmniRoute = if (enabled) false else it.useOmniRoute,
                 useGemini = if (enabled) false else it.useGemini,
@@ -394,7 +415,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         getApplication<Application>().getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
             .edit().putBoolean("use_for_primary_chat", enabled).apply()
         if (enabled) {
-            listOf("shev_gemini", "shev_openai", "shev_omniroute", "shev_codex").forEach { name ->
+            listOf("shev_gemini", "shev_openai", "shev_omniroute", "shev_codex", "shev_deepseek").forEach { name ->
                 getApplication<Application>().getSharedPreferences(name, Application.MODE_PRIVATE)
                     .edit().putBoolean("use_for_primary_chat", false).apply()
             }
@@ -405,7 +426,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 useCodex = if (enabled) false else it.useCodex,
                 useGemini = if (enabled) false else it.useGemini,
                 useOpenAI = if (enabled) false else it.useOpenAI,
-                useOmniRoute = if (enabled) false else it.useOmniRoute
+                useOmniRoute = if (enabled) false else it.useOmniRoute,
+                useDeepSeek = if (enabled) false else it.useDeepSeek
             )
         }
     }
@@ -422,8 +444,19 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 .edit().putBoolean("use_for_primary_chat", false).apply()
             getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
+            getApplication<Application>().getSharedPreferences("shev_deepseek", Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
         }
-        mutableState.update { it.copy(useCodex = if (enabled) false else it.useCodex, useGemini = enabled, useOpenAI = if (enabled) false else it.useOpenAI, useOmniRoute = if (enabled) false else it.useOmniRoute, useOpenRouter = if (enabled) false else it.useOpenRouter) }
+        mutableState.update {
+            it.copy(
+                useCodex = if (enabled) false else it.useCodex,
+                useGemini = enabled,
+                useOpenAI = if (enabled) false else it.useOpenAI,
+                useDeepSeek = if (enabled) false else it.useDeepSeek,
+                useOmniRoute = if (enabled) false else it.useOmniRoute,
+                useOpenRouter = if (enabled) false else it.useOpenRouter
+            )
+        }
     }
 
     /** Cancels the active answer so voice input can take priority. */
@@ -471,12 +504,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
 
     /** Select the on-device Gemma backend and disable mutually exclusive cloud providers. */
     fun selectLocalModel() {
-        listOf("shev_gemini", "shev_openai", "shev_openrouter", "shev_omniroute", "shev_codex").forEach { name ->
+        listOf("shev_gemini", "shev_openai", "shev_openrouter", "shev_omniroute", "shev_codex", "shev_deepseek").forEach { name ->
             getApplication<Application>().getSharedPreferences(name, Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
         }
         mutableState.update {
-            it.copy(useCodex = false, useGemini = false, useOpenAI = false, useOpenRouter = false, useOmniRoute = false)
+            it.copy(useCodex = false, useGemini = false, useOpenAI = false, useDeepSeek = false, useOpenRouter = false, useOmniRoute = false)
         }
         if (mutableState.value.verified) {
             launchAgent()
@@ -620,6 +653,10 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         }
         if (mutableState.value.useOpenAI) {
             sendViaOpenAI(message)
+            return
+        }
+        if (mutableState.value.useDeepSeek) {
+            sendViaDeepSeek(message)
             return
         }
         if (preferences.getBoolean("use_for_primary_chat", false)) {
@@ -1452,6 +1489,80 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    /** Direct DeepSeek API route using the documented OpenAI-compatible Chat Completions endpoint. */
+    private fun sendViaDeepSeek(message: String) {
+        mutableState.update {
+            it.copy(prompt = "", busy = true, error = null, messages = it.messages + "Вы: $message")
+        }
+        responseJob = viewModelScope.launch(Dispatchers.IO) {
+            val userMessageId = UUID.randomUUID().toString()
+            try {
+                val preferences = getApplication<Application>().getSharedPreferences(
+                    "shev_deepseek",
+                    Application.MODE_PRIVATE
+                )
+                val modelId = preferences.getString("model_id", "deepseek-flash") ?: "deepseek-flash"
+                val encryptedToken = preferences.getString("encrypted_token", null)
+                    ?: throw IllegalStateException("Сначала сохрани API-ключ DeepSeek в настройках.")
+                val token = DeepSeekSecretCipher.decrypt(encryptedToken)
+                require(token.isNotBlank()) { "Сохранённый ключ DeepSeek пустой. Введи его заново." }
+
+                val history = dao.getRecentCompletedConversationMessages(CONTEXT_HISTORY_LIMIT).asReversed()
+                    .map { it.copy(content = LocalMessageCipher.decrypt(it.content)) }
+                val summaryRead = conversationStateRepository.readSummary()
+                val rollingSummary = (summaryRead as? ConversationSummaryRead.Ready)?.plaintext
+                val summaryCheckpoint = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
+                val promptWithContext = ConversationContextBuilder.build(
+                    chronologicalHistory = history,
+                    currentMessage = message,
+                    rollingSummary = rollingSummary,
+                    summaryThroughMessageId = summaryCheckpoint
+                )
+                dao.appendConversationMessage(
+                    ConversationMessageEntity(
+                        id = userMessageId,
+                        role = ConversationContextBuilder.ROLE_USER,
+                        content = LocalMessageCipher.encrypt(message),
+                        status = ConversationContextBuilder.STATUS_PENDING,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+                val answer = OpenAiCompatibleClient(
+                    OpenAiCompatibleConfig(
+                        "https://api.deepseek.com",
+                        modelId,
+                        token,
+                        "DeepSeek",
+                        appendV1IfMissing = false
+                    )
+                ).complete(
+                    promptWithContext,
+                    systemInstruction = "Ты — SheV, личный AI-помощник пользователя. Всегда отвечай по-русски. Это удалённый режим DeepSeek: у тебя нет прямого доступа к телефону, локальным файлам или действиям приложения. Не утверждай, что выполнил действие. Не раскрывай API-ключи и секреты."
+                )
+                dao.appendConversationMessage(
+                    ConversationMessageEntity(
+                        id = UUID.randomUUID().toString(),
+                        role = ConversationContextBuilder.ROLE_ASSISTANT,
+                        content = LocalMessageCipher.encrypt(answer),
+                        status = ConversationContextBuilder.STATUS_COMPLETE,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+                dao.updateConversationMessageStatus(userMessageId, ConversationContextBuilder.STATUS_COMPLETE)
+                mutableState.update { it.copy(messages = it.messages + "SheV: $answer") }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                dao.updateConversationMessageStatus(userMessageId, ConversationContextBuilder.STATUS_FAILED)
+                mutableState.update {
+                    it.copy(error = failure.message ?: failure.javaClass.simpleName + ": ошибка DeepSeek API.")
+                }
+            } finally {
+                mutableState.update { it.copy(busy = false) }
+            }
+        }
+    }
+
     /**
      * Direct OpenAI Responses API route. The model may call only the explicitly
      * registered, schema-validated low-risk local tools exposed by OpenAiLocalToolBridge.
@@ -1467,12 +1578,18 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     "shev_openai",
                     Application.MODE_PRIVATE
                 )
-                val modelId = preferences.getString("model_id", "gpt-4.1-mini")
-                    ?: "gpt-4.1-mini"
-                val encryptedToken = preferences.getString("encrypted_token", null)
-                    ?: throw IllegalStateException("Сначала сохрани API-ключ OpenAI.")
-                val token = OpenAISecretCipher.decrypt(encryptedToken)
-                require(token.isNotBlank()) { "Сохранённый API-ключ OpenAI пустой. Введи его заново." }
+                val modelId = preferences.getString("model_id", "gpt-6.1-sol")
+                    ?: "gpt-6.1-sol"
+                val chatGptPlanAuth = ChatGptPlanOAuth(getApplication(), preferences)
+                val planSession = runCatching { chatGptPlanAuth.load() }.getOrNull()
+                val token = if (planSession != null) {
+                    chatGptPlanAuth.validAccessToken()
+                } else {
+                    val encryptedToken = preferences.getString("encrypted_token", null)
+                        ?: throw IllegalStateException("Подключи ChatGPT кнопкой «Войти через ChatGPT» — API-ключ не требуется.")
+                    OpenAISecretCipher.decrypt(encryptedToken)
+                }
+                require(token.isNotBlank()) { "Авторизация OpenAI пуста. Подключи ChatGPT заново." }
 
                 val history = dao.getRecentCompletedConversationMessages(CONTEXT_HISTORY_LIMIT).asReversed()
                     .map { it.copy(content = LocalMessageCipher.decrypt(it.content)) }
@@ -1502,7 +1619,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 val localTools = createOpenAiLocalToolBridge()
                 val answer = OpenAiResponsesClient(
-                    OpenAiCompatibleConfig("https://api.openai.com/v1", modelId, token)
+                    OpenAiCompatibleConfig("https://api.openai.com/v1", modelId, token),
+                    chatGptPlanUsage = planSession != null
                 ).completeWithTools(
                     history = responseInput,
                     instructions = "Ты — SheV, персональный AI-помощник пользователя. Всегда отвечай по-русски. Ты работаешь внутри Android-приложения SheV Agent. Перед созданием поручения по прямой просьбе пользователя вызови inspect_available_agent_tools и сформируй planJson строго по схеме {summary,steps:[{id,title,toolId,capability,input}]}; используй только доступные идентификаторы и возможности, а input должен соответствовать описанию инструмента. План показывается во вкладке «Поручения» и ожидает подтверждения; подтверждение плана само по себе не запускает действия. Не утверждай, что задача выполнена без независимой проверки результата. Не придумывай результаты инструментов и не раскрывай API-ключи. Все вызовы проверяются приложением.",
