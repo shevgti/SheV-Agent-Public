@@ -23,7 +23,8 @@ class ReleaseManifestParserTest {
             version = "0.3.2",
             versionCode = 33,
             apkUrl = "https://github.com/shevgti/SheV-Agent-Public/releases/download/v0.3.2-build.33/app-debug.apk",
-            checksumUrl = "https://github.com/shevgti/SheV-Agent-Public/releases/download/v0.3.2-build.33/app-debug.apk.sha256"
+            checksumUrl = "https://github.com/shevgti/SheV-Agent-Public/releases/download/v0.3.2-build.33/app-debug.apk.sha256",
+            apkSizeBytes = 212_217_126L
         ), parsed)
     }
 
@@ -96,6 +97,7 @@ class ReleaseManifestParserTest {
             JSONObject()
                 .put("name", "app-debug.apk")
                 .put("browser_download_url", "https://github.com/shevgti/SheV-Agent-Public/releases/download/$tag/app-debug.apk")
+                .put("size", 212_217_126L)
         )
         if (includeChecksum) {
             assets.put(
