@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - fix/android-codex-file-locks
     paths:
       - 'android/**'
       - '.github/workflows/shev-agent-android.yml'
@@ -11,6 +12,8 @@ on:
       - '.github/workflows/publish-update.yml'
       - 'docs/AGENTS.md'
   pull_request:
+    branches:
+      - main
     paths:
       - 'android/**'
       - '.github/workflows/shev-agent-android.yml'
@@ -268,6 +271,67 @@ jobs:
           path: shev-agent-package/*
           if-no-files-found: error
           retention-days: 7
+
+  publish-branch-update:
+    name: Publish installable Codex-enabled update for device testing
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/fix/android-codex-file-locks' }}
+    needs:
+      - build-and-unit-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout exact tested commit
+        uses: actions/checkout@v4
+      - name: Download verified APK package
+        uses: actions/download-artifact@v4
+        with:
+          name: shev-agent-debug
+          path: release-package
+      - name: Verify package metadata, checksum, and embedded Codex runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-package
+          test -s app-debug.apk
+          test -s app-debug.apk.sha256
+          test -s build-info.txt
+          sha256sum --check app-debug.apk.sha256
+          VERSION=$(sed -n 's/^version=//p' build-info.txt)
+          VERSION_CODE=$(sed -n 's/^versionCode=//p' build-info.txt)
+          PREVIOUS_CODE=$(sed -n 's/^previousVersionCode=//p' build-info.txt)
+          COMMIT=$(sed -n 's/^commit=//p' build-info.txt)
+          test -n "$VERSION"
+          test -n "$VERSION_CODE"
+          test -n "$PREVIOUS_CODE"
+          test "$COMMIT" = "$GITHUB_SHA"
+          test "$VERSION_CODE" -gt "$PREVIOUS_CODE"
+          unzip -l app-debug.apk | grep -F 'lib/arm64-v8a/libcodex_app_server.so'
+          unzip -l app-debug.apk | grep -F 'lib/arm64-v8a/libc++_shared.so'
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "APP_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "PREVIOUS_VERSION_CODE=$PREVIOUS_CODE" >> "$GITHUB_ENV"
+          echo "Verified $VERSION ($VERSION_CODE), previous $PREVIOUS_CODE, commit $COMMIT"
+      - name: Publish stable GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: SheV Agent ${{ env.APP_VERSION }} (build ${{ env.APP_VERSION_CODE }})
+          tag_name: v${{ env.APP_VERSION }}-build.${{ env.APP_VERSION_CODE }}
+          target_commitish: ${{ github.sha }}
+          body: |
+            SheV Agent Android update with the official Codex App Server for ARM64.
+
+            versionName: ${{ env.APP_VERSION }}
+            versionCode: ${{ env.APP_VERSION_CODE }}
+            Previous versionCode: ${{ env.PREVIOUS_VERSION_CODE }}
+
+            The APK and SHA-256 checksum were produced by the successful Android build workflow.
+          files: |
+            release-package/app-debug.apk
+            release-package/app-debug.apk.sha256
+            release-package/build-info.txt
+          fail_on_unmatched_files: true
 
   android-16-emulator:
     name: Optional Android 16 (API 36) instrumentation smoke test
