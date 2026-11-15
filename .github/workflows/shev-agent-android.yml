@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - fix/android-codex-file-locks
+      - release/0.3.2-build.39
       - feat/release-0.3.2-chatgpt-deepseek
     paths:
       - 'android/**'
