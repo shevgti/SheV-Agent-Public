@@ -268,6 +268,68 @@ class RoomAgentTaskRepository(
         }
     }
 
+    /**
+     * Atomically moves an approved, hash-matched plan to RUNNING and creates its step ledger.
+     * No tool is dispatched inside this transaction.
+     */
+    suspend fun startApprovedExecution(
+        taskId: String,
+        expectedRevision: Long,
+        planHash: String,
+        eventId: String,
+        idempotencyKey: String,
+        occurredAtEpochMillis: Long
+    ): AgentTaskRepositoryResult {
+        if (taskId.isBlank() || planHash.isBlank() || eventId.isBlank() ||
+            idempotencyKey.isBlank() || expectedRevision < 0L ||
+            expectedRevision == Long.MAX_VALUE || occurredAtEpochMillis < 0L
+        ) return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_REQUEST)
+
+        return database.withTransaction {
+            val dao = database.agentDao()
+            val stored = dao.getTask(taskId) ?: return@withTransaction AgentTaskRepositoryResult.NotFound
+            val canonicalPlan = AgentPlanJsonCodec.canonicalize(stored.planJson)
+                ?: return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
+            if (canonicalPlan != stored.planJson || stored.planHash != planHash ||
+                AgentPlanJsonCodec.sha256(canonicalPlan) != planHash
+            ) return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
+
+            val plan = AgentPlanJsonCodec.decode(canonicalPlan)
+                ?: return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
+            val existingSteps = dao.getTaskSteps(taskId)
+            if (existingSteps.isNotEmpty()) {
+                val samePlan = existingSteps.size == plan.steps.size &&
+                    existingSteps.map { it.stepId to it.planHash } ==
+                    plan.steps.map { it.id to planHash }
+                if (!samePlan) return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
+            } else {
+                dao.insertTaskSteps(plan.steps.mapIndexed { index, step ->
+                    AgentTaskStepEntity(
+                        taskId = taskId,
+                        stepId = step.id,
+                        position = index,
+                        title = step.title,
+                        toolId = step.toolId,
+                        planHash = planHash,
+                        status = AgentTaskStepEntity.PENDING
+                    )
+                })
+            }
+
+            transitionWithinTransaction(
+                AgentTaskTransitionRequest(
+                    taskId = taskId,
+                    command = AgentWorkflowCommand.START_EXECUTION,
+                    expectedRevision = expectedRevision,
+                    eventId = eventId,
+                    idempotencyKey = idempotencyKey,
+                    occurredAtEpochMillis = occurredAtEpochMillis,
+                    planHash = planHash
+                )
+            )
+        }
+    }
+
     suspend fun transition(request: AgentTaskTransitionRequest): AgentTaskRepositoryResult {
         if (request.taskId.isBlank() ||
             request.eventId.isBlank() ||
@@ -310,6 +372,15 @@ class RoomAgentTaskRepository(
         }
 
         val stored = dao.getTask(request.taskId) ?: return AgentTaskRepositoryResult.NotFound
+
+        if (request.command == AgentWorkflowCommand.START_EXECUTION) {
+            val planHash = request.planHash
+                ?: return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
+            if (stored.planHash != planHash || stored.planJson.isBlank() ||
+                AgentPlanJsonCodec.canonicalize(stored.planJson) != stored.planJson ||
+                AgentPlanJsonCodec.sha256(stored.planJson) != planHash
+            ) return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PLAN)
+        }
 
         if (request.command == AgentWorkflowCommand.COMPLETE) {
             val evidence = request.evidenceRef
