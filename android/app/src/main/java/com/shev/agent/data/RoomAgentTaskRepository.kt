@@ -19,6 +19,7 @@ interface AgentTaskAuthorizationVerifier {
         taskId: String,
         expectedRevision: Long,
         evidenceRef: String,
+        planHash: String,
         nowMillis: Long
     ): Boolean
 
