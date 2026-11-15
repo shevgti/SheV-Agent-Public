@@ -15,7 +15,7 @@ data class ToolInputField(
 ) {
     init {
         require(name.matches(Regex("[A-Za-z][A-Za-z0-9_]{0,63}")))
-        require(maxLength in 1..8192)
+        require(maxLength in 1..16384)
         require(minInteger == null || maxInteger == null || minInteger <= maxInteger)
         require(type == ToolInputType.STRING || allowedValues.isEmpty())
         require(type == ToolInputType.INTEGER || (minInteger == null && maxInteger == null))
