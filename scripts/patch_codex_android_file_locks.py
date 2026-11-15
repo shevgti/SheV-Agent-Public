@@ -85,15 +85,15 @@ p.write_text(s.replace(marker, helpers))
 p = Path("codex/codex-rs/runtime-agent-instance/Cargo.toml")
 cargo = p.read_text()
 if '[target."cfg(target_family = \\"unix\\")".dependencies]' not in cargo:
-    cargo += '\\n[target."cfg(target_family = \\"unix\\")".dependencies]\\nlibc = { workspace = true }\\n'
+    cargo += '\n[target."cfg(target_family = \\"unix\\")".dependencies]\nlibc = { workspace = true }\n'
 p.write_text(cargo)
 
 p = Path("codex/codex-rs/runtime-agent-instance/src/installation_id.rs")
 s = p.read_text()
 if "fn android_file_lock" not in s:
     s = s.replace(
-        "use std::fs::OpenOptions;\\n",
-        "use std::fs::File;\\nuse std::fs::OpenOptions;\\n"
+        "use std::fs::OpenOptions;\n",
+        "use std::fs::File;\nuse std::fs::OpenOptions;\n"
     )
     marker = "const INSTALLATION_ID_FILENAME: &str = \\"installation_id\\";"
     helpers = marker + """
