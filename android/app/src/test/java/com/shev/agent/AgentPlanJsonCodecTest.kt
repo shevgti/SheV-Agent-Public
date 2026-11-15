@@ -1,7 +1,6 @@
 package com.shev.agent
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -9,7 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AgentPlanJsonCodecTest {
-    private val valid = """{"summary":"Найти информацию","steps":[{"id":"search-1","title":"Поиск","toolId":"agent.web_search","capability":"READ_REMOTE_DATA","input":"{\\"query\\":\\"погода\\"}"}]}"""
+    private val valid = """{"summary":"Найти информацию","steps":[{"id":"search-1","title":"Поиск","toolId":"agent.web_search","capability":"READ_REMOTE_DATA","input":"{}"}]}"""
 
     @Test
     fun decodesAndCanonicalizesAValidPlan() {
