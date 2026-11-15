@@ -1080,8 +1080,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     append("Доступные локальные инструменты и точные схемы аргументов:\n")
                     append(toolCatalog).append("\n\n")
                     append("Сформируй конкретный безопасный план. Не включай инструменты, которых нет в каталоге. ")
-                    append("Если просьба не может быть реализована перечисленными инструментами, верни JSON с планом, ")
-                    append("который не проходит валидацию не придумывай новые инструменты; лучше сообщи об ограничении.")
+                    append("Если просьба не может быть реализована перечисленными инструментами, верни тот же JSON-формат ")
+                    append("с пустым массивом steps; не придумывай новые инструменты и не маскируй отсутствие возможности.")
                 }
 
                 val validator = AgentPlanValidator(registry)
@@ -1182,7 +1182,13 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 }
             } finally {
-                mutableState.update { it.copy(busy = false, streamingMessage = null) }
+                mutableState.update {
+                    it.copy(
+                        busy = false,
+                        streamingMessage = null,
+                        codexStatus = if (it.codexConnected) "Codex готов" else it.codexStatus
+                    )
+                }
             }
         }
     }
@@ -1195,6 +1201,10 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val started = client.startTurn(threadId, prompt)
         val turnId = started.getAsJsonObject("turn")?.get("id")?.asString
             ?: throw IllegalStateException("Codex не вернул идентификатор хода планирования.")
+        val previousThreadId = codexActiveThreadId
+        val previousTurnId = codexActiveTurnId
+        codexActiveThreadId = threadId
+        codexActiveTurnId = turnId
         val answer = StringBuilder()
         val completed = CompletableDeferred<JsonObject>()
         val collector = launch(Dispatchers.IO) {
@@ -1250,6 +1260,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 ?: throw IllegalStateException("Codex не вернул JSON-план.")
         } finally {
             collector.cancel()
+            codexActiveThreadId = previousThreadId
+            codexActiveTurnId = previousTurnId
         }
     }
 
