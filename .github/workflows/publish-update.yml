@@ -104,7 +104,8 @@ jobs:
               )
 
           previous = int(match.group(1))
-          next_code = max(baseline, previous) + 1
+          # Reserve the next code for an installable PR/test APK; the published release follows it.
+          next_code = max(baseline, previous) + 2
           if next_code > 2_100_000_000:
               raise SystemExit("Android versionCode limit reached.")
 
