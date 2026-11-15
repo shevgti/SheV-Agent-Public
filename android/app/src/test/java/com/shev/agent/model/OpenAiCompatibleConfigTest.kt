@@ -31,6 +31,19 @@ class OpenAiCompatibleConfigTest {
         )
     }
 
+    @Test fun supportsDeepSeekRootEndpointWithoutAddingV1() {
+        assertEquals(
+            "https://api.deepseek.com",
+            OpenAiCompatibleConfig(
+                "https://api.deepseek.com",
+                "deepseek-flash",
+                "secret-token",
+                "DeepSeek",
+                appendV1IfMissing = false
+            ).validatedBaseUrl()
+        )
+    }
+
     @Test fun rejectsPlainHttpForAllEndpoints() {
         assertFalse(runCatching { config("http://127.0.0.1:20128/v1").validatedBaseUrl() }.isSuccess)
         assertFalse(runCatching { config("http://192.168.1.20:1234/v1").validatedBaseUrl() }.isSuccess)
