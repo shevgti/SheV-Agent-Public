@@ -521,7 +521,7 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
                                 val allStepsReviewed = planHashValid && plan != null &&
                                     persistedSteps.size == plan.steps.size &&
                                     persistedSteps.all {
-                                        it.status == AgentTaskStepEntity.COMPLETED && it.planHash == task.planHash
+                                        it.status == AgentTaskStepEntity.COMPLETED && it.planHash == task.planHash && it.output.isNotBlank()
                                     }
                                 Button(
                                     enabled = actingTaskId == null && allStepsReviewed,
