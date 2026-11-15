@@ -32,6 +32,19 @@ class AgentTaskOrchestratorTest {
         assertEquals(AgentPhase.COMPLETED, completed.state.task.phase)
     }
 
+    @Test fun onlyApprovedTaskCanEnterRunningPhase() {
+        val waiting = AgentTaskOrchestrator.transition(state(), AgentWorkflowCommand.REQUEST_START).state
+        val approved = AgentTaskOrchestrator.transition(waiting, AgentWorkflowCommand.APPROVE).state
+        val running = AgentTaskOrchestrator.transition(approved, AgentWorkflowCommand.START_EXECUTION)
+        assertTrue(running.accepted)
+        assertEquals(AgentPhase.RUNNING, running.state.task.phase)
+        assertEquals(approved.revision + 1, running.state.revision)
+
+        val unapproved = AgentTaskOrchestrator.transition(state(), AgentWorkflowCommand.START_EXECUTION)
+        assertFalse(unapproved.accepted)
+        assertEquals(AgentWorkflowRejection.INVALID_PHASE, unapproved.rejection)
+    }
+
     @Test fun completionCannotSkipVerification() {
         val running = AgentTaskOrchestrator.transition(
             state(requiresApproval = false), AgentWorkflowCommand.REQUEST_START
