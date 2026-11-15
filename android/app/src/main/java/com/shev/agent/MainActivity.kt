@@ -44,6 +44,7 @@ import com.shev.agent.AgentPlanJsonCodec
 import com.shev.agent.creator.AgentCreatorScreen
 import com.shev.agent.data.AgentSkillLibrary
 import com.shev.agent.data.AgentTaskRepositoryResult
+import com.shev.agent.data.AgentTaskStepEntity
 import com.shev.agent.data.AgentSkillLibraryScreen
 import com.shev.agent.data.SheVAgentDatabase
 import com.shev.agent.data.SheVAgentDatabaseProvider
@@ -258,6 +259,8 @@ private fun SheVAgentApp(
 @Composable
 private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
     val tasks by viewModel.tasks.collectAsState(initial = emptyList())
+    val allTaskSteps by viewModel.taskSteps.collectAsState(initial = emptyList())
+    val viewState by viewModel.state.collectAsState()
     val scope = rememberCoroutineScope()
     var actionMessage by remember { mutableStateOf<String?>(null) }
     var actingTaskId by remember { mutableStateOf<String?>(null) }
@@ -277,6 +280,11 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
             style = MaterialTheme.typography.bodySmall
         )
         actionMessage?.let {
+            Card {
+                Text(it, modifier = Modifier.fillMaxWidth().padding(12.dp))
+            }
+        }
+        viewState.taskExecutionMessage?.let {
             Card {
                 Text(it, modifier = Modifier.fillMaxWidth().padding(12.dp))
             }
@@ -333,6 +341,33 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
                                 color = MaterialTheme.colorScheme.error
                             )
                         }
+                        val persistedSteps = allTaskSteps.filter { it.taskId == task.id }
+                        if (persistedSteps.isNotEmpty()) {
+                            Text("Ход выполнения", style = MaterialTheme.typography.titleSmall)
+                            persistedSteps.forEach { step ->
+                                val stepStatus = when (step.status) {
+                                    AgentTaskStepEntity.PENDING -> "Ожидает"
+                                    AgentTaskStepEntity.RUNNING -> "Выполняется"
+                                    AgentTaskStepEntity.COMPLETED -> "Готово"
+                                    AgentTaskStepEntity.FAILED -> "Ошибка"
+                                    AgentTaskStepEntity.INTERRUPTED -> "Прервано"
+                                    else -> "Неизвестно"
+                                }
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text("${step.position + 1}. ${step.title} — $stepStatus")
+                                    if (step.output.isNotBlank()) {
+                                        Text(
+                                            step.output.take(1200) + if (step.output.length > 1200) "…" else "",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    step.errorCode?.let {
+                                        Text("Код ошибки: $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                            }
+                        }
                         when (task.phase) {
                             AgentPhase.WAITING_APPROVAL.name -> {
                                 Text(
@@ -377,7 +412,39 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
                             }
                             AgentPhase.APPROVED.name -> {
                                 Text(
-                                    "Одобрено. Ожидает подключения исполнителя; ничего ещё не запускалось.",
+                                    "План одобрен. Запуск начнёт выполнять только показанные выше шаги.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        enabled = actingTaskId == null && planHashValid,
+                                        onClick = {
+                                            viewModel.startTaskExecution(task)
+                                            actionMessage = "Поручение запущено. Прогресс будет сохраняться по каждому шагу."
+                                        }
+                                    ) { Text("Запустить") }
+                                    TextButton(
+                                        enabled = actingTaskId == null,
+                                        onClick = {
+                                            scope.launch {
+                                                actingTaskId = task.id
+                                                try {
+                                                    actionMessage = taskActionMessage(
+                                                        viewModel.cancelTaskFromUser(task),
+                                                        approved = false
+                                                    )
+                                                } finally {
+                                                    actingTaskId = null
+                                                }
+                                            }
+                                        }
+                                    ) { Text("Отменить") }
+                                }
+                            }
+                            AgentPhase.RUNNING.name -> {
+                                Text(
+                                    "Исполнитель работает. Каждый завершённый шаг сохраняется отдельно.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -396,12 +463,48 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
                                             }
                                         }
                                     }
-                                ) { Text("Отменить") }
+                                ) { Text("Отменить выполнение") }
                             }
-                            AgentPhase.PLANNING.name,
-                            AgentPhase.RUNNING.name,
-                            AgentPhase.VERIFYING.name,
                             AgentPhase.PAUSED.name -> {
+                                Text(
+                                    "Выполнение остановлено. Уже завершённые шаги сохранены; продолжение начнёт с оставшихся.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        enabled = actingTaskId == null && planHashValid,
+                                        onClick = {
+                                            viewModel.startTaskExecution(task)
+                                            actionMessage = "Продолжаю поручение с первого незавершённого шага."
+                                        }
+                                    ) { Text("Продолжить") }
+                                    TextButton(
+                                        enabled = actingTaskId == null,
+                                        onClick = {
+                                            scope.launch {
+                                                actingTaskId = task.id
+                                                try {
+                                                    actionMessage = taskActionMessage(
+                                                        viewModel.cancelTaskFromUser(task),
+                                                        approved = false
+                                                    )
+                                                } finally {
+                                                    actingTaskId = null
+                                                }
+                                            }
+                                        }
+                                    ) { Text("Отменить") }
+                                }
+                            }
+                            AgentPhase.VERIFYING.name -> {
+                                Text(
+                                    "Шаги выполнены. Нужна независимая проверка результата; пока поручение не считается завершённым.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            AgentPhase.PLANNING.name -> {
                                 TextButton(
                                     enabled = actingTaskId == null,
                                     onClick = {
