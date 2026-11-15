@@ -47,8 +47,10 @@ import java.util.UUID
 import com.google.gson.JsonParser
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,6 +60,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.collect
 import java.util.concurrent.ConcurrentHashMap
 
@@ -807,6 +810,10 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
 
     /** Persistent ChatGPT agent session hosted by the official embedded Codex App Server. */
     private fun sendViaCodex(message: String) {
+        if (CodexTaskDraftResponseParser.isExplicitTaskDraftRequest(message)) {
+            sendViaCodexTaskDraft(message)
+            return
+        }
         mutableState.update {
             it.copy(
                 prompt = "",
@@ -885,7 +892,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
 
                         when (method) {
                             "item/agentMessage/delta" -> {
-                                if (eventTurnId == null || eventTurnId == turnId) {
+                                if (eventTurnId == turnId) {
                                     val delta = params.get("delta")?.asString.orEmpty()
                                     if (delta.isNotEmpty()) {
                                         answer.append(delta)
@@ -897,7 +904,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                             }
                             "item/completed" -> {
                                 val item = params.getAsJsonObject("item")
-                                if (item?.get("type")?.asString == "agentMessage" && answer.isEmpty()) {
+                                if (eventTurnId == turnId && item?.get("type")?.asString == "agentMessage" && answer.isEmpty()) {
                                     val text = item.getAsJsonArray("content")?.mapNotNull { part ->
                                         part.takeIf { it.isJsonObject }?.asJsonObject
                                             ?.get("text")?.asString
@@ -997,6 +1004,295 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /** Direct OpenRouter API route using the OpenAI-compatible chat completions endpoint. */
+    /**
+     * Uses the authenticated ChatGPT/Codex account to propose a task plan, then validates and
+     * saves it locally. Codex only plans in a separate read-only thread; the local executor runs
+     * nothing until the user approves the saved plan in the task inbox.
+     */
+    private fun sendViaCodexTaskDraft(message: String) {
+        mutableState.update {
+            it.copy(
+                prompt = "",
+                busy = true,
+                error = null,
+                streamingMessage = null,
+                messages = it.messages + "Вы: $message",
+                codexStatus = "Готовлю план поручения…"
+            )
+        }
+        responseJob = viewModelScope.launch(Dispatchers.IO) {
+            val userMessageId = UUID.randomUUID().toString()
+            try {
+                val client = ensureCodexClient()
+                val account = client.accountRead(true).get("account")
+                    ?.takeIf { it.isJsonObject }?.asJsonObject
+                require(account?.get("type")?.asString == "chatgpt") {
+                    "Сначала подключи аккаунт ChatGPT в настройках Codex."
+                }
+                mutableState.update { it.copy(codexConnected = true, codexStatus = "Codex готов") }
+                val preferences = getApplication<Application>()
+                    .getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
+                val modelId = preferences.getString("model_id", mutableState.value.codexModelId).orEmpty()
+                require(modelId.isNotBlank()) { "Не выбрана модель ChatGPT/Codex." }
+
+                val history = dao.getRecentCompletedConversationMessages(CONTEXT_HISTORY_LIMIT).asReversed()
+                    .map { it.copy(content = LocalMessageCipher.decrypt(it.content)) }
+                val summaryRead = conversationStateRepository.readSummary()
+                val conversationContext = ConversationContextBuilder.build(
+                    chronologicalHistory = history,
+                    currentMessage = message,
+                    rollingSummary = (summaryRead as? ConversationSummaryRead.Ready)?.plaintext,
+                    summaryThroughMessageId = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
+                )
+                dao.appendConversationMessage(
+                    ConversationMessageEntity(
+                        id = userMessageId,
+                        role = ConversationContextBuilder.ROLE_USER,
+                        content = LocalMessageCipher.encrypt(message),
+                        status = ConversationContextBuilder.STATUS_PENDING,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+
+                createAgentToolHost()
+                val registry = checkNotNull(agentToolRegistry) { "Реестр локальных инструментов не создан." }
+                val blocked = setOf(
+                    SheVAgentAdkTools.TOOL_ID,
+                            SheVAgentAdkTools.CREATE_TASK_DRAFT_ID,
+                    SheVAgentAdkTools.SAVE_SKILL_DRAFT_TOOL_ID
+                )
+                val allowedPlanToolIds = registry.list().mapTo(linkedSetOf()) { it.id } - blocked
+                require(allowedPlanToolIds.isNotEmpty()) { "Нет доступных локальных инструментов для поручений." }
+                val toolCatalog = registry.list().filter { it.id in allowedPlanToolIds }.joinToString("\n") { tool ->
+                    "${tool.id} | capabilities: ${tool.capabilities.joinToString { it.name }} | " +
+                        "${tool.title}: ${tool.description} | input: ${tool.inputSchema?.describe() ?: "schema unavailable"}"
+                }
+
+                val developerInstructions =
+                    "Ты — планировщик поручений внутри SheV Agent. Всегда отвечай по-русски. " +
+                    "Ты не исполнитель: не запускай инструменты, web search, команды, код или изменения файлов. " +
+                    "Используй только каталог локальных инструментов, который будет передан в сообщении. " +
+                    "Верни строго один JSON-объект без Markdown и пояснений: " +
+                    "{\"title\":\"краткое название\",\"plan\":{\"summary\":\"цель\",\"steps\":[{\"id\":\"step-1\",\"title\":\"действие\",\"toolId\":\"точный id\",\"capability\":\"точное имя capability\",\"input\":\"JSON-строка аргументов\"}]}}. " +
+                    "Используй только инструменты и поля input из переданного каталога. " +
+                    "План должен содержать от 1 до 8 шагов. Никаких других ключей."
+                val threadId = client.startThread(modelId, developerInstructions)
+                val basePrompt = buildString {
+                    append("Подготовь черновик поручения по явной просьбе пользователя.\n")
+                    append("Контекст диалога:\n").append(conversationContext).append("\n\n")
+                    append("Доступные локальные инструменты и точные схемы аргументов:\n")
+                    append(toolCatalog).append("\n\n")
+                    append("Сформируй конкретный безопасный план. Не включай инструменты, которых нет в каталоге. ")
+                    append("Если просьба не может быть реализована перечисленными инструментами, верни тот же JSON-формат ")
+                    append("с пустым массивом steps; не придумывай новые инструменты и не маскируй отсутствие возможности.")
+                }
+
+                val validator = AgentPlanValidator(registry)
+                var parsed: ParsedCodexTaskDraft? = null
+                var validationMessage = "Codex не вернул корректный JSON-план."
+                for (attempt in 0..1) {
+                    val prompt = if (attempt == 0) basePrompt else {
+                        basePrompt + "\n\nПредыдущий ответ отклонён валидатором: " +
+                            validationMessage + ". Исправь JSON и верни только объект по заданной схеме."
+                    }
+                    val raw = runCodexTaskPlanTurn(client, threadId, prompt)
+                    val candidate = CodexTaskDraftResponseParser.parse(raw)
+                    if (candidate == null) {
+                        validationMessage = "Ответ не соответствует JSON-схеме title + plan."
+                        continue
+                    }
+                    val plan = AgentPlanJsonCodec.decode(candidate.planJson)
+                    if (plan == null) {
+                        validationMessage = "Структура плана некорректна."
+                        continue
+                    }
+                    val validation = validator.validate(plan)
+                    val disallowed = plan.steps.firstOrNull { it.toolId !in allowedPlanToolIds }
+                    if (!validation.accepted) {
+                        validationMessage = "Шаг ${validation.stepId ?: "?"}: ${validation.rejection}."
+                        continue
+                    }
+                    if (disallowed != null) {
+                        validationMessage = "Инструмент ${disallowed.toolId} отсутствует в разрешённом каталоге."
+                        continue
+                    }
+                    parsed = candidate
+                    break
+                }
+                val draft = parsed ?: throw IllegalStateException(
+                    "Не удалось подготовить безопасный план: $validationMessage"
+                )
+                val plan = AgentPlanJsonCodec.decode(draft.planJson)
+                    ?: throw IllegalStateException("План не прошёл повторную проверку.")
+                val canonicalPlan = AgentPlanJsonCodec.canonicalJson(plan)
+                val planHash = AgentPlanJsonCodec.sha256(canonicalPlan)
+                val now = System.currentTimeMillis()
+                val bucket = now / 60_000L
+                val taskId = UUID.nameUUIDFromBytes(
+                    "shev-codex-task-v1:$bucket:${draft.title}:$planHash".toByteArray()
+                ).toString()
+                val draftResult = taskRepository.createDraft(
+                    AgentTaskDraftRequest(
+                        taskId = taskId,
+                        title = draft.title,
+                        eventId = UUID.randomUUID().toString(),
+                        idempotencyKey = "codex-task-draft:$taskId",
+                        occurredAtEpochMillis = now,
+                        planJson = canonicalPlan
+                    )
+                )
+                val assistantText = when (draftResult) {
+                    is AgentTaskDraftResult.Created ->
+                        "Черновик поручения «${draftResult.state.task.title}» сохранён. План из ${plan.steps.size} шагов находится во вкладке «Поручения». Проверь шаги и параметры, затем подтверди план. Ничего не запускалось."
+                    is AgentTaskDraftResult.Replayed ->
+                        "Этот черновик поручения уже сохранён во вкладке «Поручения». Проверь ранее сохранённый план. Ничего не запускалось."
+                    AgentTaskDraftResult.InvalidRequest ->
+                        throw IllegalStateException("Локальный репозиторий отклонил черновик поручения.")
+                    AgentTaskDraftResult.Conflict ->
+                        throw IllegalStateException("Обнаружен конфликт повторного сохранения поручения.")
+                    AgentTaskDraftResult.NotFound ->
+                        throw IllegalStateException("Не удалось найти сохранённое поручение.")
+                }
+                dao.appendConversationMessage(
+                    ConversationMessageEntity(
+                        id = UUID.randomUUID().toString(),
+                        role = ConversationContextBuilder.ROLE_ASSISTANT,
+                        content = LocalMessageCipher.encrypt(assistantText),
+                        status = ConversationContextBuilder.STATUS_COMPLETE,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+                dao.updateConversationMessageStatus(userMessageId, ConversationContextBuilder.STATUS_COMPLETE)
+                mutableState.update {
+                    it.copy(
+                        messages = it.messages + "SheV: $assistantText",
+                        streamingMessage = null,
+                        codexApproval = null,
+                        codexStatus = "Codex готов",
+                        codexConnected = true,
+                        taskExecutionMessage = "План подготовлен ChatGPT и сохранён локально. Исполнение ожидает отдельного подтверждения."
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                dao.updateConversationMessageStatus(userMessageId, ConversationContextBuilder.STATUS_FAILED)
+                throw cancelled
+            } catch (failure: Exception) {
+                dao.updateConversationMessageStatus(userMessageId, ConversationContextBuilder.STATUS_FAILED)
+                mutableState.update {
+                    it.copy(
+                        error = failure.message ?: failure.javaClass.simpleName + ": не удалось подготовить поручение.",
+                        streamingMessage = null,
+                        codexApproval = null,
+                        codexStatus = if (it.codexConnected) "Codex готов" else "Codex не подключён"
+                    )
+                }
+            } finally {
+                mutableState.update { it.copy(busy = false, streamingMessage = null) }
+            }
+        }
+    }
+
+    private suspend fun runCodexTaskPlanTurn(
+        client: CodexAppServerClient,
+        threadId: String,
+        prompt: String
+    ): String = coroutineScope {
+        val started = client.startTurn(threadId, prompt)
+        val turnId = started.getAsJsonObject("turn")?.get("id")?.asString
+            ?: throw IllegalStateException("Codex не вернул идентификатор хода планирования.")
+        val previousThreadId = codexActiveThreadId
+        val previousTurnId = codexActiveTurnId
+        codexActiveThreadId = threadId
+        codexActiveTurnId = turnId
+        val answer = StringBuilder()
+        val completed = CompletableDeferred<JsonObject>()
+        suspend fun abortPlanningTurn(reason: String) {
+            if (completed.isCompleted) return
+            withContext(NonCancellable) {
+                try { client.interrupt(threadId, turnId) } catch (_: Exception) { }
+            }
+            completed.completeExceptionally(IllegalStateException(reason))
+        }
+        val collector = launch(Dispatchers.IO) {
+            client.events.collect { event ->
+                val method = event.get("method")?.asString.orEmpty()
+                val params = event.getAsJsonObject("params") ?: JsonObject()
+                val eventThreadId = params.get("threadId")?.asString
+                val eventTurnId = params.get("turnId")?.asString
+                    ?: params.getAsJsonObject("turn")?.get("id")?.asString
+                if (eventThreadId != null && eventThreadId != threadId) return@collect
+                if (eventTurnId != null && eventTurnId != turnId) return@collect
+                when (method) {
+                    "item/agentMessage/delta" -> {
+                        if (eventTurnId == turnId) {
+                            answer.append(params.get("delta")?.asString.orEmpty())
+                        }
+                    }
+                    "item/started" -> {
+                        val itemType = params.getAsJsonObject("item")?.get("type")?.asString
+                        if (eventTurnId == turnId && itemType in setOf("commandExecution", "fileChange", "webSearch", "mcpToolCall", "toolCall")) {
+                            abortPlanningTurn(
+                                "Планировщик попытался запустить команду или изменить файлы. Запрос остановлен."
+                            )
+                        }
+                    }
+                    "item/completed" -> {
+                        val item = params.getAsJsonObject("item")
+                        val itemType = item?.get("type")?.asString
+                        if (eventTurnId == turnId && itemType in setOf("commandExecution", "fileChange")) {
+                            abortPlanningTurn(
+                                "Планировщик попытался выполнить команду или изменить файлы. Запрос остановлен."
+                            )
+                        } else if (eventTurnId == turnId && itemType == "agentMessage" && answer.isEmpty()) {
+                            val text = item.getAsJsonArray("content")?.mapNotNull { part ->
+                                part.takeIf { it.isJsonObject }?.asJsonObject?.get("text")?.asString
+                            }?.joinToString("").orEmpty()
+                            if (text.isNotBlank()) answer.append(text)
+                        }
+                    }
+                    "turn/completed" -> {
+                        if (eventTurnId == turnId || params.getAsJsonObject("turn")?.get("id")?.asString == turnId) {
+                            completed.complete(params)
+                        }
+                    }
+                    "item/commandExecution/requestApproval",
+                    "item/fileChange/requestApproval" -> {
+                        abortPlanningTurn(
+                            "Планировщик попытался запросить выполнение команды или изменение файлов. Запрос остановлен."
+                        )
+                    }
+                }
+            }
+        }
+        try {
+            val completion = withTimeout(180_000L) { completed.await() }
+            val turn = completion.get("turn")?.takeIf { it.isJsonObject }?.asJsonObject
+            val status = turn?.get("status")?.asString.orEmpty()
+            if (status != "completed") {
+                val error = turn?.get("error")?.let { value ->
+                    if (value.isJsonObject) value.asJsonObject.get("message")?.asString else null
+                }
+                throw IllegalStateException(error ?: "Codex завершил планирование со статусом $status.")
+            }
+            answer.toString().trim().takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("Codex не вернул JSON-план.")
+        } catch (timeout: TimeoutCancellationException) {
+            withContext(NonCancellable) {
+                try { client.interrupt(threadId, turnId) } catch (_: Exception) { }
+            }
+            throw IllegalStateException("Codex не подготовил план за три минуты.", timeout)
+        } catch (cancelled: CancellationException) {
+            withContext(NonCancellable) {
+                try { client.interrupt(threadId, turnId) } catch (_: Exception) { }
+            }
+            throw cancelled
+        } finally {
+            collector.cancel()
+            codexActiveThreadId = previousThreadId
+            codexActiveTurnId = previousTurnId
+        }
+    }
+
     private fun sendViaOpenRouter(message: String) {
         mutableState.update {
             it.copy(prompt = "", busy = true, error = null, messages = it.messages + "Вы: $message")
