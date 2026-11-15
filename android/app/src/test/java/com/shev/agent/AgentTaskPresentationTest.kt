@@ -34,10 +34,10 @@ class AgentTaskPresentationTest {
         )
     }
 
-    @Test fun approvedTaskClearlyWaitsForAnExecutor() {
-        assertEquals("Одобрена — ждёт исполнителя", AgentTaskPresentation.statusLabel(AgentPhase.APPROVED.name))
+    @Test fun approvedTaskClearlyShowsItCanBeStarted() {
+        assertEquals("Одобрена — готова к запуску", AgentTaskPresentation.statusLabel(AgentPhase.APPROVED.name))
         val tasks = listOf(task("1", "Одобрено", AgentPhase.APPROVED.name))
-        assertEquals(listOf("1"), AgentTaskPresentation.filter(tasks, "", "Одобрена — ждёт исполнителя").map { it.id })
+        assertEquals(listOf("1"), AgentTaskPresentation.filter(tasks, "", "Одобрена — готова к запуску").map { it.id })
     }
 
     @Test fun filtersByHumanReadableStatus() {

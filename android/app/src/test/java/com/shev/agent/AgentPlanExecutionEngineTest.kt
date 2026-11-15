@@ -67,6 +67,51 @@ class AgentPlanExecutionEngineTest {
         assertTrue(result.steps.single().output.contains("https://example.org"))
     }
 
+    @Test fun persistsStepStartAndFinishCallbacksInOrder() = runBlocking {
+        val registry = registry()
+        val executor = AgentToolExecutor(
+            registry,
+            mapOf("research.lookup" to AgentTool { AgentToolResult(true, "verified output") })
+        )
+        val engine = AgentPlanExecutionEngine(AgentPlanValidator(registry), executor)
+        val events = mutableListOf<String>()
+
+        val result = engine.executeApprovedPlan(
+            plan(),
+            agentAllowedToolIds = setOf("research.lookup"),
+            context = AgentToolExecutionContext(setOf(AgentCapability.ANALYZE_DATA)),
+            onStepStarted = { events += "started:${it.id}" },
+            onStepFinished = { events += "finished:${it.stepId}:${it.success}" }
+        )
+
+        assertEquals(AgentPlanExecutionStatus.EXECUTED_NEEDS_VERIFICATION, result.status)
+        assertEquals(listOf("started:search-1", "finished:search-1:true"), events)
+    }
+
+    @Test fun failedStepIsReportedToDurableProgressCallback() = runBlocking {
+        val registry = registry()
+        val executor = AgentToolExecutor(
+            registry,
+            mapOf("research.lookup" to AgentTool {
+                AgentToolResult(false, "upstream unavailable", "UPSTREAM_ERROR")
+            })
+        )
+        val engine = AgentPlanExecutionEngine(AgentPlanValidator(registry), executor)
+        var finished: AgentPlanStepExecution? = null
+
+        val result = engine.executeApprovedPlan(
+            plan(),
+            agentAllowedToolIds = setOf("research.lookup"),
+            context = AgentToolExecutionContext(setOf(AgentCapability.ANALYZE_DATA)),
+            onStepFinished = { finished = it }
+        )
+
+        assertEquals(AgentPlanExecutionStatus.STEP_FAILED, result.status)
+        assertEquals(false, finished?.success)
+        assertEquals("UPSTREAM_ERROR", finished?.errorCode)
+        assertEquals("search-1", finished?.stepId)
+    }
+
     @Test fun agentAllowlistDenialStopsBeforeHandlerAndDoesNotClaimCompletion() = runBlocking {
         var calls = 0
         val registry = registry()

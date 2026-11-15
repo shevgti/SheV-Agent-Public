@@ -21,6 +21,75 @@ interface AgentDao {
     @Query("SELECT * FROM agent_tasks ORDER BY updatedAtEpochMillis DESC")
     fun observeTasks(): Flow<List<AgentTaskEntity>>
 
+    @Query("SELECT * FROM agent_task_steps ORDER BY taskId ASC, position ASC")
+    fun observeAllTaskSteps(): Flow<List<AgentTaskStepEntity>>
+
+    @Query("SELECT * FROM agent_task_steps WHERE taskId = :taskId ORDER BY position ASC")
+    fun observeTaskSteps(taskId: String): Flow<List<AgentTaskStepEntity>>
+
+    @Query("SELECT * FROM agent_task_steps WHERE taskId = :taskId ORDER BY position ASC")
+    suspend fun getTaskSteps(taskId: String): List<AgentTaskStepEntity>
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertTaskSteps(steps: List<AgentTaskStepEntity>)
+
+    @Query("""
+        UPDATE agent_task_steps
+        SET status = 'RUNNING',
+            output = '',
+            errorCode = NULL,
+            startedAtEpochMillis = :startedAtEpochMillis,
+            finishedAtEpochMillis = NULL
+        WHERE taskId = :taskId
+          AND stepId = :stepId
+          AND planHash = :planHash
+          AND status IN ('PENDING', 'INTERRUPTED', 'FAILED')
+    """)
+    suspend fun markTaskStepStarted(
+        taskId: String,
+        stepId: String,
+        planHash: String,
+        startedAtEpochMillis: Long
+    ): Int
+
+    @Query("""
+        UPDATE agent_task_steps
+        SET status = :status,
+            output = :output,
+            errorCode = :errorCode,
+            finishedAtEpochMillis = :finishedAtEpochMillis
+        WHERE taskId = :taskId
+          AND stepId = :stepId
+          AND planHash = :planHash
+          AND status = 'RUNNING'
+    """)
+    suspend fun markTaskStepFinished(
+        taskId: String,
+        stepId: String,
+        planHash: String,
+        status: String,
+        output: String,
+        errorCode: String?,
+        finishedAtEpochMillis: Long
+    ): Int
+
+    @Query("""
+        UPDATE agent_task_steps
+        SET status = 'INTERRUPTED',
+            finishedAtEpochMillis = :finishedAtEpochMillis
+        WHERE taskId = :taskId
+          AND planHash = :planHash
+          AND status = 'RUNNING'
+    """)
+    suspend fun markRunningTaskStepsInterrupted(
+        taskId: String,
+        planHash: String,
+        finishedAtEpochMillis: Long
+    ): Int
+
+    @Query("SELECT * FROM agent_tasks WHERE phase = :phase ORDER BY updatedAtEpochMillis ASC")
+    suspend fun getTasksByPhase(phase: String): List<AgentTaskEntity>
+
     @Query("SELECT * FROM agent_tasks WHERE id = :taskId LIMIT 1")
     suspend fun getTask(taskId: String): AgentTaskEntity?
 
