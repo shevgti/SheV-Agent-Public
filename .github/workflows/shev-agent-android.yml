@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - fix/android-codex-file-locks
+      - feat/release-0.3.2-chatgpt-deepseek
     paths:
       - 'android/**'
       - 'scripts/**'
@@ -15,6 +16,7 @@ on:
   pull_request:
     branches:
       - main
+      - release/0.3.2-build.39
     paths:
       - 'android/**'
       - '.github/workflows/shev-agent-android.yml'
