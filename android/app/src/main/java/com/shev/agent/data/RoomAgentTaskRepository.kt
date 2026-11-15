@@ -341,6 +341,11 @@ class RoomAgentTaskRepository(
     }
 
     suspend fun transition(request: AgentTaskTransitionRequest): AgentTaskRepositoryResult {
+        // START_EXECUTION must go through startApprovedExecution so the plan-bound step ledger
+        // and the lifecycle event are committed atomically.
+        if (request.command == AgentWorkflowCommand.START_EXECUTION) {
+            return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_REQUEST)
+        }
         if (request.taskId.isBlank() ||
             request.eventId.isBlank() ||
             request.idempotencyKey.isBlank() ||
