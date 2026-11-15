@@ -18,23 +18,22 @@ import com.shev.agent.tools.generatedTools
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withTimeout
 import java.util.UUID
 import com.shev.agent.creator.AgentManifest
 import kotlinx.coroutines.withContext
 
-/** Creates the local ADK conversation before the runner receives its first message. */
+/** Stable identifiers and per-turn session IDs for the local ADK runtime. */
 internal object SheVAgentSession {
     const val APP_NAME = "SheVAgent"
     const val USER_ID = "local-user"
-    const val SESSION_ID = "main-session"
-    suspend fun initialize(sessionService: InMemorySessionService) {
-        sessionService.createSession(SessionKey(APP_NAME, USER_ID, SESSION_ID))
-    }
 
+    fun newChatTurnSessionId(): String = "chat-${UUID.randomUUID()}"
     fun newCreatorSessionId(): String = "creator-${UUID.randomUUID()}"
 }
 
@@ -49,15 +48,32 @@ class SheVAgentRuntime private constructor(
 ) : Closeable {
     private val closed = AtomicBoolean(false)
 
+    /**
+     * Runs one chat turn in an ephemeral ADK session. The encrypted Room transcript
+     * is the source of cross-turn context; reusing an ADK session here would append
+     * the already-expanded transcript again on every turn and grow context without bound.
+     */
     fun run(text: String): Flow<Event> {
         check(!closed.get()) { "SheV Agent runtime is closed." }
         require(text.isNotBlank())
-        return runner.runAsync(
-            userId = SheVAgentSession.USER_ID,
-            sessionId = SheVAgentSession.SESSION_ID,
-            newMessage = Content(role = Role.USER, parts = listOf(Part(text = text))),
-            runConfig = RunConfig(maxLlmCalls = MAX_LLM_CALLS)
-        )
+        return flow {
+            val sessionId = SheVAgentSession.newChatTurnSessionId()
+            val sessionKey = SessionKey(SheVAgentSession.APP_NAME, SheVAgentSession.USER_ID, sessionId)
+            sessionService.createSession(sessionKey)
+            try {
+                runner.runAsync(
+                    userId = SheVAgentSession.USER_ID,
+                    sessionId = sessionId,
+                    newMessage = Content(role = Role.USER, parts = listOf(Part(text = text))),
+                    runConfig = RunConfig(maxLlmCalls = MAX_LLM_CALLS)
+                ).collect { emit(it) }
+            } finally {
+                // Cancellation must not leave the in-memory conversation retained.
+                withContext(NonCancellable) {
+                    runCatching { sessionService.deleteSession(sessionKey) }
+                }
+            }
+        }
     }
 
     /** Tool-free creator runner: generated manifests cannot invoke host actions. */
@@ -235,7 +251,6 @@ class SheVAgentRuntime private constructor(
                         ?: SheVAgentModelFactory.DEFAULT_SKILLS
                     val agent = SheVAgentModelFactory.createAgent(activeModel, tools, enabledRoles, enabledSkills)
                     val sessionService = InMemorySessionService()
-                    SheVAgentSession.initialize(sessionService)
                     val activeRunner = InMemoryRunner(
                         agent = agent,
                         appName = SheVAgentSession.APP_NAME,
