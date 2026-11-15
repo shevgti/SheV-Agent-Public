@@ -1578,6 +1578,16 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         return result
     }
 
+    /** Completes a VERIFYING task only after an explicit user review of all saved step results. */
+    suspend fun completeTaskAfterUserReview(task: AgentTaskEntity): AgentTaskRepositoryResult =
+        taskRepository.completeFromUserReview(
+            taskId = task.id,
+            expectedRevision = task.revision,
+            eventId = UUID.randomUUID().toString(),
+            idempotencyKey = "user-complete-review:${task.id}:${task.revision}",
+            occurredAtEpochMillis = System.currentTimeMillis()
+        )
+
     /** Runs only an explicitly approved, offline, tool-free specialist definition. */
     suspend fun runApprovedSpecialist(manifestJson: String, input: String): String {
         require(input.isNotBlank()) { "Опиши задачу для специалиста." }
