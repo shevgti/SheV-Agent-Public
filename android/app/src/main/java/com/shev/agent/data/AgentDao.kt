@@ -43,7 +43,7 @@ interface AgentDao {
         WHERE taskId = :taskId
           AND stepId = :stepId
           AND planHash = :planHash
-          AND status IN ('PENDING', 'INTERRUPTED')
+          AND status IN ('PENDING', 'INTERRUPTED', 'FAILED')
     """)
     suspend fun markTaskStepStarted(
         taskId: String,
