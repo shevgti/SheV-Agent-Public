@@ -128,13 +128,22 @@ class AgentTaskExecutionCoordinator(
 
             if (execution.status == AgentPlanExecutionStatus.EXECUTED_NEEDS_VERIFICATION) {
                 beginVerification(taskId, revision)
-            } else if (execution.status == AgentPlanExecutionStatus.APPROVAL_REQUIRED) {
-                pauseRunning(taskId, revision, "Шаг ожидает отдельного разрешения. Остальные шаги не запускались.")
+            } else if (execution.status in setOf(
+                    AgentPlanExecutionStatus.APPROVAL_REQUIRED,
+                    AgentPlanExecutionStatus.ACCESS_DENIED,
+                    AgentPlanExecutionStatus.STEP_FAILED
+                )
+            ) {
+                pauseRunning(
+                    taskId,
+                    revision,
+                    "Выполнение остановлено на шаге ${execution.failedStepId ?: "неизвестно"} (${execution.status}). Исправь причину и нажми «Продолжить»."
+                )
             } else {
                 failRunning(
                     taskId,
                     revision,
-                    "Выполнение остановлено: ${execution.status}" +
+                    "Выполнение заблокировано: ${execution.status}" +
                         (execution.failedStepId?.let { " · шаг $it" } ?: "")
                 )
             }
