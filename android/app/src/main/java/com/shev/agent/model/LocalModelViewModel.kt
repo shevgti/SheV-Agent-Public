@@ -47,6 +47,7 @@ import java.util.UUID
 import com.google.gson.JsonParser
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
@@ -59,6 +60,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.collect
 import java.util.concurrent.ConcurrentHashMap
 
@@ -1273,6 +1275,16 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             }
             answer.toString().trim().takeIf { it.isNotBlank() }
                 ?: throw IllegalStateException("Codex не вернул JSON-план.")
+        } catch (timeout: TimeoutCancellationException) {
+            withContext(NonCancellable) {
+                try { client.interrupt(threadId, turnId) } catch (_: Exception) { }
+            }
+            throw IllegalStateException("Codex не подготовил план за три минуты.", timeout)
+        } catch (cancelled: CancellationException) {
+            withContext(NonCancellable) {
+                try { client.interrupt(threadId, turnId) } catch (_: Exception) { }
+            }
+            throw cancelled
         } finally {
             collector.cancel()
             codexActiveThreadId = previousThreadId
