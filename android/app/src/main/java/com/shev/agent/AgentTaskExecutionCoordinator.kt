@@ -65,8 +65,8 @@ class AgentTaskExecutionCoordinator(
                     idempotencyKey = "task-start:$taskId:$revision",
                     occurredAtEpochMillis = System.currentTimeMillis()
                 )
-                revision = started.revisionOrNull()
-                    ?: return rejected("Не удалось запустить поручение: $started")
+                revision = started.stateForPhase(AgentPhase.RUNNING)?.revision
+                    ?: return rejected("Поручение не перешло в RUNNING. Возможно, оно уже отменено или изменено.")
             }
             AgentPhase.PAUSED.name -> {
                 if (initial.resumePhase != AgentPhase.RUNNING.name) {
@@ -75,8 +75,8 @@ class AgentTaskExecutionCoordinator(
                 val resumed = taskRepository.transition(
                     transitionRequest(taskId, AgentWorkflowCommand.RESUME, revision, planHash)
                 )
-                revision = resumed.revisionOrNull()
-                    ?: return rejected("Не удалось продолжить поручение: $resumed")
+                revision = resumed.stateForPhase(AgentPhase.RUNNING)?.revision
+                    ?: return rejected("Поручение не перешло в RUNNING. Возможно, оно уже отменено или изменено.")
             }
             AgentPhase.RUNNING.name -> Unit
             AgentPhase.VERIFYING.name -> return AgentTaskExecutionCoordinatorResult(
@@ -170,13 +170,13 @@ class AgentTaskExecutionCoordinator(
         val result = taskRepository.transition(
             transitionRequest(taskId, AgentWorkflowCommand.BEGIN_VERIFICATION, revision, null)
         )
-        return if (result is AgentTaskRepositoryResult.Applied || result is AgentTaskRepositoryResult.Replayed) {
+        return if (result.stateForPhase(AgentPhase.VERIFYING) != null) {
             AgentTaskExecutionCoordinatorResult(
                 AgentTaskExecutionCoordinatorStatus.NEEDS_VERIFICATION,
                 "Все шаги выполнены. Поручение ожидает независимой проверки; пока оно не считается завершённым."
             )
         } else {
-            AgentTaskExecutionCoordinatorResult(AgentTaskExecutionCoordinatorStatus.FAILED, "Не удалось начать проверку: $result")
+            AgentTaskExecutionCoordinatorResult(AgentTaskExecutionCoordinatorStatus.FAILED, "Поручение не перешло в VERIFYING: $result")
         }
     }
 
@@ -188,10 +188,10 @@ class AgentTaskExecutionCoordinator(
         val result = taskRepository.transition(
             transitionRequest(taskId, AgentWorkflowCommand.PAUSE, revision, null)
         )
-        return if (result is AgentTaskRepositoryResult.Applied || result is AgentTaskRepositoryResult.Replayed) {
+        return if (result.stateForPhase(AgentPhase.PAUSED) != null) {
             AgentTaskExecutionCoordinatorResult(AgentTaskExecutionCoordinatorStatus.PAUSED, message)
         } else {
-            AgentTaskExecutionCoordinatorResult(AgentTaskExecutionCoordinatorStatus.FAILED, "Не удалось приостановить поручение: $result")
+            AgentTaskExecutionCoordinatorResult(AgentTaskExecutionCoordinatorStatus.FAILED, "Поручение не перешло в PAUSED: $result")
         }
     }
 
@@ -206,7 +206,7 @@ class AgentTaskExecutionCoordinator(
         val result = taskRepository.transition(
             transitionRequest(taskId, AgentWorkflowCommand.FAIL, current.revision, null)
         )
-        return if (result is AgentTaskRepositoryResult.Applied || result is AgentTaskRepositoryResult.Replayed) {
+        return if (result.stateForPhase(AgentPhase.FAILED) != null) {
             AgentTaskExecutionCoordinatorResult(AgentTaskExecutionCoordinatorStatus.FAILED, reason)
         } else {
             AgentTaskExecutionCoordinatorResult(AgentTaskExecutionCoordinatorStatus.FAILED, "$reason; статус не обновлён: $result")
@@ -228,9 +228,9 @@ class AgentTaskExecutionCoordinator(
         planHash = planHash
     )
 
-    private fun AgentTaskRepositoryResult.revisionOrNull(): Long? = when (this) {
-        is AgentTaskRepositoryResult.Applied -> state.revision
-        is AgentTaskRepositoryResult.Replayed -> state.revision
+    private fun AgentTaskRepositoryResult.stateForPhase(phase: AgentPhase): AgentWorkflowState? = when (this) {
+        is AgentTaskRepositoryResult.Applied -> state.takeIf { it.task.phase == phase }
+        is AgentTaskRepositoryResult.Replayed -> state.takeIf { it.task.phase == phase }
         else -> null
     }
 
