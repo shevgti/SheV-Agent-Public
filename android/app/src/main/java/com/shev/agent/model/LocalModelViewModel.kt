@@ -1218,13 +1218,28 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 if (eventTurnId != null && eventTurnId != turnId) return@collect
                 when (method) {
                     "item/agentMessage/delta" -> {
-                        if (eventTurnId == null || eventTurnId == turnId) {
+                        if (eventTurnId == turnId) {
                             answer.append(params.get("delta")?.asString.orEmpty())
+                        }
+                    }
+                    "item/started" -> {
+                        val itemType = params.getAsJsonObject("item")?.get("type")?.asString
+                        if (eventTurnId == turnId && itemType in setOf("commandExecution", "fileChange")) {
+                            completed.completeExceptionally(
+                                IllegalStateException("Планировщик попытался запустить команду или изменить файлы. Запрос остановлен.")
+                            )
+                            client.interrupt(threadId, turnId)
                         }
                     }
                     "item/completed" -> {
                         val item = params.getAsJsonObject("item")
-                        if (item?.get("type")?.asString == "agentMessage" && answer.isEmpty()) {
+                        val itemType = item?.get("type")?.asString
+                        if (eventTurnId == turnId && itemType in setOf("commandExecution", "fileChange")) {
+                            completed.completeExceptionally(
+                                IllegalStateException("Планировщик попытался выполнить команду или изменить файлы. Запрос остановлен.")
+                            )
+                            client.interrupt(threadId, turnId)
+                        } else if (eventTurnId == turnId && itemType == "agentMessage" && answer.isEmpty()) {
                             val text = item.getAsJsonArray("content")?.mapNotNull { part ->
                                 part.takeIf { it.isJsonObject }?.asJsonObject?.get("text")?.asString
                             }?.joinToString("").orEmpty()
