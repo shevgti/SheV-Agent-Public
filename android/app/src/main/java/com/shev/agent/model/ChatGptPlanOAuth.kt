@@ -47,10 +47,16 @@ internal class ChatGptPlanOAuth(
         val verifier = randomUrlSafe(32)
         val challenge = Base64.getUrlEncoder().withoutPadding()
             .encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(StandardCharsets.US_ASCII)))
-        val hostId = preferences.getString(KEY_HOST_ID, null) ?: "urn:uuid:${UUID.randomUUID()}".also {
-            preferences.edit().putString(KEY_HOST_ID, it).commit()
+        val storedSession = runCatching { load() }.getOrNull()
+        val hostId = preferences.getString(KEY_HOST_ID, null)
+            ?: storedSession?.hostId
+            ?: "urn:uuid:${UUID.randomUUID()}"
+        if (preferences.getString(KEY_HOST_ID, null) == null) {
+            check(preferences.edit().putString(KEY_HOST_ID, hostId).commit()) {
+                "Не удалось сохранить идентификатор устройства для входа ChatGPT."
+            }
         }
-        val existingSession = load()
+        val existingSession = storedSession?.takeIf { it.hostId == hostId }
 
         ServerSocket().use { server ->
             server.reuseAddress = false
