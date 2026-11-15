@@ -264,6 +264,7 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
     val scope = rememberCoroutineScope()
     var actionMessage by remember { mutableStateOf<String?>(null) }
     var actingTaskId by remember { mutableStateOf<String?>(null) }
+    var expandedStepOutputs by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -356,11 +357,25 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
                                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text("${step.position + 1}. ${step.title} — $stepStatus")
                                     if (step.output.isNotBlank()) {
+                                        val outputKey = "${task.id}:${step.stepId}"
+                                        val expanded = outputKey in expandedStepOutputs
                                         Text(
-                                            step.output.take(1200) + if (step.output.length > 1200) "…" else "",
+                                            if (expanded) step.output
+                                            else step.output.take(1200) + if (step.output.length > 1200) "…" else "",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                        if (step.output.length > 1200) {
+                                            TextButton(
+                                                onClick = {
+                                                    expandedStepOutputs = if (expanded) {
+                                                        expandedStepOutputs - outputKey
+                                                    } else {
+                                                        expandedStepOutputs + outputKey
+                                                    }
+                                                }
+                                            ) { Text(if (expanded) "Свернуть результат" else "Показать полный результат") }
+                                        }
                                     }
                                     step.errorCode?.let {
                                         Text("Код ошибки: $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
