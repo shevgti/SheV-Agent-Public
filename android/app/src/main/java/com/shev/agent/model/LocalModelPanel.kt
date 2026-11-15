@@ -693,6 +693,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                             )
                         }
                     }
+                    VoiceEnginesPanel()
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Бесплатные AI-модели · OpenRouter", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
