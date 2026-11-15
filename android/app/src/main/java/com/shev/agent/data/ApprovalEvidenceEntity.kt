@@ -20,6 +20,7 @@ data class ApprovalEvidenceEntity(
     val taskId: String,
     val expectedRevision: Long,
     val operation: String,
+    val planHash: String = "",
     val issuedAtEpochMillis: Long,
     val expiresAtEpochMillis: Long,
     val consumedAtEpochMillis: Long? = null
@@ -54,6 +55,7 @@ class RoomAgentTaskAuthorizationVerifier(
         taskId: String,
         expectedRevision: Long,
         evidenceRef: String,
+        planHash: String,
         nowMillis: Long
     ): Boolean {
         val hash = runCatching { ApprovalEvidenceToken.digest(evidenceRef) }.getOrNull()
@@ -63,6 +65,7 @@ class RoomAgentTaskAuthorizationVerifier(
             taskId = taskId,
             expectedRevision = expectedRevision,
             operation = APPROVE_OPERATION,
+            planHash = planHash,
             nowMillis = nowMillis
         ) == 1
     }
