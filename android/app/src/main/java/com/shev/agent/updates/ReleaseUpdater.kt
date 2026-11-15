@@ -6,6 +6,7 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -41,7 +42,11 @@ object ReleaseUpdater {
         }
     }
 
-    suspend fun downloadAndPromptInstall(context: Context, release: ReleaseInfo): Boolean =
+    suspend fun downloadAndPromptInstall(
+        context: Context,
+        release: ReleaseInfo,
+        onProgress: suspend (downloadedBytes: Long, totalBytes: Long) -> Unit = { _, _ -> }
+    ): Boolean =
         withContext(Dispatchers.IO) {
             val canInstall = withContext(Dispatchers.Main) {
                 if (!context.packageManager.canRequestPackageInstalls()) {
@@ -58,7 +63,7 @@ object ReleaseUpdater {
             val apkFile = File(context.cacheDir, APK_ASSET)
             val partialFile = File(context.cacheDir, "$APK_ASSET.part")
             partialFile.delete()
-            download(release.apkUrl, partialFile)
+            download(release.apkUrl, partialFile, release.apkSizeBytes, onProgress)
             val expected = readTrustedText(release.checksumUrl).trim().substringBefore(" ").lowercase()
             val actual = sha256(partialFile)
             check(expected.matches(Regex("[a-f0-9]{64}")) && expected == actual) {
@@ -149,7 +154,12 @@ object ReleaseUpdater {
         }
     }
 
-    private fun download(url: String, destination: File) {
+    private suspend fun download(
+        url: String,
+        destination: File,
+        expectedSizeBytes: Long,
+        onProgress: suspend (downloadedBytes: Long, totalBytes: Long) -> Unit
+    ) {
         var lastFailure: Throwable? = null
         repeat(DOWNLOAD_ATTEMPTS) { attempt ->
             try {
@@ -159,11 +169,19 @@ object ReleaseUpdater {
                     check(connection.responseCode in 200..299) {
                         "Ошибка скачивания APK: HTTP ${connection.responseCode}"
                     }
-                    val length = connection.contentLengthLong
-                    require(length < 0L || length <= MAX_APK_BYTES) {
+                    val contentLength = connection.contentLengthLong
+                    if (contentLength > 0L && expectedSizeBytes > 0L) {
+                        require(contentLength == expectedSizeBytes) {
+                            "Размер APK от GitHub не совпадает с метаданными релиза."
+                        }
+                    }
+                    val length = if (contentLength > 0L) contentLength else expectedSizeBytes
+                    require(length in 1L..MAX_APK_BYTES) {
                         "APK слишком большой: ${formatBytes(length)}. Лимит загрузчика: ${formatBytes(MAX_APK_BYTES)}."
                     }
                     var copied = 0L
+                    onProgress(0L, length)
+                    var lastReported = 0L
                     connection.inputStream.use { input ->
                         destination.outputStream().use { output ->
                             val buffer = ByteArray(128 * 1024)
@@ -175,18 +193,26 @@ object ReleaseUpdater {
                                     "APK превысил лимит загрузчика ${formatBytes(MAX_APK_BYTES)}."
                                 }
                                 output.write(buffer, 0, count)
+                                if (copied - lastReported >= 512L * 1024L) {
+                                    lastReported = copied
+                                    onProgress(copied, length)
+                                }
                             }
                             output.flush()
                         }
                     }
-                    require(copied > 0L && (length < 0L || copied == length)) {
+                    require(copied == length) {
                         "Загрузка APK прервалась: получено ${copied} из ${length} байт."
                     }
+                    onProgress(copied, length)
                     return
                 } finally {
                     connection.disconnect()
                 }
-            } catch (failure: Throwable) {
+            } catch (cancelled: CancellationException) {
+                destination.delete()
+                throw cancelled
+            } catch (failure: Exception) {
                 destination.delete()
                 lastFailure = failure
                 if (attempt + 1 < DOWNLOAD_ATTEMPTS) {
@@ -244,7 +270,7 @@ object ReleaseUpdater {
     private const val DOWNLOAD_READ_TIMEOUT_MS = 180_000
     private const val RETRY_DELAY_MS = 1_500L
     // Codex ARM64 runtime makes the installable APK ~203 MiB; leave headroom for future bundled runtimes.
-    private const val MAX_APK_BYTES = 350L * 1024L * 1024L
+    private const val MAX_APK_BYTES = 512L * 1024L * 1024L
 
     private fun formatBytes(bytes: Long): String = "%.1f MiB".format(bytes / (1024.0 * 1024.0))
     private const val MAX_CHECKSUM_CHARS = 1024
