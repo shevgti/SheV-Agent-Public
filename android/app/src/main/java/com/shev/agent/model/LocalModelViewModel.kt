@@ -1311,7 +1311,6 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val planValidator = AgentPlanValidator(registry)
         val allowedPlanToolIds = registry.list().mapTo(linkedSetOf()) { it.id } - setOf(
             SheVAgentAdkTools.TOOL_ID,
-            SheVAgentAdkTools.CURRENT_TIME_TOOL_ID,
             SheVAgentAdkTools.CREATE_TASK_DRAFT_ID,
             SheVAgentAdkTools.SAVE_SKILL_DRAFT_TOOL_ID
         )
@@ -1460,7 +1459,6 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val registry = checkNotNull(agentToolRegistry) { "Реестр инструментов SheV не создан." }
         val blocked = setOf(
             SheVAgentAdkTools.TOOL_ID,
-            SheVAgentAdkTools.CURRENT_TIME_TOOL_ID,
             SheVAgentAdkTools.CREATE_TASK_DRAFT_ID,
             SheVAgentAdkTools.SAVE_SKILL_DRAFT_TOOL_ID
         )
@@ -1495,7 +1493,6 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val context = checkNotNull(agentExecutionContext)
         val blocked = setOf(
             SheVAgentAdkTools.TOOL_ID,
-            SheVAgentAdkTools.CURRENT_TIME_TOOL_ID,
             SheVAgentAdkTools.CREATE_TASK_DRAFT_ID,
             SheVAgentAdkTools.SAVE_SKILL_DRAFT_TOOL_ID
         )
