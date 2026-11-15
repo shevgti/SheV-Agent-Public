@@ -15,7 +15,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-data class ReleaseInfo(val version: String, val versionCode: Int, val apkUrl: String, val checksumUrl: String)
+data class ReleaseInfo(val version: String, val versionCode: Int, val apkUrl: String, val checksumUrl: String, val apkSizeBytes: Long = 0L)
 
 object ReleaseUpdater {
     const val RELEASE_REPOSITORY = "shevgti/SheV-Agent-Public"
