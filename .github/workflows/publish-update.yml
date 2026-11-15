@@ -1,9 +1,13 @@
 name: Publish SheV Agent update
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - "SheV Agent Android"
     branches:
       - "release/0.3.2-build.39"
+    types:
+      - completed
   workflow_dispatch:
 permissions:
   contents: write
