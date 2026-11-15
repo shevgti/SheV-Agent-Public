@@ -58,6 +58,44 @@ jobs:
           if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
             ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
           fi
+      - name: Allocate installable test versionCode
+        working-directory: android
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          gradle_file = Path("app/build.gradle.kts").read_text()
+          configured = re.search(r"getOrElse\((\d+)\)", gradle_file)
+          if not configured:
+              raise SystemExit("Cannot read baseline versionCode from app/build.gradle.kts")
+          baseline = int(configured.group(1))
+          raw = subprocess.check_output(
+              ["gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/releases?per_page=100"],
+              text=True,
+          )
+          releases = [
+              item for item in json.loads(raw)
+              if not item.get("draft") and not item.get("prerelease")
+          ]
+          if not releases:
+              raise SystemExit("No published release found; refusing to guess the next test versionCode.")
+          releases.sort(key=lambda item: item.get("published_at") or item.get("created_at") or "", reverse=True)
+          latest = releases[0]
+          match = re.search(r"(?im)^versionCode:\s*(\d+)\s*$", latest.get("body") or "")
+          if not match:
+              raise SystemExit(f"Latest release {latest.get('tag_name')} has no versionCode.")
+          previous = int(match.group(1))
+          next_code = max(baseline, previous) + 1
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"SHEV_VERSION_CODE={next_code}\n")
+          print(f"Installable test APK versionCode: {next_code} (latest release: {previous})")
+          PY
       - name: Run unit tests
         working-directory: android
         env:
@@ -67,13 +105,12 @@ jobs:
         working-directory: android
         env:
           GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
-          SHEV_VERSION_CODE: "22"
         run: gradle -PSHEV_VERSION_CODE="$SHEV_VERSION_CODE" assembleDebug
       - name: Verify injected APK versionCode
         working-directory: android
         run: |
           ACTUAL_CODE=$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p" | head -n 1)
-          test "$ACTUAL_CODE" = "22"
+          test "$ACTUAL_CODE" = "$SHEV_VERSION_CODE"
           echo "Gradle injected versionCode verified: $ACTUAL_CODE"
       - name: Prepare debug test package
         working-directory: android
@@ -81,13 +118,13 @@ jobs:
           mkdir -p ../shev-agent-package
           cp app/build/outputs/apk/debug/app-debug.apk ../shev-agent-package/
           VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
-          printf 'version=%s\nversionCode=22\ncommit=%s\nrun=%s\n' "$VERSION" "$GITHUB_SHA" "$GITHUB_RUN_ID" > ../shev-agent-package/build-info.txt
+          printf 'version=%s\nversionCode=%s\ncommit=%s\nrun=%s\n' "$VERSION" "$SHEV_VERSION_CODE" "$GITHUB_SHA" "$GITHUB_RUN_ID" > ../shev-agent-package/build-info.txt
           cd ../shev-agent-package
           sha256sum app-debug.apk > app-debug.apk.sha256
       - name: Upload debug test package
         uses: actions/upload-artifact@v4
         with:
-          name: shev-agent-debug
+          name: shev-agent-installable-test
           path: shev-agent-package/*
           if-no-files-found: error
           retention-days: 7
