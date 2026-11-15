@@ -330,7 +330,7 @@ class RoomAgentTaskRepository(
             val ledger = dao.getTaskSteps(taskId)
             if (ledger.size != plan.steps.size ||
                 ledger.map { it.stepId to it.planHash } != plan.steps.map { it.id to planHash } ||
-                ledger.any { it.status != AgentTaskStepEntity.COMPLETED }
+                ledger.any { it.status != AgentTaskStepEntity.COMPLETED || it.output.isBlank() }
             ) return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_VERIFICATION_EVIDENCE)
 
             dao.deleteExpiredTaskCompletionEvidence(occurredAtEpochMillis)
@@ -520,7 +520,7 @@ class RoomAgentTaskRepository(
             val ledger = dao.getTaskSteps(request.taskId)
             if (ledger.size != plan.steps.size ||
                 ledger.map { it.stepId to it.planHash } != plan.steps.map { it.id to planHash } ||
-                ledger.any { it.status != AgentTaskStepEntity.COMPLETED }
+                ledger.any { it.status != AgentTaskStepEntity.COMPLETED || it.output.isBlank() }
             ) return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_VERIFICATION_EVIDENCE)
         }
 
