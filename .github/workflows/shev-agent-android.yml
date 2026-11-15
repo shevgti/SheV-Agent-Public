@@ -291,7 +291,7 @@ jobs:
       - name: Download verified APK package
         uses: actions/download-artifact@v4
         with:
-          name: shev-agent-debug
+          name: shev-agent-installable-test
           path: release-package
       - name: Verify package metadata, checksum, and embedded Codex runtime
         shell: bash
