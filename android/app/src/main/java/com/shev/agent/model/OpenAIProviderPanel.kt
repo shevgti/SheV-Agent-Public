@@ -64,9 +64,9 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("ChatGPT · официальный вход", style = MaterialTheme.typography.titleLarge)
+            Text("ChatGPT · OAuth по плану", style = MaterialTheme.typography.titleLarge)
             Text(
-                "SheV подключается напрямую к ChatGPT через официальный OAuth для открытых приложений. Никаких API-ключей, Gemini, сторонних шлюзов или Termux. Ты подтверждаешь доступ в браузере, а токены хранятся зашифрованными на телефоне.",
+                "Альтернативный официальный OAuth-вход для обычного чата через план ChatGPT; Codex остаётся отдельным агентом. API-ключ не нужен. Подтверждение аккаунта и телефона, если его запросит OpenAI, выполняется в браузере.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
