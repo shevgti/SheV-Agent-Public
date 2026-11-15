@@ -81,7 +81,7 @@ class AgentTaskExecutionCoordinator(
             AgentPhase.RUNNING.name -> return rejected("Поручение уже выполняется. Повторный запуск запрещён.")
             AgentPhase.VERIFYING.name -> return AgentTaskExecutionCoordinatorResult(
                 AgentTaskExecutionCoordinatorStatus.NEEDS_VERIFICATION,
-                "Все шаги уже завершены. Ожидается независимая проверка результата."
+                "Все шаги уже завершены. Ожидается твоя проверка сохранённых результатов."
             )
             else -> return rejected("Поручение не одобрено или уже завершено.")
         }
@@ -173,7 +173,7 @@ class AgentTaskExecutionCoordinator(
         return if (result.stateForPhase(AgentPhase.VERIFYING) != null) {
             AgentTaskExecutionCoordinatorResult(
                 AgentTaskExecutionCoordinatorStatus.NEEDS_VERIFICATION,
-                "Все шаги выполнены. Поручение ожидает независимой проверки; пока оно не считается завершённым."
+                "Все шаги выполнены. Проверь сохранённые результаты; до твоего подтверждения поручение не считается завершённым."
             )
         } else {
             AgentTaskExecutionCoordinatorResult(AgentTaskExecutionCoordinatorStatus.FAILED, "Поручение не перешло в VERIFYING: $result")
