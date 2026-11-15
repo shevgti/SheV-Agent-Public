@@ -156,6 +156,9 @@ class AgentTaskExecutionCoordinator(
             }
             throw cancelled
         } catch (failure: Exception) {
+            withContext(NonCancellable) {
+                dao.markRunningTaskStepsInterrupted(taskId, planHash, System.currentTimeMillis())
+            }
             failRunning(
                 taskId,
                 failure.message ?: failure.javaClass.simpleName
