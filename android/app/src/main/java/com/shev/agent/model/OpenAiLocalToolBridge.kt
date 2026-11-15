@@ -84,8 +84,10 @@ class OpenAiLocalToolBridge(
             AgentToolResult(false, "План не сохранён: проверь доступные инструменты, их возможности и формат шагов.", "INVALID_PLAN")
         } else {
             val now = System.currentTimeMillis()
+            val canonicalPlan = AgentPlanJsonCodec.canonicalJson(plan)
+            val planHash = AgentPlanJsonCodec.sha256(canonicalPlan)
             val requestBucket = now / 60_000L
-            val taskId = UUID.nameUUIDFromBytes("shev-task-draft-v1:$requestBucket:$title".toByteArray()).toString()
+            val taskId = UUID.nameUUIDFromBytes("shev-task-draft-v2:$requestBucket:$title:$planHash".toByteArray()).toString()
             val eventId = UUID.nameUUIDFromBytes("event:$taskId".toByteArray()).toString()
             when (val result = taskRepository.createDraft(
                 AgentTaskDraftRequest(
@@ -94,7 +96,7 @@ class OpenAiLocalToolBridge(
                     eventId = eventId,
                     idempotencyKey = "task-create:$taskId",
                     occurredAtEpochMillis = now,
-                    planJson = AgentPlanJsonCodec.canonicalJson(plan)
+                    planJson = canonicalPlan
                 )
             )) {
                 is AgentTaskDraftResult.Created -> AgentToolResult(
