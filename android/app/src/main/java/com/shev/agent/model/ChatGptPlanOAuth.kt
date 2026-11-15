@@ -287,7 +287,19 @@ internal class ChatGptPlanOAuth(
     }
 
     private fun save(session: ChatGptPlanSession) {
-        preferences.edit().putString(KEY_SESSION, PlanSessionCipher.encrypt(com.google.gson.Gson().toJson(session))).commit()
+        require(session.clientId.isNotBlank() && session.accessToken.isNotBlank() &&
+            session.refreshToken.isNotBlank() && session.idToken.isNotBlank() &&
+            session.subject.isNotBlank() && REQUIRED_PLAN_SCOPE in session.scopes) {
+            "OpenAI вернул неполную сессию: отсутствует обязательное разрешение или токен."
+        }
+        val encrypted = PlanSessionCipher.encrypt(com.google.gson.Gson().toJson(session))
+        check(preferences.edit().putString(KEY_SESSION, encrypted).commit()) {
+            "Авторизация ChatGPT получена, но Android не смог сохранить сессию. Проверь свободное место и повтори вход."
+        }
+        val restored = load() ?: error("Сессия ChatGPT не найдена сразу после сохранения.")
+        check(restored.subject == session.subject && restored.clientId == session.clientId) {
+            "Сохранённая сессия ChatGPT не прошла контрольную проверку."
+        }
     }
 
     private fun validateIdToken(token: String, clientId: String, expectedNonce: String): Pair<String, String> {
