@@ -63,6 +63,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.collect
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class CodexApproval(
     val requestId: Long,
@@ -119,6 +120,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private var agentExecutionContext: AgentToolExecutionContext? = null
     private val taskExecutionJobs = ConcurrentHashMap<String, Job>()
     private var codexClient: CodexAppServerClient? = null
+    private val codexConnectInFlight = AtomicBoolean(false)
     private var codexActiveThreadId: String? = null
     private var codexActiveTurnId: String? = null
     private var downloadJob: Job? = null
@@ -167,6 +169,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     suspend fun connectCodex(context: Context) {
+        if (!codexConnectInFlight.compareAndSet(false, true)) return
         mutableState.update { it.copy(codexConnecting = true, codexStatus = "Запускаю встроенный Codex…", error = null) }
         try {
             val details = withContext(Dispatchers.IO) {
@@ -237,6 +240,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             }
         } finally {
             mutableState.update { it.copy(codexConnecting = false) }
+            codexConnectInFlight.set(false)
         }
     }
 
@@ -288,17 +292,28 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private suspend fun ensureCodexClient(): CodexAppServerClient {
         codexClient?.takeIf { it.isAlive }?.let { return it }
         codexClient?.close()
-        val client = CodexAppServerClient(getApplication()) { code ->
+        val client = CodexAppServerClient(getApplication()) { code, diagnostics ->
+            val detail = diagnostics.ifBlank { "stderr пуст." }
             mutableState.update {
                 it.copy(
                     codexConnected = false,
-                    codexStatus = "Codex остановился (код $code). Повтори подключение."
+                    codexStatus = "Codex остановился (код $code). $detail"
                 )
             }
         }
-        client.start()
+        // Publish the client before startup so a failed initialize can still be closed.
         codexClient = client
-        return client
+        try {
+            client.start()
+            return client
+        } catch (failure: Exception) {
+            client.close()
+            if (codexClient === client) codexClient = null
+            throw IllegalStateException(
+                "Не удалось запустить Codex App Server: ${failure.message ?: failure.javaClass.simpleName}",
+                failure
+            )
+        }
     }
 
     fun setCodexPrimaryEnabled(enabled: Boolean) {
