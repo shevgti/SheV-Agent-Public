@@ -314,6 +314,11 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                    Text(
+                                        "Параметры: ${step.input}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
                             Text(
