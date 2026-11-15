@@ -6,6 +6,7 @@ on:
       - "SheV Agent Android"
     branches:
       - "main"
+      - "release/0.3.2-build.39"
     types:
       - completed
   workflow_dispatch:
