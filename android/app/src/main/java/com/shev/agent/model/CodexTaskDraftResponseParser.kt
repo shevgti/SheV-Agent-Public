@@ -16,9 +16,14 @@ internal object CodexTaskDraftResponseParser {
     private val negatedIntent = Regex(
         """(?iu)\\b(?:не надо|не нужно|не хочу|не просил(?:а|и)?)\\b.{0,64}\\b(?:сохранять|создавать|добавлять|поручение|задачу|задание)\\b"""
     )
+    private val educationalIntent = Regex(
+        """(?iu)\\b(?:как|подскажи,? как|расскажи,? как)\\s+(?:сохранить|создать|добавить|поставить|оформить)\\b"""
+    )
 
     fun isExplicitTaskDraftRequest(message: String): Boolean =
-        taskIntent.containsMatchIn(message) && !negatedIntent.containsMatchIn(message)
+        taskIntent.containsMatchIn(message) &&
+            !negatedIntent.containsMatchIn(message) &&
+            !educationalIntent.containsMatchIn(message)
 
     fun parse(response: String): ParsedCodexTaskDraft? = runCatching {
         val normalized = response.trim()
