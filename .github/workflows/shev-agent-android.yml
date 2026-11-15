@@ -7,6 +7,7 @@ on:
       - fix/android-codex-file-locks
     paths:
       - 'android/**'
+      - 'scripts/**'
       - '.github/workflows/shev-agent-android.yml'
       - '.github/workflows/codex-android-runtime.yml'
       - '.github/workflows/publish-update.yml'
