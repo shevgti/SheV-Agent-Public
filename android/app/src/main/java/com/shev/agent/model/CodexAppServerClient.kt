@@ -115,6 +115,7 @@ internal class CodexAppServerClient(
         stderrJob = scope.launch { readStderr(started) }
         exitJob = scope.launch {
             val code = started.waitFor()
+            stderrJob?.join()
             if (process === started) {
                 process = null
                 failPending("Codex App Server завершился с кодом $code.")
