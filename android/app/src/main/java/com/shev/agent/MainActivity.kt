@@ -42,7 +42,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.shev.agent.creator.AgentCreatorScreen
 import com.shev.agent.data.AgentSkillLibrary
-import com.shev.agent.data.AgentTaskEntity
 import com.shev.agent.data.AgentTaskRepositoryResult
 import com.shev.agent.data.AgentSkillLibraryScreen
 import com.shev.agent.data.SheVAgentDatabase
@@ -387,6 +386,7 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
                                     }
                                 ) { Text("Отменить") }
                             }
+                            else -> Unit
                         }
                     }
                 }
