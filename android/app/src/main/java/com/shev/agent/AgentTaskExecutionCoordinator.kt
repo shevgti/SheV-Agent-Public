@@ -65,8 +65,8 @@ class AgentTaskExecutionCoordinator(
                     idempotencyKey = "task-start:$taskId:$revision",
                     occurredAtEpochMillis = System.currentTimeMillis()
                 )
-                revision = started.stateForPhase(AgentPhase.RUNNING)?.revision
-                    ?: return rejected("Поручение не перешло в RUNNING. Возможно, оно уже отменено или изменено.")
+                revision = started.appliedStateForPhase(AgentPhase.RUNNING)?.revision
+                    ?: return rejected("Поручение уже запускалось или не перешло в RUNNING. Повторный запуск заблокирован.")
             }
             AgentPhase.PAUSED.name -> {
                 if (initial.resumePhase != AgentPhase.RUNNING.name) {
@@ -75,10 +75,10 @@ class AgentTaskExecutionCoordinator(
                 val resumed = taskRepository.transition(
                     transitionRequest(taskId, AgentWorkflowCommand.RESUME, revision, planHash)
                 )
-                revision = resumed.stateForPhase(AgentPhase.RUNNING)?.revision
-                    ?: return rejected("Поручение не перешло в RUNNING. Возможно, оно уже отменено или изменено.")
+                revision = resumed.appliedStateForPhase(AgentPhase.RUNNING)?.revision
+                    ?: return rejected("Поручение уже продолжено или не перешло в RUNNING. Повторный запуск заблокирован.")
             }
-            AgentPhase.RUNNING.name -> Unit
+            AgentPhase.RUNNING.name -> return rejected("Поручение уже выполняется. Повторный запуск запрещён.")
             AgentPhase.VERIFYING.name -> return AgentTaskExecutionCoordinatorResult(
                 AgentTaskExecutionCoordinatorStatus.NEEDS_VERIFICATION,
                 "Все шаги уже завершены. Ожидается независимая проверка результата."
@@ -233,6 +233,9 @@ class AgentTaskExecutionCoordinator(
         is AgentTaskRepositoryResult.Replayed -> state.takeIf { it.task.phase == phase }
         else -> null
     }
+
+    private fun AgentTaskRepositoryResult.appliedStateForPhase(phase: AgentPhase): AgentWorkflowState? =
+        (this as? AgentTaskRepositoryResult.Applied)?.state?.takeIf { it.task.phase == phase }
 
     private fun rejected(message: String) =
         AgentTaskExecutionCoordinatorResult(AgentTaskExecutionCoordinatorStatus.REJECTED, message)
