@@ -47,7 +47,27 @@ internal object ApprovalEvidenceToken {
     }
 }
 
-/** Room-backed verifier consumes the approval row with one conditional UPDATE. */
+/** Generates one-use completion tokens; only their SHA-256 digest is stored. */
+internal object TaskCompletionEvidenceToken {
+    private val secureRandom = java.security.SecureRandom()
+
+    fun create(): String {
+        val bytes = ByteArray(32)
+        secureRandom.nextBytes(bytes)
+        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+    }
+
+    fun digest(token: String): String {
+        require(token.length == 43 && token.matches(Regex("[A-Za-z0-9_-]{43}"))) {
+            "Invalid completion token format."
+        }
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(token.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+    }
+}
+
+/** Room-backed verifier consumes approval and completion evidence with conditional one-use UPDATEs. */
 class RoomAgentTaskAuthorizationVerifier(
     private val dao: AgentDao
 ) : AgentTaskAuthorizationVerifier {
@@ -70,11 +90,23 @@ class RoomAgentTaskAuthorizationVerifier(
         ) == 1
     }
 
-    override suspend fun isCompletionEvidenceValid(
+    override suspend fun consumeCompletionEvidence(
         taskId: String,
         expectedRevision: Long,
-        evidenceRef: String
-    ): Boolean = false
+        evidenceRef: String,
+        planHash: String,
+        nowMillis: Long
+    ): Boolean {
+        val hash = runCatching { TaskCompletionEvidenceToken.digest(evidenceRef) }.getOrNull()
+            ?: return false
+        return dao.consumeTaskCompletionEvidence(
+            evidenceHash = hash,
+            taskId = taskId,
+            expectedRevision = expectedRevision,
+            planHash = planHash,
+            nowMillis = nowMillis
+        ) == 1
+    }
 
     private companion object {
         const val APPROVE_OPERATION = "APPROVE"

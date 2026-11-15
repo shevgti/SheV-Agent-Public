@@ -264,6 +264,7 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
     val scope = rememberCoroutineScope()
     var actionMessage by remember { mutableStateOf<String?>(null) }
     var actingTaskId by remember { mutableStateOf<String?>(null) }
+    var expandedStepOutputs by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -356,11 +357,25 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
                                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text("${step.position + 1}. ${step.title} — $stepStatus")
                                     if (step.output.isNotBlank()) {
+                                        val outputKey = "${task.id}:${step.stepId}"
+                                        val expanded = outputKey in expandedStepOutputs
                                         Text(
-                                            step.output.take(1200) + if (step.output.length > 1200) "…" else "",
+                                            if (expanded) step.output
+                                            else step.output.take(1200) + if (step.output.length > 1200) "…" else "",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                        if (step.output.length > 1200) {
+                                            TextButton(
+                                                onClick = {
+                                                    expandedStepOutputs = if (expanded) {
+                                                        expandedStepOutputs - outputKey
+                                                    } else {
+                                                        expandedStepOutputs + outputKey
+                                                    }
+                                                }
+                                            ) { Text(if (expanded) "Свернуть результат" else "Показать полный результат") }
+                                        }
                                     }
                                     step.errorCode?.let {
                                         Text("Код ошибки: $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
@@ -499,10 +514,48 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
                             }
                             AgentPhase.VERIFYING.name -> {
                                 Text(
-                                    "Шаги выполнены. Нужна независимая проверка результата; пока поручение не считается завершённым.",
+                                    "Проверь результаты каждого шага выше. Завершение будет отмечено только после твоего явного подтверждения; SheV не выдаёт собственный ответ за независимую проверку.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                val allStepsReviewed = planHashValid && plan != null &&
+                                    persistedSteps.size == plan.steps.size &&
+                                    persistedSteps.all {
+                                        it.status == AgentTaskStepEntity.COMPLETED && it.planHash == task.planHash && it.output.isNotBlank()
+                                    }
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        enabled = actingTaskId == null && allStepsReviewed,
+                                        onClick = {
+                                            scope.launch {
+                                                actingTaskId = task.id
+                                                try {
+                                                    actionMessage = completionActionMessage(
+                                                        viewModel.completeTaskAfterUserReview(task)
+                                                    )
+                                                } finally {
+                                                    actingTaskId = null
+                                                }
+                                            }
+                                        }
+                                    ) { Text("Я проверил результат — завершить") }
+                                    TextButton(
+                                        enabled = actingTaskId == null,
+                                        onClick = {
+                                            scope.launch {
+                                                actingTaskId = task.id
+                                                try {
+                                                    actionMessage = taskActionMessage(
+                                                        viewModel.cancelTaskFromUser(task),
+                                                        approved = false
+                                                    )
+                                                } finally {
+                                                    actingTaskId = null
+                                                }
+                                            }
+                                        }
+                                    ) { Text("Не принимать результат") }
+                                }
                             }
                             AgentPhase.PLANNING.name -> {
                                 TextButton(
@@ -529,6 +582,14 @@ private fun AgentTasksScreen(viewModel: LocalModelViewModel) {
             }
         }
     }
+}
+
+private fun completionActionMessage(result: AgentTaskRepositoryResult): String = when (result) {
+    is AgentTaskRepositoryResult.Applied -> "Поручение завершено после твоей проверки результатов."
+    is AgentTaskRepositoryResult.Replayed -> "Подтверждение проверки уже было сохранено."
+    is AgentTaskRepositoryResult.Rejected -> "Не удалось завершить поручение: ${result.reason}."
+    AgentTaskRepositoryResult.NotFound -> "Поручение не найдено."
+    AgentTaskRepositoryResult.IdempotencyConflict -> "Конфликт повторного подтверждения. Обнови список."
 }
 
 private fun taskActionMessage(

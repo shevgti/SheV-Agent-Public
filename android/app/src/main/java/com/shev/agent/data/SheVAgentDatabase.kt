@@ -4,8 +4,8 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [AgentTaskEntity::class, AgentEventEntity::class, ImprovementEntity::class, CapabilityGrantEntity::class, WorkspaceLayoutEntity::class, ConversationMessageEntity::class, ApprovalEvidenceEntity::class, ConversationStateEntity::class, AgentDefinitionEntity::class, AgentSkillEntity::class, AgentTaskStepEntity::class],
-    version = 14,
+    entities = [AgentTaskEntity::class, AgentEventEntity::class, ImprovementEntity::class, CapabilityGrantEntity::class, WorkspaceLayoutEntity::class, ConversationMessageEntity::class, ApprovalEvidenceEntity::class, ConversationStateEntity::class, AgentDefinitionEntity::class, AgentSkillEntity::class, AgentTaskStepEntity::class, TaskCompletionEvidenceEntity::class],
+    version = 15,
     exportSchema = false
 )
 abstract class SheVAgentDatabase : RoomDatabase() {
@@ -108,6 +108,15 @@ internal val MIGRATION_13_14 = object : androidx.room.migration.Migration(13, 14
     }
 }
 
+
+internal val MIGRATION_14_15 = object : androidx.room.migration.Migration(14, 15) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS task_completion_evidence (evidenceHash TEXT NOT NULL PRIMARY KEY, taskId TEXT NOT NULL, expectedRevision INTEGER NOT NULL, planHash TEXT NOT NULL, verifierType TEXT NOT NULL, verificationNote TEXT NOT NULL, issuedAtEpochMillis INTEGER NOT NULL, expiresAtEpochMillis INTEGER NOT NULL, consumedAtEpochMillis INTEGER)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_task_completion_evidence_taskId_expectedRevision ON task_completion_evidence (taskId, expectedRevision)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_task_completion_evidence_expiresAtEpochMillis ON task_completion_evidence (expiresAtEpochMillis)")
+    }
+}
+
 object SheVAgentDatabaseProvider {
     @Volatile
     private var instance: SheVAgentDatabase? = null
@@ -131,7 +140,8 @@ object SheVAgentDatabaseProvider {
                 MIGRATION_10_11,
                 MIGRATION_11_12,
                 MIGRATION_12_13,
-                MIGRATION_13_14
+                MIGRATION_13_14,
+                MIGRATION_14_15
             ).build().also { instance = it }
         }
 }

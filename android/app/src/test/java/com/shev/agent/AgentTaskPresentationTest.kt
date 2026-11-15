@@ -42,7 +42,7 @@ class AgentTaskPresentationTest {
 
     @Test fun filtersByHumanReadableStatus() {
         val tasks = listOf(task("1", "Черновик", "IDLE"), task("2", "Успех", "COMPLETED"))
-        val result = AgentTaskPresentation.filter(tasks, "", "Завершена")
+        val result = AgentTaskPresentation.filter(tasks, "", "Завершена после проверки")
         assertEquals(listOf("2"), result.map { it.id })
         assertTrue(AgentTaskPresentation.filter(tasks, "", "Ошибка").isEmpty())
     }
