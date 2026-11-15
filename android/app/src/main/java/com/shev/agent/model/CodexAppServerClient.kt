@@ -34,7 +34,7 @@ import kotlinx.coroutines.withTimeout
  */
 internal class CodexAppServerClient(
     context: Context,
-    private val onProcessExit: (Int) -> Unit = {}
+    private val onProcessExit: (Int, String) -> Unit = { _, _ -> }
 ) : Closeable {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -49,6 +49,20 @@ internal class CodexAppServerClient(
     private var stderrJob: Job? = null
     private var exitJob: Job? = null
     private val writeLock = Any()
+    private val stderrLock = Any()
+    private val stderrTail = ArrayDeque<String>()
+
+    private fun stderrSummary(): String = synchronized(stderrLock) {
+        stderrTail.toList().takeLast(8).joinToString(" | ").takeLast(1800)
+    }
+
+    private fun recordStderr(line: String) {
+        val safe = line.filter { it == '\t' || it >= ' ' }.take(500)
+        synchronized(stderrLock) {
+            stderrTail.addLast(safe)
+            while (stderrTail.size > 20) stderrTail.removeFirst()
+        }
+    }
 
     val isAlive: Boolean get() = process?.isAlive == true
 
@@ -104,7 +118,7 @@ internal class CodexAppServerClient(
             if (process === started) {
                 process = null
                 failPending("Codex App Server завершился с кодом $code.")
-                onProcessExit(code)
+                onProcessExit(code, stderrSummary())
             }
         }
         val initialized = request(
@@ -257,15 +271,19 @@ internal class CodexAppServerClient(
         } catch (error: Exception) {
             if (child === process) failPending("Поток Codex App Server завершился: ${error.message}")
         } finally {
-            if (child === process) failPending("Codex App Server закрыл соединение.")
+            if (child === process) {
+                val details = stderrSummary()
+                failPending(if (details.isBlank()) "Codex App Server закрыл соединение без диагностического сообщения." else "Codex App Server закрыл соединение. Диагностика: $details")
+            }
         }
     }
 
     private suspend fun readStderr(child: Process) {
         runCatching {
             BufferedReader(InputStreamReader(child.errorStream, StandardCharsets.UTF_8)).use { reader ->
-                while (reader.readLine() != null) {
-                    // Keep stderr out of the conversation transcript; it can contain paths and diagnostics.
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (line.isNotBlank()) recordStderr(line)
                 }
             }
         }
