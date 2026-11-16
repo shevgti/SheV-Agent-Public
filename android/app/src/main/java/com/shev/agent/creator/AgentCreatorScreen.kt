@@ -44,10 +44,19 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
     val definitions by dao.observeAgentDefinitions().collectAsState(initial = emptyList())
     val modelState by modelViewModel.state.collectAsState()
     var availableTools by remember { mutableStateOf<List<AgentToolDescriptor>>(emptyList()) }
+    var toolCatalogError by remember { mutableStateOf<String?>(null) }
     val toolCapabilities = remember(availableTools) { availableTools.associate { it.id to it.capabilities } }
     LaunchedEffect(modelViewModel) {
-        modelViewModel.prepareAgentToolCatalog()
-        availableTools = modelViewModel.availableAgentTools()
+        try {
+            modelViewModel.prepareAgentToolCatalog()
+            availableTools = modelViewModel.availableAgentTools()
+            toolCatalogError = null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            availableTools = emptyList()
+            toolCatalogError = failure.message ?: "не удалось подготовить каталог"
+        }
     }
     val scope = rememberCoroutineScope()
     var request by remember { mutableStateOf("") }
@@ -99,7 +108,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                     Text("Инструменты с реальными обработчиками:", fontWeight = FontWeight.SemiBold)
                     if (availableTools.isEmpty()) {
                         Text(
-                            "Нет зарегистрированных инструментов с готовыми обработчиками.",
+                            toolCatalogError?.let { "Ошибка каталога инструментов: $it" } ?: "Нет зарегистрированных инструментов с готовыми обработчиками.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
