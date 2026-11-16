@@ -18,6 +18,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
@@ -34,6 +35,7 @@ import com.google.gson.Gson
 import com.shev.agent.data.AgentDao
 import com.shev.agent.data.AgentDefinitionEntity
 import com.shev.agent.model.LocalModelViewModel
+import com.shev.agent.tools.AgentToolDescriptor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -41,6 +43,12 @@ import kotlinx.coroutines.launch
 fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
     val definitions by dao.observeAgentDefinitions().collectAsState(initial = emptyList())
     val modelState by modelViewModel.state.collectAsState()
+    var availableTools by remember { mutableStateOf<List<AgentToolDescriptor>>(emptyList()) }
+    val toolCapabilities = remember(availableTools) { availableTools.associate { it.id to it.capabilities } }
+    LaunchedEffect(modelViewModel) {
+        modelViewModel.prepareAgentToolCatalog()
+        availableTools = modelViewModel.availableAgentTools()
+    }
     val scope = rememberCoroutineScope()
     var request by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Опиши специалиста, которого нужно создать.") }
@@ -89,10 +97,9 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                         color = if ((useChatGptForCreator && modelState.codexConnected) || (!useChatGptForCreator && modelState.ready)) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text("Инструменты с реальными обработчиками:", fontWeight = FontWeight.SemiBold)
-                    val availableTools = modelViewModel.availableAgentTools()
                     if (availableTools.isEmpty()) {
                         Text(
-                            "Каталог появится после успешного запуска локального исполнителя.",
+                            "Нет зарегистрированных инструментов с готовыми обработчиками.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -237,6 +244,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
             AgentDefinitionCard(
                 definition = definition,
                 canRun = modelState.ready,
+                toolCapabilities = toolCapabilities,
                 onApprove = {
                     scope.launch {
                         try {
@@ -274,6 +282,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
 private fun AgentDefinitionCard(
     definition: AgentDefinitionEntity,
     canRun: Boolean,
+    toolCapabilities: Map<String, Set<com.shev.agent.AgentCapability>>,
     onApprove: () -> Unit,
     onRun: suspend (String) -> String
 ) {
@@ -329,7 +338,7 @@ private fun AgentDefinitionCard(
                 Text("Статус: одобрен · запуск только вручную", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
             if (manifest != null && definition.status == AgentManifest.STATUS_APPROVED) {
-                val runDecision = AgentRunPolicy.evaluate(manifest)
+                val runDecision = AgentRunPolicy.evaluate(manifest, toolCapabilities)
                 if (!runDecision.allowed) {
                     Text(
                         runDecision.reason ?: "Запуск недоступен.",
