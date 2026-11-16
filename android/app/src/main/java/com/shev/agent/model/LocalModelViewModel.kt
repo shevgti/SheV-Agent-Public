@@ -1588,6 +1588,41 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
      * Direct OpenAI Responses API route. The model may call only the explicitly
      * registered, schema-validated low-risk local tools exposed by OpenAiLocalToolBridge.
      */
+    /**
+     * Performs a real, minimal Responses API round-trip with the saved ChatGPT plan OAuth session.
+     * This is deliberately separate from merely decrypting/storing OAuth credentials.
+     */
+    suspend fun verifyOpenAIConnection(modelId: String): String = withContext(Dispatchers.IO) {
+        require(modelId.isNotBlank()) { "Не выбрана модель ChatGPT." }
+        val preferences = getApplication<Application>().getSharedPreferences(
+            "shev_openai",
+            Application.MODE_PRIVATE
+        )
+        val oauth = ChatGptPlanOAuth(getApplication(), preferences)
+        check(oauth.load() != null) { "Сессия ChatGPT не найдена. Сначала войди в аккаунт." }
+        val token = oauth.validAccessToken()
+        val input = JsonArray().apply {
+            add(JsonObject().apply {
+                addProperty("role", "user")
+                addProperty("content", "Ответь одним словом: ГОТОВО.")
+            })
+        }
+        OpenAiResponsesClient(
+            OpenAiCompatibleConfig("https://api.openai.com/v1", modelId, token),
+            connectTimeoutMillis = 15_000,
+            readTimeoutMillis = 60_000,
+            maxToolRounds = 1,
+            chatGptPlanUsage = true
+        ).completeWithTools(
+            history = input,
+            instructions = "Ответь строго одним словом: ГОТОВО.",
+            tools = emptyList(),
+            executeTool = { _, _ -> throw IllegalStateException("В проверочном запросе инструменты отключены.") }
+        ).also { answer ->
+            check(answer.isNotBlank()) { "ChatGPT вернул пустой проверочный ответ." }
+        }
+    }
+
     private fun sendViaOpenAI(message: String) {
         mutableState.update {
             it.copy(prompt = "", busy = true, error = null, messages = it.messages + "Вы: $message")
@@ -1602,7 +1637,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val modelId = preferences.getString("model_id", "gpt-6.1-sol")
                     ?: "gpt-6.1-sol"
                 val chatGptPlanAuth = ChatGptPlanOAuth(getApplication(), preferences)
-                val planSession = runCatching { chatGptPlanAuth.load() }.getOrNull()
+                // Do not hide a broken encrypted OAuth session and silently fall back to an API-key path.
+                val planSession = chatGptPlanAuth.load()
                 val token = if (planSession != null) {
                     chatGptPlanAuth.validAccessToken()
                 } else {
