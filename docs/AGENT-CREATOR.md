@@ -26,45 +26,49 @@ A manifest contains:
 - lifecycle status: DRAFT, APPROVED, ACTIVE or DISABLED.
 
 ## Security invariants
-- Generated text is data, not executable code.
-- Creator may not invent tool IDs or grant capabilities.
-- Current implementation accepts only OFFLINE and DRAFT_ONLY policies.
-- Memory scopes must remain empty until an encrypted, scoped agent-memory adapter exists.
-- No generated agent is activated by the model or by manifest parsing.
-- No shell, arbitrary code execution, silent network calls, secrets or self-modifying policy.
-- The host application remains the authority for capability grants and per-action approvals.
+- Generated text and manifests are data, not executable code.
+- The creator itself uses an isolated tool-free generation path; it cannot call host tools, approve a manifest or activate a specialist.
+- The creator may select only IDs from the live host-tool catalog. The user must review and explicitly approve the saved manifest.
+- Supported manifest policy is `OFFLINE` or `READ_ONLY` networking with `DRAFT_ONLY` side effects.
+- Memory read/write scopes must remain empty until a dedicated encrypted, scoped memory adapter exists.
+- After approval, the specialist runtime exposes only registered tools selected in that manifest through a per-agent scoped allowlist. Every call is checked again by the host executor and `CapabilityPolicy`.
+- Specialists cannot use HIGH/CRITICAL capability tools. A specialist with `OFFLINE` policy cannot use remote-data tools; remote reads require `READ_ONLY`.
+- No arbitrary filesystem access, shell, arbitrary code execution, secrets, silent publishing, financial actions or self-modifying policy are granted.
+- The task inbox is a separate workflow: it executes only the exact persisted plan approved by the user, records each step, and requires user review of saved outputs before completion.
 - A manifest passing validation is not proof of agent quality or runtime compatibility.
 
 ## Existing foundation to reuse
 Keep the local model runtime, Room database and migrations, task orchestrator, capability policies, tool registry/executor, GitHub connector and tool workshop. These are supporting infrastructure. Do not build a parallel orchestration or permission system.
 
 ## Current implementation boundary
-Implemented in the Agent Creator feature branch:
-- default navigation to the Agent Creator screen;
-- isolated, tool-free local-model prompt path;
-- explicit user approval state for reviewed manifests (without activation);
-- AgentManifest schema, parser, prompt builder, creator orchestration and validator;
-- Room entity/table migration for agent definitions;
-- local draft list and metadata display;
-- unit tests for validation and parsing.
+Implemented in the current release line:
+- Russian-first Agent Creator with isolated manifest generation through the local model or connected ChatGPT/Codex.
+- Live catalog of tools that have registered schemas and real host handlers.
+- Manifest validation, bounded step/time/model-call budgets, known-tool validation and draft-only creation.
+- Explicit user approval of a saved manifest; the model cannot approve or activate itself.
+- Manual specialist execution through the loaded local model in an isolated ADK session, with only the manifest-selected tools, immutable per-agent allowlist, capability/risk checks, and bounded execution.
+- Specialist network access is limited by the manifest policy; selected remote-data tools require `READ_ONLY`.
+- Persistent task inbox with immutable approved plans, durable per-step execution records, pause/resume after interruption, and a `VERIFYING` state. A task becomes complete only after the user reviews the saved outputs and confirms.
+- Registered built-in host tools currently include current time, Open-Meteo weather, public web search, tool-catalog inspection, and local draft helpers for tasks/skills.
+- Tool Workshop can prepare source proposals and display a diff; it does not write generated code into the project or execute it.
 
 Not yet implemented and must not be represented as complete:
-- independent behavioral evaluation runner for generated agents;
-- activation/deactivation against a specialist runtime registry;
-- per-agent tool execution profiles wired to host-side capability grants;
-- isolated compilation/sandbox for generated tools (agent manifests themselves are data);
-- agent version upgrade/rollback UI;
-- multi-agent team creation and orchestration;
-- migration of existing project-specific screens into optional modules.
+- persistent autonomous background execution or an always-on ACTIVE/PAUSED specialist registry;
+- independent behavioral evaluation runner that tests generated specialists and stores evidence;
+- specialist run history/audit UI, durable cancellation and restart recovery for individual specialist sessions;
+- immutable specialist version history with upgrade/rollback UI;
+- multi-agent team creation, delegation and swarm orchestration;
+- encrypted, scoped per-agent memory;
+- a sandboxed tool-development pipeline that compiles, installs and safely activates newly generated tools;
+- broad phone-control or arbitrary file-system tools. Specialists can use only the real host tools currently exposed by the app.
 
 ## Next milestones
-1. Prove migration 9→10 and build/test on CI.
-2. Add an independent evaluator that runs safe test cases and records evidence.
-3. Add approval/review and immutable version history.
-4. Add a runtime registry that instantiates a specialist from a validated manifest while reusing the existing model/runtime and tool executor.
-5. Enforce tool allowlists and capability grants again at every invocation.
-6. Only then expose activation. Never let the generated agent activate itself.
-
+1. Fix and verify the live tool-catalog handoff in the Agent Creator UI so approved specialists with valid selected tools are not incorrectly rejected.
+2. Add an independent evaluator and persist evidence before exposing specialist activation.
+3. Add a durable specialist registry, run history, cancellation and restart recovery.
+4. Add encrypted, scoped memory only after access isolation and migration tests.
+5. Add multi-agent team orchestration only after single-specialist execution and verification are reliable.
+6. Keep all writes, publishing, deletion, security changes and financial actions behind explicit per-action approval.
 
 ## Anthropic-compatible Markdown output
 
