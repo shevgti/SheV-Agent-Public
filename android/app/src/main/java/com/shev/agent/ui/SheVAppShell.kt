@@ -49,7 +49,15 @@ fun SheVAppShell(chatViewModel: LocalModelViewModel) {
         }
         when (destination) {
             SheVPrimaryDestination.CHAT -> LocalModelPanel(chatViewModel)
-            SheVPrimaryDestination.BROWSER -> SheVBrowserScreen(onExit = { destination = SheVPrimaryDestination.CHAT })
+            SheVPrimaryDestination.BROWSER -> SheVBrowserScreen(
+                onExit = { destination = SheVPrimaryDestination.CHAT },
+                onPageToChat = { pageText ->
+                    chatViewModel.setPrompt(
+                        "Проанализируй текст открытой веб-страницы. Сначала кратко определи тему, затем выдели основные факты и полезные выводы.\n\n$pageText"
+                    )
+                    destination = SheVPrimaryDestination.CHAT
+                }
+            )
         }
     }
 }
