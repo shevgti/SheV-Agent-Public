@@ -153,6 +153,13 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                     }
                     if (kiloConsent) {
                         Text("Kilo: анонимный бесплатный доступ, лимит около 200 запросов в час на IP. Запросы могут обрабатываться сторонними провайдерами.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (selectedKiloModelId.startsWith("nvidia/")) {
+                            Text(
+                                "Важно: бесплатные NVIDIA-модели работают в пробном режиме. NVIDIA может записывать запросы и ответы и использовать их для улучшения продуктов. Не отправляй личные или конфиденциальные данные.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                             Box {
                                 OutlinedButton(onClick = { kiloMenuExpanded = true }, enabled = !kiloLoading && kiloModels.isNotEmpty()) {
