@@ -49,7 +49,7 @@ fun SheVAppShell(chatViewModel: LocalModelViewModel) {
         }
         when (destination) {
             SheVPrimaryDestination.CHAT -> LocalModelPanel(chatViewModel)
-            SheVPrimaryDestination.BROWSER -> SheVBrowserScreen()
+            SheVPrimaryDestination.BROWSER -> SheVBrowserScreen(onExit = { destination = SheVPrimaryDestination.CHAT })
         }
     }
 }
