@@ -12,7 +12,7 @@ data class AgentRunDecision(
 object AgentRunPolicy {
     fun evaluate(
         manifest: AgentManifest,
-        toolCapabilities: Map<String, Set<AgentCapability>> = emptyMap()
+        toolCapabilities: Map<String, Set<AgentCapability>>
     ): AgentRunDecision {
         if (manifest.status != AgentManifest.STATUS_APPROVED) {
             return AgentRunDecision(false, "Сначала одобри паспорт агента.")
