@@ -173,13 +173,20 @@ class RussianPiperVoiceStore(context: Context) {
                 .setTransferMode(AudioTrack.MODE_STATIC)
                 .build()
             try {
-                track.write(audio.samples, 0, audio.samples.size, AudioTrack.WRITE_BLOCKING)
+                check(audio.samples.isNotEmpty()) { "Модель не сгенерировала аудио." }
+                val written = track.write(audio.samples, 0, audio.samples.size, AudioTrack.WRITE_BLOCKING)
+                check(written == audio.samples.size) { "Не удалось передать весь аудиопоток на воспроизведение." }
                 track.play()
-                while (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
-                    kotlinx.coroutines.delay(100)
+                while (track.playbackHeadPosition.toLong() < audio.samples.size.toLong()) {
                     currentCoroutineContext().ensureActive()
+                    check(track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                        "Воспроизведение Piper неожиданно остановилось."
+                    }
+                    kotlinx.coroutines.delay(40)
                 }
+                track.stop()
             } finally {
+                runCatching { if (track.playState == AudioTrack.PLAYSTATE_PLAYING) track.stop() }
                 track.release()
             }
         } finally {
