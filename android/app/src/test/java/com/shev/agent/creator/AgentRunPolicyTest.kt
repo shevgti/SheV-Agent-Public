@@ -15,6 +15,8 @@ class AgentRunPolicyTest {
         purpose = "Выполнять ограниченную задачу с проверяемым результатом",
         role = "Исследователь",
         instructions = "Работай по инструкции и не выдумывай выполненные действия.",
+        process = "Проверь доступные сведения, выполни разрешённые шаги и обозначь ограничения.",
+        outputFormat = "Краткий отчёт с результатами и ограничениями.",
         triggers = listOf("Проверь данные", "Подготовь отчёт"),
         inputSchema = """{"type":"object","properties":{},"required":[]}""",
         outputSchema = """{"type":"object","properties":{},"required":[]}""",
@@ -30,7 +32,7 @@ class AgentRunPolicyTest {
         evaluationCases = listOf("Обычная задача", "Недостаточно входных данных"),
         limitations = listOf("Нет произвольного доступа к файлам"),
         status = AgentManifest.STATUS_APPROVED,
-        description = "Use this agent when a constrained research task is needed. It checks sources and reports limitations.",
+        description = "Use this agent when a constrained research task is needed. It checks sources and reports limitations. See When to invoke for examples.",
         triggeringExamples = listOf(
             AgentTriggerExample("Нужна проверка", "Проверь данные", "Проверю доступные сведения.", "Нужен специалист.", "Использую специалиста."),
             AgentTriggerExample("Нужен отчёт", "Подготовь отчёт", "Соберу проверяемый отчёт.", "Подходит роль исследователя.", "Использую специалиста.")
