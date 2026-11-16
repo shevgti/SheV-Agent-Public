@@ -38,24 +38,28 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
     }
     var modelId by remember { mutableStateOf("gpt-6.1-sol") }
     var connected by remember { mutableStateOf(false) }
+    var sessionPresent by remember { mutableStateOf(false) }
     var accountLabel by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("ChatGPT не подключён") }
+    var needsReauth by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(preferences) {
         modelId = preferences.getString("model_id", "gpt-6.1-sol") ?: "gpt-6.1-sol"
         try {
             val session = ChatGptPlanOAuth(context, preferences).load()
-            connected = session != null
+            sessionPresent = session != null
+            connected = false
             accountLabel = session?.email.orEmpty()
-            status = if (connected) {
-                "ChatGPT подключён: ${accountLabel.ifBlank { "аккаунт подтверждён" }}."
+            status = if (sessionPresent) {
+                "Сессия сохранена: ${accountLabel.ifBlank { "аккаунт ChatGPT" }}. Нажми «Проверить соединение», чтобы проверить реальный ответ модели."
             } else {
                 "Аккаунт ChatGPT ещё не подключён. Нажми «Войти через ChatGPT»."
             }
         } catch (error: Exception) {
             connected = false
+            sessionPresent = false
             accountLabel = ""
             status = "Не удалось прочитать сохранённую сессию ChatGPT: ${error.message ?: error.javaClass.simpleName}"
         }
@@ -80,32 +84,43 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
                 onClick = {
                     if (busy) return@Button
                     busy = true
-                    status = "Открываю безопасный вход ChatGPT…"
+                    status = if (sessionPresent && !needsReauth) "Проверяю сохранённую сессию и соединение ChatGPT…" else "Открываю безопасный вход ChatGPT…"
                     scope.launch {
                         try {
                             val oauth = ChatGptPlanOAuth(context, preferences)
-                            val session = oauth.authorize()
+                            val existing = if (!needsReauth) oauth.load() else null
+                            val session = existing ?: oauth.authorize()
                             val persisted = oauth.load()
                                 ?: throw IllegalStateException("OpenAI подтвердил вход, но сохранённая сессия не найдена.")
                             check(persisted.subject == session.subject) {
                                 "Сохранённая сессия относится к другому аккаунту. ChatGPT не включён."
                             }
+                            status = "Проверяю доступ к моделям ChatGPT…"
+                            val availableModels = oauth.availableModels()
+                            if (availableModels.isEmpty()) {
+                                throw IllegalStateException("OAuth-сессия сохранена, но ChatGPT не вернул ни одной доступной модели.")
+                            }
+                            val selectedModel = availableModels.firstOrNull { it.id == modelId } ?: availableModels.first()
+                            modelId = selectedModel.id
+                            preferences.edit().putString("model_id", selectedModel.id).apply()
+                            status = "Проверяю реальный запрос к ChatGPT (${selectedModel.displayName})…"
+                            val probeAnswer = viewModel.verifyOpenAIConnection(selectedModel.id)
+                            require(probeAnswer.isNotBlank()) { "ChatGPT принял запрос, но вернул пустой ответ." }
                             connected = true
+                            sessionPresent = true
+                            needsReauth = false
                             accountLabel = persisted.email
-                            val availableModels = runCatching { oauth.availableModels() }.getOrDefault(emptyList())
-                            val selectedModel = availableModels.firstOrNull { it.id == modelId } ?: availableModels.firstOrNull()
-                            if (selectedModel != null) {
-                                modelId = selectedModel.id
-                                preferences.edit().putString("model_id", selectedModel.id).apply()
-                            }
                             viewModel.setOpenAIPrimaryEnabled(true)
-                            status = if (selectedModel != null) {
-                                "ChatGPT подключён. Доступная модель: ${selectedModel.displayName}. Первый запрос дополнительно проверит право использования."
-                            } else {
-                                "ChatGPT подключён. Список моделей пока недоступен; проверка права использования произойдёт при первом запросе."
-                            }
+                            status = "Соединение проверено: ${selectedModel.displayName}. ChatGPT ответил на тестовый запрос. Основной чат SheV включён."
                         } catch (error: Exception) {
-                            status = error.message ?: "Не удалось подключить ChatGPT."
+                            connected = false
+                            sessionPresent = runCatching { ChatGptPlanOAuth(context, preferences).load() != null }.getOrDefault(false)
+                            needsReauth = error.message?.contains("HTTP 401") == true ||
+                                error.message?.contains("Сначала подключи") == true ||
+                                error.message?.contains("обновить ChatGPT") == true ||
+                                error.message?.contains("Сохранённая авторизация ChatGPT недоступна") == true
+                            viewModel.setOpenAIPrimaryEnabled(false)
+                            status = error.message ?: "Не удалось проверить соединение ChatGPT."
                         } finally {
                             busy = false
                         }
@@ -114,7 +129,7 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (connected) "Переподключить ChatGPT" else "Войти через ChatGPT")
+                Text(if (needsReauth) "Войти в ChatGPT заново" else if (sessionPresent) "Проверить соединение" else "Войти через ChatGPT")
             }
             if (connected) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -132,6 +147,8 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
                                 try {
                                     val revoked = ChatGptPlanOAuth(context, preferences).disconnect()
                                     connected = false
+                                    sessionPresent = false
+                                    needsReauth = false
                                     accountLabel = ""
                                     viewModel.setOpenAIPrimaryEnabled(false)
                                     status = if (revoked) {
@@ -152,8 +169,10 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
                 value = modelId,
                 onValueChange = {
                     modelId = it
+                    connected = false
                     preferences.edit().putString("model_id", it.trim()).apply()
                     if (agentState.useOpenAI) viewModel.setOpenAIPrimaryEnabled(false)
+                    status = "Модель изменена. Проверь соединение, прежде чем снова включать ChatGPT."
                 },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
