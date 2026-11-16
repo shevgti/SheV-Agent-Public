@@ -81,7 +81,8 @@ class SheVAgentRuntime private constructor(
 
     /**
      * Runs one approved specialist locally, reusing the loaded model.
-     * No host tools, network, filesystem access or side effects are exposed in this first runtime slice.
+     * Only registered tools selected in the approved manifest are exposed through a scoped allowlist.
+     * CapabilityPolicy and risk checks still apply; arbitrary filesystem access and high-risk side effects are not granted.
      */
     suspend fun runSpecialist(manifest: AgentManifest, input: String): String {
         check(!closed.get()) { "SheV Agent runtime is closed." }
