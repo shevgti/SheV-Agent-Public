@@ -77,8 +77,11 @@ class OpenAiResponsesClient(
                 addProperty("model", config.modelId)
                 addProperty("instructions", instructions)
                 add("input", input)
-                add("tools", toolArray)
-                addProperty("tool_choice", "auto")
+                // A connection probe has no tools; omit tool routing entirely for that request.
+                if (tools.isNotEmpty()) {
+                    add("tools", toolArray)
+                    addProperty("tool_choice", "auto")
+                }
                 if (!chatGptPlanUsage) {
                     addProperty("parallel_tool_calls", false)
                     addProperty("max_output_tokens", 2048)
