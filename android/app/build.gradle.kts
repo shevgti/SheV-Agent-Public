@@ -84,6 +84,7 @@ dependencies {
     // Google ADK Kotlin + on-device LiteRT-LM inference.
     implementation("com.google.adk:google-adk-kotlin-core:1.5.0")
     implementation("com.google.adk:google-adk-kotlin-litertlm:1.5.0")
+    implementation("com.google.adk:google-adk-kotlin-integrations-openai:1.5.0")
     ksp("com.google.adk:google-adk-kotlin-processor:1.5.0")
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.16.1")
     ksp("androidx.room:room-compiler:2.8.5")
