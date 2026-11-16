@@ -48,7 +48,7 @@ private const val SEARCH_URL = "https://www.google.com/search?q="
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun SheVBrowserScreen(modifier: Modifier = Modifier) {
+fun SheVBrowserScreen(modifier: Modifier = Modifier, onExit: () -> Unit = {}) {
     var address by remember { mutableStateOf("") }
     var currentUrl by remember { mutableStateOf("about:blank") }
     var pageTitle by remember { mutableStateOf("Новая вкладка") }
