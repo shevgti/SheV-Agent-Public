@@ -49,6 +49,8 @@ class SupertonicRussianTts(private val context: Context) {
     private val installMarker = File(modelDir, ".complete")
     private val mutex = Mutex()
     private var tts: OfflineTts? = null
+    @Volatile private var activeTrack: AudioTrack? = null
+    @Volatile private var playbackCancelled: Boolean = false
 
     fun isInstalled(): Boolean =
         installMarker.isFile && REQUIRED_FILES.all { File(modelDir, it).isFile && File(modelDir, it).length() > 0L }
@@ -138,6 +140,7 @@ class SupertonicRussianTts(private val context: Context) {
         require(emotionTag == null || emotionTag in SupertonicVoiceCatalog.expressionTags) { "Неизвестная эмоция для Supertonic." }
         mutex.withLock {
             withContext(Dispatchers.Default) {
+                playbackCancelled = false
                 check(isInstalled()) { "Сначала загрузи пакет русских нейроголосов." }
                 val engine = tts ?: createEngine().also { tts = it }
                 val expressiveText = if (emotionTag == null) text else "$emotionTag $text"
@@ -150,7 +153,7 @@ class SupertonicRussianTts(private val context: Context) {
                         extra = mapOf("lang" to "ru")
                     )
                 )
-                playAudio(audio.samples, audio.sampleRate)
+                if (!playbackCancelled) playAudio(audio.samples, audio.sampleRate)
             }
         }
     }
@@ -204,26 +207,42 @@ class SupertonicRussianTts(private val context: Context) {
             .setBufferSizeInBytes(maxOf(minBuffer, pcm.size * 2))
             .setTransferMode(AudioTrack.MODE_STATIC)
             .build()
+        activeTrack = track
         try {
+            if (playbackCancelled) return
             var offset = 0
             while (offset < pcm.size) {
                 currentCoroutineContext().ensureActive()
                 val written = track.write(pcm, offset, pcm.size - offset, AudioTrack.WRITE_BLOCKING)
+                if (playbackCancelled) return
                 check(written > 0) { "Не удалось подготовить аудиопоток." }
                 offset += written
             }
+            if (playbackCancelled) return
             track.play()
-            while (track.playState == AudioTrack.PLAYSTATE_PLAYING && track.playbackHeadPosition < pcm.size) {
+            while (!playbackCancelled && track.playState == AudioTrack.PLAYSTATE_PLAYING && track.playbackHeadPosition < pcm.size) {
                 currentCoroutineContext().ensureActive()
                 Thread.sleep(20)
             }
         } finally {
+            if (activeTrack === track) activeTrack = null
             runCatching { track.stop() }
             track.release()
         }
     }
 
+    /** Stop current neural audio immediately when the user starts speaking. */
+    fun stopPlayback() {
+        playbackCancelled = true
+        activeTrack?.let { track ->
+            runCatching { track.pause() }
+            runCatching { track.flush() }
+            runCatching { track.stop() }
+        }
+    }
+
     fun release() {
+        stopPlayback()
         runCatching { tts?.release() }
         tts = null
     }
