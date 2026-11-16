@@ -280,13 +280,14 @@ $json
 
     @Test fun approvedOfflineToolFreeSpecialistCanRun() {
         val decision = AgentRunPolicy.evaluate(
-            validManifest().copy(status = AgentManifest.STATUS_APPROVED, allowedToolIds = emptyList())
+            validManifest().copy(status = AgentManifest.STATUS_APPROVED, allowedToolIds = emptyList()),
+            emptyMap()
         )
         assertTrue(decision.allowed)
     }
 
     @Test fun draftSpecialistCannotRun() {
-        val decision = AgentRunPolicy.evaluate(validManifest())
+        val decision = AgentRunPolicy.evaluate(validManifest(), emptyMap())
         assertFalse(decision.allowed)
     }
 
@@ -295,7 +296,7 @@ $json
             status = AgentManifest.STATUS_APPROVED,
             allowedToolIds = listOf("agent.inspect_tools")
         )
-        assertFalse(AgentRunPolicy.evaluate(manifest).allowed)
+        assertFalse(AgentRunPolicy.evaluate(manifest, emptyMap()).allowed)
         assertTrue(AgentRunPolicy.evaluate(manifest, mapOf("agent.inspect_tools" to setOf(AgentCapability.ANALYZE_DATA))).allowed)
     }
 
@@ -330,10 +331,12 @@ $json
 
     @Test fun specialistWithNetworkOrSideEffectsCannotRun() {
         val network = AgentRunPolicy.evaluate(
-            validManifest().copy(status = AgentManifest.STATUS_APPROVED, allowedToolIds = emptyList(), networkPolicy = "ONLINE")
+            validManifest().copy(status = AgentManifest.STATUS_APPROVED, allowedToolIds = emptyList(), networkPolicy = "ONLINE"),
+            emptyMap()
         )
         val sideEffect = AgentRunPolicy.evaluate(
-            validManifest().copy(status = AgentManifest.STATUS_APPROVED, allowedToolIds = emptyList(), sideEffectPolicy = "EXECUTE")
+            validManifest().copy(status = AgentManifest.STATUS_APPROVED, allowedToolIds = emptyList(), sideEffectPolicy = "EXECUTE"),
+            emptyMap()
         )
         assertFalse(network.allowed)
         assertFalse(sideEffect.allowed)
