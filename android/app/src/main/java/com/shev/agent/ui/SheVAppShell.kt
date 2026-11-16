@@ -17,7 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModel
+import com.shev.agent.model.LocalModelViewModel
 import com.shev.agent.browser.SheVBrowserScreen
 import com.shev.agent.model.LocalModelPanel
 
@@ -25,7 +25,7 @@ private enum class SheVPrimaryDestination { CHAT, BROWSER }
 
 /** Chat-first shell with a first-class embedded browser destination. */
 @Composable
-fun SheVAppShell(chatViewModel: ViewModel) {
+fun SheVAppShell(chatViewModel: LocalModelViewModel) {
     var destination by remember { mutableStateOf(SheVPrimaryDestination.CHAT) }
     Column(Modifier.fillMaxSize()) {
         Surface(color = MaterialTheme.colorScheme.surface) {
