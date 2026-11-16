@@ -140,7 +140,7 @@ class RussianPiperVoiceStore(context: Context) {
     suspend fun speakSample(context: Context, voice: RussianPiperVoice, text: String) = withContext(Dispatchers.Default) {
         require(isInstalled(voice)) { "Сначала скачай голос." }
         val dir = File(root, voice.folder)
-        piperPhonemizeInitialize(context.applicationContext)
+        ensurePhonemizerInitialized(context.applicationContext)
         val phonemes = piperPhonemizeText(text, "ru")
             ?: error("Не удалось подготовить русский текст для синтеза.")
         val codepoints = try {
@@ -158,7 +158,7 @@ class RussianPiperVoiceStore(context: Context) {
                 numThreads = 2,
                 provider = "cpu"
             ),
-            maxNumSentences = 1
+            maxNumSentences = codepoints.size.coerceAtLeast(1)
         )
         val engine = OfflineTts(config = config)
         try {
@@ -173,13 +173,20 @@ class RussianPiperVoiceStore(context: Context) {
                 .setTransferMode(AudioTrack.MODE_STATIC)
                 .build()
             try {
-                track.write(audio.samples, 0, audio.samples.size, AudioTrack.WRITE_BLOCKING)
+                check(audio.samples.isNotEmpty()) { "Модель не сгенерировала аудио." }
+                val written = track.write(audio.samples, 0, audio.samples.size, AudioTrack.WRITE_BLOCKING)
+                check(written == audio.samples.size) { "Не удалось передать весь аудиопоток на воспроизведение." }
                 track.play()
-                while (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
-                    kotlinx.coroutines.delay(100)
+                while (track.playbackHeadPosition.toLong() < audio.samples.size.toLong()) {
                     currentCoroutineContext().ensureActive()
+                    check(track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                        "Воспроизведение Piper неожиданно остановилось."
+                    }
+                    kotlinx.coroutines.delay(40)
                 }
+                track.stop()
             } finally {
+                runCatching { if (track.playState == AudioTrack.PLAYSTATE_PLAYING) track.stop() }
                 track.release()
             }
         } finally {
@@ -200,7 +207,18 @@ class RussianPiperVoiceStore(context: Context) {
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
+    private fun ensurePhonemizerInitialized(context: Context) {
+        synchronized(PHONEMIZER_LOCK) {
+            if (!phonemizerInitialized) {
+                piperPhonemizeInitialize(context)
+                phonemizerInitialized = true
+            }
+        }
+    }
+
     companion object {
+        private val PHONEMIZER_LOCK = Any()
+        @Volatile private var phonemizerInitialized = false
         private const val MAX_ARCHIVE_BYTES = 120L * 1024L * 1024L
     }
 }

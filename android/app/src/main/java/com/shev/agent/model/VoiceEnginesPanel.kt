@@ -12,6 +12,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,6 +40,8 @@ fun VoiceEnginesPanel() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val voiceStore = remember(context) { RussianPiperVoiceStore(context) }
+    val voicePrefs = remember(context) { context.getSharedPreferences("shev_voice", android.content.Context.MODE_PRIVATE) }
+    var selectedPiperVoice by remember { mutableStateOf(voicePrefs.getString("piper_voice", null)) }
     val installed = remember { mutableStateMapOf<String, Boolean>() }
     val progress = remember { mutableStateMapOf<String, Float>() }
     val status = remember { mutableStateMapOf<String, String>() }
@@ -91,11 +94,31 @@ fun VoiceEnginesPanel() {
             Text("Русские офлайн-голоса", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text("Загружаются на телефон один раз. После установки озвучивание работает без интернета и платного API. Размер каждого архива около 67 МБ.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text("Системный голос Android", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                RadioButton(
+                    selected = selectedPiperVoice == null,
+                    onClick = {
+                        selectedPiperVoice = null
+                        voicePrefs.edit().remove("piper_voice").apply()
+                    }
+                )
+            }
             RussianPiperVoice.entries.forEach { voice ->
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                     Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(voice.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Text("Piper ONNX · русский · офлайн", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Text(voice.title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            RadioButton(
+                                selected = selectedPiperVoice == voice.name,
+                                enabled = installed[voice.name] == true,
+                                onClick = {
+                                    selectedPiperVoice = voice.name
+                                    voicePrefs.edit().putString("piper_voice", voice.name).apply()
+                                }
+                            )
+                        }
+                        Text(if (selectedPiperVoice == voice.name) "Выбран для голосовых ответов SheV" else "Piper ONNX · русский · офлайн", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                         if (busy[voice.name] == true) {
                             LinearProgressIndicator(progress = { progress[voice.name] ?: 0f }, modifier = Modifier.fillMaxWidth())
                             Text(status[voice.name] ?: "Подготовка модели…", style = MaterialTheme.typography.bodySmall)
@@ -149,7 +172,7 @@ fun VoiceEnginesPanel() {
                     }
                 }
             }
-            Text("Важно: кнопки открывают официальные исходники и страницы моделей, а не скачивают Python-модели в телефон. Для выбора и загрузки прямо в SheV-Agent нужен отдельный inference backend либо портирование движков на Android. Старые встроенные нейросетевые движки удалены. Новые модели пока доступны как каталог; для скачивания и запуска внутри Android требуется отдельный совместимый inference backend или портирование.",
+            Text("Важно: Coqui XTTS-v2, F5-TTS, Chatterbox и Fish Speech здесь представлены как справочный каталог — их Python-модели не устанавливаются на Android этой кнопкой. Piper — отдельные Android-совместимые офлайн-голоса: после загрузки и выбора они используются для озвучивания ответов SheV.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

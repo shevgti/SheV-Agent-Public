@@ -83,6 +83,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var availableVoices by remember { mutableStateOf<List<Voice>>(emptyList()) }
     var selectedVoiceName by remember { mutableStateOf(context.getSharedPreferences("shev_voice", android.content.Context.MODE_PRIVATE).getString("tts_voice", null)) }
     val voicePrefs = remember(context) { context.getSharedPreferences("shev_voice", android.content.Context.MODE_PRIVATE) }
+    val piperVoiceStore = remember(context) { RussianPiperVoiceStore(context) }
     var lastSpokenMessageIndex by remember { mutableStateOf(-1) }
     var showVoicePicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
@@ -103,6 +104,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var updateTotal by remember { mutableStateOf(0L) }
     var showUpdateDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    var piperPlaybackJob by remember { mutableStateOf<Job?>(null) }
     val currentVoiceMode by rememberUpdatedState(voiceConversation)
     val chatListState = rememberLazyListState()
 
@@ -279,6 +281,41 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             recognizer?.destroy()
             speech.stop()
             speech.shutdown()
+        }
+    }
+
+    LaunchedEffect(state.messages.size, state.busy, voiceConversation) {
+        val messageIndex = state.messages.lastIndex
+        val last = state.messages.lastOrNull()
+        if (voiceConversation && !state.busy && messageIndex > lastSpokenMessageIndex &&
+            last?.startsWith("SheV:") == true
+        ) {
+            lastSpokenMessageIndex = messageIndex
+            val answer = cleanTextForSpeech(last.substringAfter(":"))
+            if (answer.isNotBlank()) {
+                voiceStatus = "SheV отвечает…"
+                recognizer?.cancel()
+                speech.stop()
+                val selectedPiperName = voicePrefs.getString("piper_voice", null)
+                val selectedPiperVoice = RussianPiperVoice.entries.firstOrNull { it.name == selectedPiperName }
+                if (selectedPiperVoice != null && piperVoiceStore.isInstalled(selectedPiperVoice)) {
+                    piperPlaybackJob?.cancel()
+                    piperPlaybackJob = scope.launch {
+                        try {
+                            piperVoiceStore.speakSample(context, selectedPiperVoice, answer)
+                            voiceStatus = "Ответ завершён · ${selectedPiperVoice.title}"
+                            if (currentVoiceMode) beginListening()
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            voiceStatus = "Ошибка Piper: ${error.message ?: "перехожу на системный голос"}"
+                            speech.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "shev-answer-$messageIndex")
+                        }
+                    }
+                } else {
+                    speech.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "shev-answer-$messageIndex")
+                }
+            }
         }
     }
 
@@ -769,6 +806,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                         // Let the user take the floor while SheV is generating an answer.
                         viewModel.cancelResponse()
                         speech.stop()
+                        piperPlaybackJob?.cancel()
                         recognizer?.cancel()
                         voiceStatus = "Остановил ответ. Слушаю тебя…"
                         beginListening()
@@ -777,8 +815,10 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                         listening = false
                         recognizer?.cancel()
                         speech.stop()
+                        piperPlaybackJob?.cancel()
                         voiceStatus = "Голосовой диалог выключен"
                     } else {
+                        lastSpokenMessageIndex = state.messages.lastIndex
                         voiceConversation = true
                         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                             beginListening()
