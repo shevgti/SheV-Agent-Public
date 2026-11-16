@@ -158,7 +158,7 @@ class RussianPiperVoiceStore(context: Context) {
                 numThreads = 2,
                 provider = "cpu"
             ),
-            maxNumSentences = 1
+            maxNumSentences = codepoints.size.coerceAtLeast(1)
         )
         val engine = OfflineTts(config = config)
         try {
