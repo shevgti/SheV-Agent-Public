@@ -118,6 +118,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private var runtime: SheVAgentRuntime? = null
     private var kiloConsentGranted = false
     private var toolExecutor: AgentToolExecutor? = null
+    private var agentToolHost: SheVAgentAdkTools? = null
     private var agentToolRegistry: AgentToolRegistry? = null
     private var agentExecutionContext: AgentToolExecutionContext? = null
     private val taskExecutionJobs = ConcurrentHashMap<String, Job>()
@@ -1902,6 +1903,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         toolExecutor = executor
         agentToolRegistry = registry
         agentExecutionContext = executionContext
+        agentToolHost = tools
         return tools
     }
 
@@ -2084,7 +2086,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         )
         check(decision.allowed) { decision.reason ?: "Запуск специалиста запрещён политикой." }
         val currentModel = KiloGatewayProvider.requireCurrentFreeToolModel(modelId)
-        val hostTools = runtime?.hostTools ?: createAgentToolHost()
+        val hostTools = runtime?.hostTools ?: agentToolHost ?: createAgentToolHost()
         mutableState.update { it.copy(busy = true, error = null) }
         try {
             return AgentModelRunner.runSpecialist(
