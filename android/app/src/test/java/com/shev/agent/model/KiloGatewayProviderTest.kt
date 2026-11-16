@@ -55,6 +55,24 @@ class KiloGatewayProviderTest {
     }
 
     @Test
+    fun malformedIndividualEntriesAreSkippedWithoutLosingValidModels() {
+        val json = """
+            {
+              "data": [
+                {"id":"vendor/bad-pricing-object","pricing":"free","supported_parameters":["tools"]},
+                {"id":"vendor/bad-parameters","pricing":{"prompt":"0","completion":"0"},"supported_parameters":"tools"},
+                {"id":"vendor/bad-id","pricing":{"prompt":"0","completion":"0"},"supported_parameters":["tools"]},
+                {"id":"vendor/good","pricing":{"prompt":"0","completion":"0"},"supported_parameters":["tools"],"context_length":"unknown"}
+              ]
+            }
+        """.trimIndent()
+
+        val models = KiloGatewayProvider.parseFreeToolModels(json)
+
+        assertEquals(listOf(KiloFreeToolModel("vendor/good")), models)
+    }
+
+    @Test
     fun openAiCompatibleModelCanBeCreatedWithoutAnApiKey() {
         val model = KiloGatewayProvider.createModel(KiloFreeToolModel("vendor/free-tools"))
         assertNotNull(model)
