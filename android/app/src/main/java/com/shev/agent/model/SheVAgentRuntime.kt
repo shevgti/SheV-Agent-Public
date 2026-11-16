@@ -44,7 +44,7 @@ class SheVAgentRuntime private constructor(
     private val runner: InMemoryRunner,
     private val creatorRunner: InMemoryRunner,
     private val sessionService: InMemorySessionService,
-    private val hostTools: SheVAgentAdkTools,
+    internal val hostTools: SheVAgentAdkTools,
     val backendName: String
 ) : Closeable {
     private val closed = AtomicBoolean(false)
