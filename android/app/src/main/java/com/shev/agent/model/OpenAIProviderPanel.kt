@@ -84,7 +84,7 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
                 onClick = {
                     if (busy) return@Button
                     busy = true
-                    status = "Открываю безопасный вход ChatGPT…"
+                    status = if (sessionPresent && !needsReauth) "Проверяю сохранённую сессию и соединение ChatGPT…" else "Открываю безопасный вход ChatGPT…"
                     scope.launch {
                         try {
                             val oauth = ChatGptPlanOAuth(context, preferences)
@@ -147,6 +147,8 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
                                 try {
                                     val revoked = ChatGptPlanOAuth(context, preferences).disconnect()
                                     connected = false
+                                    sessionPresent = false
+                                    needsReauth = false
                                     accountLabel = ""
                                     viewModel.setOpenAIPrimaryEnabled(false)
                                     status = if (revoked) {
