@@ -213,17 +213,33 @@ class OpenAiResponsesClient(
             coroutineContext.ensureActive()
             val status = connection.responseCode
             if (status !in 200..299) {
-                throw IllegalStateException(
-                    when (status) {
-                        401 -> if (chatGptPlanUsage) "ChatGPT отклонил OAuth-сессию (HTTP 401). Переподключи аккаунт." else "OpenAI отклонил API-ключ (HTTP 401)."
-                        403 -> if (chatGptPlanUsage) "ChatGPT plan usage недоступен для этого аккаунта или региона (HTTP 403)." else "OpenAI запретил запрос (HTTP 403)."
-                        404 -> "OpenAI Responses API не найден (HTTP 404). Проверь модель и адрес /v1."
-                        429 -> if (chatGptPlanUsage) "Достигнут лимит использования ChatGPT plan usage (HTTP 429)." else "OpenAI временно ограничил запросы (HTTP 429)."
-                        in 500..599 -> "Ошибка сервера OpenAI (HTTP $status)."
-                        in 300..399 -> "Перенаправления для защищённого запроса запрещены."
-                        else -> "Запрос к OpenAI отклонён (HTTP $status)."
-                    }
-                )
+                val errorBody = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use {
+                    it.readText().take(1_200)
+                }.orEmpty()
+                val parsedError = runCatching { JsonParser.parseString(errorBody).asJsonObject }.getOrNull()
+                val nestedError = parsedError?.getAsJsonObject("error")
+                val errorCode = nestedError?.get("code")?.takeIf { it.isJsonPrimitive }?.asString
+                val detail = nestedError?.get("message")?.takeIf { it.isJsonPrimitive }?.asString
+                    ?: parsedError?.get("detail")?.takeIf { it.isJsonPrimitive }?.asString
+                    ?: parsedError?.get("message")?.takeIf { it.isJsonPrimitive }?.asString
+                    ?: errorBody.takeIf { it.isNotBlank() }
+                val requestId = connection.getHeaderField("x-request-id")
+                val reason = when (status) {
+                    401 -> if (chatGptPlanUsage) "ChatGPT не принял OAuth-доступ (HTTP 401)." else "OpenAI отклонил API-ключ (HTTP 401)."
+                    403 -> if (chatGptPlanUsage) "ChatGPT plan usage запрещён политикой, разрешением или регионом (HTTP 403)." else "OpenAI запретил запрос (HTTP 403)."
+                    404 -> "OpenAI Responses API или выбранная модель не найдены (HTTP 404)."
+                    429 -> if (chatGptPlanUsage) "ChatGPT ограничил использование плана (HTTP 429)." else "OpenAI временно ограничил запросы (HTTP 429)."
+                    503 -> if (chatGptPlanUsage) "Маршрут ChatGPT plan usage временно недоступен (HTTP 503)." else "Сервис OpenAI временно недоступен (HTTP 503)."
+                    in 500..599 -> "Ошибка сервера OpenAI (HTTP $status)."
+                    in 300..399 -> "Перенаправления для защищённого запроса запрещены."
+                    else -> "Запрос к OpenAI отклонён (HTTP $status)."
+                }
+                val diagnostics = buildList {
+                    if (!errorCode.isNullOrBlank()) add("код: $errorCode")
+                    if (!detail.isNullOrBlank()) add("ответ: $detail")
+                    if (!requestId.isNullOrBlank()) add("request_id: $requestId")
+                }.joinToString("; ")
+                throw IllegalStateException(if (diagnostics.isBlank()) reason else "$reason $diagnostics")
             }
             if (chatGptPlanUsage) {
                 return readStreamingResponse(connection)
