@@ -94,6 +94,16 @@ fun VoiceEnginesPanel() {
             Text("Русские офлайн-голоса", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text("Загружаются на телефон один раз. После установки озвучивание работает без интернета и платного API. Размер каждого архива около 67 МБ.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text("Системный голос Android", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                RadioButton(
+                    selected = selectedPiperVoice == null,
+                    onClick = {
+                        selectedPiperVoice = null
+                        voicePrefs.edit().remove("piper_voice").apply()
+                    }
+                )
+            }
             RussianPiperVoice.entries.forEach { voice ->
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                     Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
