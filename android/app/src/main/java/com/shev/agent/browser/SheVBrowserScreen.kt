@@ -48,7 +48,7 @@ private const val SEARCH_URL = "https://www.google.com/search?q="
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun SheVBrowserScreen(modifier: Modifier = Modifier, onExit: () -> Unit = {}) {
+fun SheVBrowserScreen(\n    modifier: Modifier = Modifier,\n    onExit: () -> Unit = {},\n    onPageToChat: (String) -> Unit = {}\n) {
     var address by remember { mutableStateOf("") }
     var currentUrl by remember { mutableStateOf("about:blank") }
     var pageTitle by remember { mutableStateOf("Новая вкладка") }
@@ -99,6 +99,19 @@ fun SheVBrowserScreen(modifier: Modifier = Modifier, onExit: () -> Unit = {}) {
                 onClick = { webViewRef?.reload() },
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 8.dp)
             ) { Text("↻") }
+            OutlinedButton(
+                onClick = {
+                    webViewRef?.evaluateJavascript(
+                        "(function(){var e=document.body.cloneNode(true);e.querySelectorAll('script,style,noscript,svg,canvas').forEach(function(n){n.remove();});return (e.innerText||e.textContent||'').slice(0,12000);})()"
+                    ) { encoded ->
+                        val pageText = runCatching {
+                            org.json.JSONTokener(encoded).nextValue() as? String
+                        }.getOrNull()?.trim().orEmpty()
+                        if (pageText.isNotBlank()) onPageToChat(pageText)
+                    }
+                },
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+            ) { Text("В чат") }
         }
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
