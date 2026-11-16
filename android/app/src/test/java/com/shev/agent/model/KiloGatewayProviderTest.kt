@@ -1,6 +1,7 @@
 package com.shev.agent.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -51,6 +52,12 @@ class KiloGatewayProviderTest {
         assertThrows(IllegalArgumentException::class.java) {
             KiloGatewayProvider.parseFreeToolModels("""{"models":[]}""")
         }
+    }
+
+    @Test
+    fun openAiCompatibleModelCanBeCreatedWithoutAnApiKey() {
+        val model = KiloGatewayProvider.createModel(KiloFreeToolModel("vendor/free-tools"))
+        assertNotNull(model)
     }
 
     @Test
