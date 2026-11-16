@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -35,7 +34,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -51,7 +49,6 @@ private const val SEARCH_URL = "https://www.google.com/search?q="
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun SheVBrowserScreen(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
     var address by remember { mutableStateOf("") }
     var currentUrl by remember { mutableStateOf("about:blank") }
     var pageTitle by remember { mutableStateOf("Новая вкладка") }
