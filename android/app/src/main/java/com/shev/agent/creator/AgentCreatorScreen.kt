@@ -1,6 +1,7 @@
 package com.shev.agent.creator
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,6 +12,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LinearProgressIndicator
@@ -35,6 +39,7 @@ import com.google.gson.Gson
 import com.shev.agent.data.AgentDao
 import com.shev.agent.data.AgentDefinitionEntity
 import com.shev.agent.model.LocalModelViewModel
+import com.shev.agent.model.KiloFreeToolModel
 import com.shev.agent.tools.AgentToolDescriptor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -64,6 +69,38 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
     var busy by remember { mutableStateOf(false) }
     var clarificationPending by remember { mutableStateOf(false) }
     var useChatGptForCreator by remember { mutableStateOf(false) }
+    var useKiloForCreator by remember { mutableStateOf(false) }
+    var kiloConsent by remember { mutableStateOf(false) }
+    var kiloModels by remember { mutableStateOf<List<KiloFreeToolModel>>(emptyList()) }
+    var selectedKiloModelId by remember { mutableStateOf("") }
+    var kiloLoading by remember { mutableStateOf(false) }
+    var kiloCatalogError by remember { mutableStateOf<String?>(null) }
+    var kiloMenuExpanded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(kiloConsent) {
+        modelViewModel.setKiloConsent(kiloConsent)
+        if (!kiloConsent) {
+            useKiloForCreator = false
+        } else {
+            kiloLoading = true
+            kiloCatalogError = null
+            try {
+                kiloModels = modelViewModel.listKiloFreeToolModels()
+                if (kiloModels.none { it.id == selectedKiloModelId }) {
+                    selectedKiloModelId = kiloModels.firstOrNull()?.id.orEmpty()
+                }
+                if (kiloModels.isEmpty()) kiloCatalogError = "Сейчас нет бесплатных моделей с поддержкой инструментов."
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                kiloCatalogError = failure.message ?: "Не удалось получить каталог Kilo."
+                kiloModels = emptyList()
+                selectedKiloModelId = ""
+            } finally {
+                kiloLoading = false
+            }
+        }
+    }
 
     LazyColumn(
         Modifier.fillMaxSize().padding(18.dp),
@@ -81,21 +118,26 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Откуда берётся ИИ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Выбери интеллект, который будет проектировать паспорт специалиста. ChatGPT использует уже подключённый Codex-аккаунт; локальная модель работает непосредственно на телефоне.",
+                        "Выбери интеллект для проектирования паспорта. Можно использовать локальную модель, подключённый Codex или бесплатную облачную модель Kilo.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
                             enabled = !busy && modelState.codexConnected,
-                            onClick = { useChatGptForCreator = true }
+                            onClick = { useChatGptForCreator = true; useKiloForCreator = false }
                         ) { Text(if (useChatGptForCreator) "✓ ChatGPT выбран" else "ChatGPT / Codex") }
                         OutlinedButton(
                             enabled = !busy && modelState.ready,
-                            onClick = { useChatGptForCreator = false }
-                        ) { Text(if (!useChatGptForCreator) "✓ Локальная модель" else "Локальная модель") }
+                            onClick = { useChatGptForCreator = false; useKiloForCreator = false }
+                        ) { Text(if (!useChatGptForCreator && !useKiloForCreator) "✓ Локальная модель" else "Локальная модель") }
+                        OutlinedButton(
+                            enabled = !busy && !modelState.busy && kiloConsent && selectedKiloModelId.isNotBlank(),
+                            onClick = { useChatGptForCreator = false; useKiloForCreator = true }
+                        ) { Text(if (useKiloForCreator) "✓ Kilo выбран" else "Kilo · бесплатно") }
                     }
                     Text(
                         when {
+                            useKiloForCreator -> "Источник конструктора: Kilo · $selectedKiloModelId · бесплатная облачная модель"
                             useChatGptForCreator && modelState.codexConnected -> "Источник конструктора: ChatGPT / Codex · подключён"
                             useChatGptForCreator -> "ChatGPT / Codex не подключён. Открой настройки и выполни вход."
                             modelState.ready -> "Источник конструктора: локальная модель · запущена"
@@ -103,8 +145,50 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                             else -> "Источник конструктора: локальная модель · модель ещё не установлена"
                         },
                         fontWeight = FontWeight.SemiBold,
-                        color = if ((useChatGptForCreator && modelState.codexConnected) || (!useChatGptForCreator && modelState.ready)) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if ((useKiloForCreator && kiloConsent && selectedKiloModelId.isNotBlank()) || (useChatGptForCreator && modelState.codexConnected) || (!useChatGptForCreator && !useKiloForCreator && modelState.ready)) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Checkbox(checked = kiloConsent, onCheckedChange = { if (!busy && !modelState.busy) kiloConsent = it }, enabled = !busy && !modelState.busy)
+                        Text("Разрешаю отправлять запросы в Kilo. Не передавать личные данные, секреты и приватный код.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (kiloConsent) {
+                        Text("Kilo: анонимный бесплатный доступ, лимит около 200 запросов в час на IP. Запросы могут обрабатываться сторонними провайдерами.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (selectedKiloModelId.startsWith("nvidia/")) {
+                            Text(
+                                "Важно: бесплатные NVIDIA-модели работают в пробном режиме. NVIDIA может записывать запросы и ответы и использовать их для улучшения продуктов. Не отправляй личные или конфиденциальные данные.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Box {
+                                OutlinedButton(onClick = { kiloMenuExpanded = true }, enabled = !kiloLoading && kiloModels.isNotEmpty()) {
+                                    Text(selectedKiloModelId.ifBlank { if (kiloLoading) "Загружаю модели…" else "Нет доступных моделей" })
+                                }
+                                DropdownMenu(expanded = kiloMenuExpanded, onDismissRequest = { kiloMenuExpanded = false }) {
+                                    kiloModels.forEach { model ->
+                                        DropdownMenuItem(text = { Text(model.id) }, onClick = {
+                                            selectedKiloModelId = model.id
+                                            kiloMenuExpanded = false
+                                        })
+                                    }
+                                }
+                            }
+                            OutlinedButton(onClick = {
+                                scope.launch {
+                                    kiloLoading = true
+                                    kiloCatalogError = null
+                                    try {
+                                        kiloModels = modelViewModel.listKiloFreeToolModels()
+                                        if (kiloModels.none { it.id == selectedKiloModelId }) selectedKiloModelId = kiloModels.firstOrNull()?.id.orEmpty()
+                                    } catch (cancelled: CancellationException) { throw cancelled }
+                                    catch (failure: Exception) { kiloCatalogError = failure.message ?: "Ошибка каталога Kilo." }
+                                    finally { kiloLoading = false }
+                                }
+                            }, enabled = !kiloLoading && !busy && !modelState.busy) { Text("Обновить") }
+                        }
+                        kiloCatalogError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    }
                     Text("Инструменты с реальными обработчиками:", fontWeight = FontWeight.SemiBold)
                     if (availableTools.isEmpty()) {
                         Text(
@@ -143,10 +227,10 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
-                            enabled = !busy && !modelState.busy && request.isNotBlank() && (if (useChatGptForCreator) modelState.codexConnected else modelState.ready),
+                            enabled = !busy && !modelState.busy && request.isNotBlank() && (when { useChatGptForCreator -> modelState.codexConnected; useKiloForCreator -> kiloConsent && selectedKiloModelId.isNotBlank(); else -> modelState.ready }),
                             onClick = {
                                 busy = true
-                                status = if (useChatGptForCreator) "ChatGPT / Codex проектирует агента…" else "Локальная модель проектирует агента…"
+                                status = when { useChatGptForCreator -> "ChatGPT / Codex проектирует агента…"; useKiloForCreator -> "Kilo проектирует агента…"; else -> "Локальная модель проектирует агента…" }
                                 scope.launch {
                                     try {
                                         modelViewModel.prepareAgentToolCatalog()
@@ -156,7 +240,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                                             knownToolIds = knownTools,
                                             existingAgentIds = definitions.map { it.agentId }.toSet(),
                                             knownToolDescriptions = modelViewModel.availableAgentTools().map { tool -> "${tool.id}: ${tool.title} — ${tool.description}; capabilities=${tool.capabilities}" },
-                                            generate = { prompt -> if (useChatGptForCreator) modelViewModel.generateAgentCreatorOutputFromCodex(prompt) else modelViewModel.generateAgentCreatorOutputFromPrompt(prompt) },
+                                            generate = { prompt -> when { useChatGptForCreator -> modelViewModel.generateAgentCreatorOutputFromCodex(prompt); useKiloForCreator -> modelViewModel.generateAgentCreatorOutputFromKilo(prompt, selectedKiloModelId); else -> modelViewModel.generateAgentCreatorOutputFromPrompt(prompt) } },
                                             existingAgentSummaries = definitions.map { "${it.agentId}: ${it.name} — ${it.purpose}" },
                                             forceComplete = clarificationPending
                                         )
@@ -211,7 +295,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                         ) { Text("Обновить задание") }
                         if (busy) CircularProgressIndicator()
                     }
-                    if (!modelState.ready) {
+                    if (!modelState.ready && !useKiloForCreator && !useChatGptForCreator) {
                         Text(
                             if (modelState.verified) "Локальная модель установлена, но ещё не запущена."
                             else "Сначала установи локальную модель. Она будет работать на телефоне.",
@@ -253,6 +337,7 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
             AgentDefinitionCard(
                 definition = definition,
                 canRun = modelState.ready,
+                canRunKilo = kiloConsent && selectedKiloModelId.isNotBlank() && !modelState.busy && !busy,
                 toolCapabilities = toolCapabilities,
                 onApprove = {
                     scope.launch {
@@ -274,7 +359,8 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
                         }
                     }
                 },
-                onRun = { input -> modelViewModel.runApprovedSpecialist(definition.manifestJson, input) }
+                onRun = { input -> modelViewModel.runApprovedSpecialist(definition.manifestJson, input) },
+                onRunKilo = { input -> modelViewModel.runApprovedSpecialistWithKilo(definition.manifestJson, input, selectedKiloModelId) }
             )
         }
         item {
@@ -291,9 +377,11 @@ fun AgentCreatorScreen(dao: AgentDao, modelViewModel: LocalModelViewModel) {
 private fun AgentDefinitionCard(
     definition: AgentDefinitionEntity,
     canRun: Boolean,
+    canRunKilo: Boolean,
     toolCapabilities: Map<String, Set<com.shev.agent.AgentCapability>>,
     onApprove: () -> Unit,
-    onRun: suspend (String) -> String
+    onRun: suspend (String) -> String,
+    onRunKilo: suspend (String) -> String
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -386,6 +474,24 @@ private fun AgentDefinitionCard(
                     ) { Text(if (running) "Выполняю…" else "Запустить специалиста") }
                     if (!canRun) {
                         Text("Сначала запусти локальную модель SheV.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (canRunKilo && manifest.networkPolicy == "READ_ONLY") {
+                        OutlinedButton(
+                            enabled = !running && runInput.isNotBlank(),
+                            onClick = {
+                                running = true
+                                runOutput = null
+                                runError = null
+                                scope.launch {
+                                    try { runOutput = onRunKilo(runInput.trim()) }
+                                    catch (cancelled: CancellationException) { throw cancelled }
+                                    catch (failure: Exception) { runError = failure.message ?: "Не удалось выполнить задачу через Kilo." }
+                                    finally { running = false }
+                                }
+                            }
+                        ) { Text(if (running) "Выполняю через Kilo…" else "Запустить через Kilo") }
+                    } else if (canRunKilo && manifest.networkPolicy != "READ_ONLY") {
+                        Text("Kilo запускает облачную модель только для специалистов с политикой READ_ONLY. Для OFFLINE используй локальную модель.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (running) CircularProgressIndicator()
                     runError?.let { Text(it, color = MaterialTheme.colorScheme.error) }

@@ -116,7 +116,9 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     val tasks = dao.observeTasks()
     val taskSteps = dao.observeAllTaskSteps()
     private var runtime: SheVAgentRuntime? = null
+    private var kiloConsentGranted = false
     private var toolExecutor: AgentToolExecutor? = null
+    private var agentToolHost: SheVAgentAdkTools? = null
     private var agentToolRegistry: AgentToolRegistry? = null
     private var agentExecutionContext: AgentToolExecutionContext? = null
     private val taskExecutionJobs = ConcurrentHashMap<String, Job>()
@@ -1901,6 +1903,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         toolExecutor = executor
         agentToolRegistry = registry
         agentExecutionContext = executionContext
+        agentToolHost = tools
         return tools
     }
 
@@ -2036,6 +2039,69 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         )
 
     /** Runs an explicitly approved specialist with only its manifest-scoped tools. */
+    /** Kilo model discovery is public metadata only; no user prompt is sent. */
+    suspend fun listKiloFreeToolModels(): List<KiloFreeToolModel> =
+        KiloGatewayProvider.listFreeToolModels()
+
+    /** Cloud use is opt-in for this ViewModel lifetime and defaults to disabled. */
+    fun setKiloConsent(enabled: Boolean) {
+        kiloConsentGranted = enabled
+    }
+
+    /** Creates a draft manifest with an anonymous, currently verified free Kilo model. */
+    suspend fun generateAgentCreatorOutputFromKilo(creatorPrompt: String, modelId: String): String {
+        check(kiloConsentGranted) { "Сначала явно разреши передачу запроса в Kilo." }
+        require(creatorPrompt.isNotBlank()) { "Пустой запрос конструктора." }
+        check(!mutableState.value.busy) { "Модель уже выполняет другую задачу." }
+        mutableState.update { it.copy(busy = true, error = null) }
+        try {
+            val model = KiloGatewayProvider.createModel(
+                KiloGatewayProvider.requireCurrentFreeToolModel(modelId)
+            )
+            return AgentModelRunner.runCreator(model, creatorPrompt, "Kilo · $modelId")
+        } finally {
+            mutableState.update { it.copy(busy = false) }
+        }
+    }
+
+    /** Runs one approved READ_ONLY specialist through Kilo; no paid-model fallback is permitted. */
+    suspend fun runApprovedSpecialistWithKilo(
+        manifestJson: String,
+        input: String,
+        modelId: String
+    ): String {
+        check(kiloConsentGranted) { "Сначала явно разреши передачу запроса в Kilo." }
+        require(input.isNotBlank()) { "Опиши задачу для специалиста." }
+        if (mutableState.value.busy) {
+            throw IllegalStateException("SheV Agent уже выполняет другую задачу.")
+        }
+        prepareAgentToolCatalog()
+        val manifest = AgentManifestParser.parse(manifestJson)
+        require(manifest.networkPolicy == "READ_ONLY") {
+            "Облачная модель доступна только специалистам с политикой READ_ONLY. Для OFFLINE выбери локальную модель."
+        }
+        val decision = AgentRunPolicy.evaluate(
+            manifest,
+            availableAgentTools().associate { it.id to it.capabilities }
+        )
+        check(decision.allowed) { decision.reason ?: "Запуск специалиста запрещён политикой." }
+        val currentModel = KiloGatewayProvider.requireCurrentFreeToolModel(modelId)
+        val hostTools = runtime?.hostTools ?: agentToolHost ?: createAgentToolHost()
+        mutableState.update { it.copy(busy = true, error = null) }
+        try {
+            return AgentModelRunner.runSpecialist(
+                model = KiloGatewayProvider.createModel(currentModel),
+                hostTools = hostTools,
+                manifest = manifest,
+                input = input,
+                modelLabel = "Kilo · ${currentModel.id}",
+                remoteModel = true
+            )
+        } finally {
+            mutableState.update { it.copy(busy = false) }
+        }
+    }
+
     suspend fun runApprovedSpecialist(manifestJson: String, input: String): String {
         require(input.isNotBlank()) { "Опиши задачу для специалиста." }
         val manifest = AgentManifestParser.parse(manifestJson)
