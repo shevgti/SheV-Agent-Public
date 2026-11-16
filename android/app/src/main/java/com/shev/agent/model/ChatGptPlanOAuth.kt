@@ -57,6 +57,12 @@ internal class ChatGptPlanOAuth(
             }
         }
         val existingSession = storedSession?.takeIf { it.hostId == hostId }
+        // OpenAI issues a permanent client_id during first-time dynamic registration.
+        // Keep it even when the subsequent one-time authorization-code exchange fails.
+        val pendingClientId = preferences.getString(KEY_PENDING_CLIENT_ID, null)
+            ?.takeIf { it.isNotBlank() && it.length <= 256 }
+        val registeredClientId = existingSession?.clientId ?: pendingClientId
+        val isFirstRegistration = registeredClientId == null
 
         ServerSocket().use { server ->
             server.reuseAddress = false
@@ -69,11 +75,11 @@ internal class ChatGptPlanOAuth(
                 .appendPath("api")
                 .appendPath("accounts")
                 .appendPath("authorize")
-                .appendQueryParameter("client_id", existingSession?.clientId ?: DYNAMIC_CLIENT_ID)
+                .appendQueryParameter("client_id", registeredClientId ?: DYNAMIC_CLIENT_ID)
                 .apply {
-                    if (existingSession == null) {
+                    if (isFirstRegistration) {
                         appendQueryParameter("agent_name_hint", APP_NAME)
-                    } else {
+                    } else if (existingSession != null) {
                         appendQueryParameter("id_token_hint", existingSession.idToken)
                         if (existingSession.email.isNotBlank()) {
                             appendQueryParameter("login_hint", existingSession.email)
@@ -122,16 +128,21 @@ internal class ChatGptPlanOAuth(
                     val code = callbackUri.getQueryParameter("code")
                         ?: throw IllegalStateException("OpenAI не вернул код авторизации.")
                     val returnedClientId = callbackUri.getQueryParameter("client_id")
-                    val issuedClientId = if (existingSession != null) {
-                        require(returnedClientId == null || returnedClientId == existingSession.clientId) {
+                    val issuedClientId = if (registeredClientId != null) {
+                        require(returnedClientId == null || returnedClientId == registeredClientId) {
                             "OpenAI вернул идентификатор другого клиента."
                         }
-                        existingSession.clientId
+                        registeredClientId
                     } else {
                         returnedClientId ?: throw IllegalStateException("OpenAI не вернул зарегистрированный client_id.")
                     }
                     require(issuedClientId.isNotBlank() && issuedClientId.length <= 256) {
                         "OpenAI вернул пустой или слишком длинный client_id."
+                    }
+                    if (isFirstRegistration) {
+                        check(preferences.edit().putString(KEY_PENDING_CLIENT_ID, issuedClientId).commit()) {
+                            "OpenAI зарегистрировал SheV Agent, но Android не смог сохранить client_id. Повтори вход."
+                        }
                     }
                     code to issuedClientId
                 }
@@ -282,7 +293,7 @@ internal class ChatGptPlanOAuth(
             }.getOrDefault(false)
         }
         // Clear local credentials even if the revocation endpoint could not be reached.
-        preferences.edit().remove(KEY_SESSION).apply()
+        preferences.edit().remove(KEY_SESSION).remove(KEY_PENDING_CLIENT_ID).apply()
         revoked
     }
 
@@ -300,6 +311,8 @@ internal class ChatGptPlanOAuth(
         check(restored.subject == session.subject && restored.clientId == session.clientId) {
             "Сохранённая сессия ChatGPT не прошла контрольную проверку."
         }
+        // The fully validated session now owns this issued client ID.
+        preferences.edit().remove(KEY_PENDING_CLIENT_ID).commit()
     }
 
     private fun validateIdToken(token: String, clientId: String, expectedNonce: String): Pair<String, String> {
@@ -398,6 +411,7 @@ internal class ChatGptPlanOAuth(
         private const val MAX_HTTP_BODY_CHARS = 128_000
         private const val KEY_HOST_ID = "chatgpt_plan_host_id"
         private const val KEY_SESSION = "chatgpt_plan_session"
+        private const val KEY_PENDING_CLIENT_ID = "chatgpt_plan_pending_client_id"
     }
 }
 
