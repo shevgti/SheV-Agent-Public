@@ -110,7 +110,9 @@ internal object AgentModelRunner {
         }
 
         return withContext(Dispatchers.IO) {
-            val learnedSkillContext = hostTools.buildVerifiedSkillContext(input)
+            // Local skill-library material must never be silently added to a cloud-provider prompt.
+            // Remote runs receive only the explicitly submitted task and approved tool results.
+            val learnedSkillContext = if (remoteModel) "" else hostTools.buildVerifiedSkillContext(input)
             val specialistTools = if (manifest.allowedToolIds.isEmpty()) emptyList()
                 else hostTools.scopedTo(manifest.allowedToolIds.toSet()).generatedTools()
             val sessions = InMemorySessionService()
