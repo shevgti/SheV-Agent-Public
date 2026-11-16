@@ -169,8 +169,10 @@ fun OpenAIProviderPanel(viewModel: LocalModelViewModel) {
                 value = modelId,
                 onValueChange = {
                     modelId = it
+                    connected = false
                     preferences.edit().putString("model_id", it.trim()).apply()
                     if (agentState.useOpenAI) viewModel.setOpenAIPrimaryEnabled(false)
+                    status = "Модель изменена. Проверь соединение, прежде чем снова включать ChatGPT."
                 },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
