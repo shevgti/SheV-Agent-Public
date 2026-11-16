@@ -2084,7 +2084,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         )
         check(decision.allowed) { decision.reason ?: "Запуск специалиста запрещён политикой." }
         val currentModel = KiloGatewayProvider.requireCurrentFreeToolModel(modelId)
-        val hostTools = runtime?.hostToolsForRemoteRuns() ?: createAgentToolHost()
+        val hostTools = runtime?.hostTools ?: createAgentToolHost()
         mutableState.update { it.copy(busy = true, error = null) }
         try {
             return AgentModelRunner.runSpecialist(
