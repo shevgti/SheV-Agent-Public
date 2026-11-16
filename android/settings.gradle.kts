@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "SheVAgent"
-include(":app")
+include(":app", ":shevchat")
