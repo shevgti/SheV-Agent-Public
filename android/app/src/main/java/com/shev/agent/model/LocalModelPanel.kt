@@ -818,6 +818,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                         piperPlaybackJob?.cancel()
                         voiceStatus = "Голосовой диалог выключен"
                     } else {
+                        lastSpokenMessageIndex = state.messages.lastIndex
                         voiceConversation = true
                         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                             beginListening()
