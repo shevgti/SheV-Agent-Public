@@ -24,34 +24,48 @@ object KiloGatewayProvider {
     internal fun parseFreeToolModels(body: String): List<KiloFreeToolModel> {
         val root = JsonParser.parseString(body).takeIf { it.isJsonObject }?.asJsonObject
             ?: throw IllegalArgumentException("Kilo вернул некорректный каталог моделей.")
-        val data = root.getAsJsonArray("data")
+        val data = root.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
             ?: throw IllegalArgumentException("В каталоге Kilo отсутствует список моделей.")
 
         return data.mapNotNull { element ->
             if (!element.isJsonObject) return@mapNotNull null
             val item = element.asJsonObject
-            val id = item.get("id")?.takeIf { it.isJsonPrimitive }?.asString
+            val id = item.get("id")
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                ?.asString
                 ?.takeIf { it.matches(Regex("[A-Za-z0-9._:/+-]{1,200}")) }
                 ?: return@mapNotNull null
-            val pricing = item.getAsJsonObject("pricing") ?: return@mapNotNull null
-            val promptPrice = pricing.get("prompt")?.takeIf { it.isJsonPrimitive }?.asString
-                ?.toBigDecimalOrNull() ?: return@mapNotNull null
-            val completionPrice = pricing.get("completion")?.takeIf { it.isJsonPrimitive }?.asString
-                ?.toBigDecimalOrNull() ?: return@mapNotNull null
+            val pricing = item.get("pricing")
+                ?.takeIf { it.isJsonObject }
+                ?.asJsonObject
+                ?: return@mapNotNull null
+            val promptPrice = pricing.get("prompt")
+                ?.takeIf { it.isJsonPrimitive && (it.asJsonPrimitive.isString || it.asJsonPrimitive.isNumber) }
+                ?.asString?.toBigDecimalOrNull()
+                ?: return@mapNotNull null
+            val completionPrice = pricing.get("completion")
+                ?.takeIf { it.isJsonPrimitive && (it.asJsonPrimitive.isString || it.asJsonPrimitive.isNumber) }
+                ?.asString?.toBigDecimalOrNull()
+                ?: return@mapNotNull null
             if (promptPrice.compareTo(BigDecimal.ZERO) != 0 ||
                 completionPrice.compareTo(BigDecimal.ZERO) != 0) return@mapNotNull null
 
-            val parameters = item.getAsJsonArray("supported_parameters")
+            val parameters = item.get("supported_parameters")
+                ?.takeIf { it.isJsonArray }
+                ?.asJsonArray
                 ?: return@mapNotNull null
             val supportsTools = parameters.any { parameter ->
-                parameter.isJsonPrimitive && parameter.asString == "tools"
+                parameter.isJsonPrimitive && parameter.asJsonPrimitive.isString &&
+                    parameter.asString == "tools"
             }
             if (!supportsTools) return@mapNotNull null
 
-            val contextLength = item.get("context_length")
-                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }
-                ?.asInt
-                ?.takeIf { it > 0 }
+            val contextLength = runCatching {
+                item.get("context_length")
+                    ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }
+                    ?.asInt
+                    ?.takeIf { it > 0 }
+            }.getOrNull()
             KiloFreeToolModel(id = id, contextLength = contextLength)
         }.distinctBy { it.id }.sortedBy { it.id }
     }
