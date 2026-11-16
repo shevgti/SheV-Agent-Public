@@ -98,3 +98,19 @@ The Android validator enforces Anthropic-compatible name, model, color, descript
 ### Attribution
 
 The upstream methodology and file conventions are adapted from Anthropic's `claude-plugins-official/plugins/plugin-dev` toolkit, licensed under Apache License 2.0. SheV-Agent's Kotlin/Android implementation is an independent adaptation, not a bundled Claude Code runtime.
+
+
+## Kilo anonymous free-model backend
+
+The Creator and manually invoked specialists can optionally use the Kilo AI Gateway through Google's Android-compatible ADK OpenAI Chat Completions integration.
+
+- The app fetches the public model catalogue without credentials.
+- Only models whose live prompt and completion prices are both exactly zero and whose catalogue advertises `tools` support are offered.
+- The selected model is revalidated against the live catalogue immediately before each generation/run. If it disappears or becomes paid, the request stops; there is no paid-model fallback.
+- No Kilo API key, account login, payment method or credit balance is used. The official anonymous free tier is rate-limited by IP (currently about 200 requests/hour).
+- Kilo is a model provider, not a replacement orchestration framework. ADK continues to own sessions, specialist execution and tool invocation.
+- Kilo use is disabled until the user explicitly opts in during the current ViewModel lifetime. The UI warns that prompts may be processed by upstream providers and must not contain personal data, secrets or private code.
+- Remote Kilo specialist runs require the manifest's `READ_ONLY` network policy. `OFFLINE` specialists must use the local model.
+- The main chat provider is not switched to Kilo automatically. Local LiteRT-LM and the existing Codex route remain separate choices.
+
+This backend is optional and is not evidence of a live inference round-trip until a real, user-approved test request succeeds. Automated unit tests validate catalogue filtering only.
