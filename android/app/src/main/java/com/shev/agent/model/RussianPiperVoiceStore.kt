@@ -140,7 +140,7 @@ class RussianPiperVoiceStore(context: Context) {
     suspend fun speakSample(context: Context, voice: RussianPiperVoice, text: String) = withContext(Dispatchers.Default) {
         require(isInstalled(voice)) { "Сначала скачай голос." }
         val dir = File(root, voice.folder)
-        piperPhonemizeInitialize(context.applicationContext)
+        ensurePhonemizerInitialized(context.applicationContext)
         val phonemes = piperPhonemizeText(text, "ru")
             ?: error("Не удалось подготовить русский текст для синтеза.")
         val codepoints = try {
@@ -200,7 +200,18 @@ class RussianPiperVoiceStore(context: Context) {
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
+    private fun ensurePhonemizerInitialized(context: Context) {
+        synchronized(PHONEMIZER_LOCK) {
+            if (!phonemizerInitialized) {
+                piperPhonemizeInitialize(context)
+                phonemizerInitialized = true
+            }
+        }
+    }
+
     companion object {
+        private val PHONEMIZER_LOCK = Any()
+        @Volatile private var phonemizerInitialized = false
         private const val MAX_ARCHIVE_BYTES = 120L * 1024L * 1024L
     }
 }
