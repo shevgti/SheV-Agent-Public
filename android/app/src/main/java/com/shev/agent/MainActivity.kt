@@ -16,7 +16,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.shev.agent.data.SheVAgentDatabaseProvider
-import com.shev.agent.model.LocalModelPanel
+import com.shev.agent.ui.SheVAppShell
 import com.shev.agent.model.LocalModelViewModel
 import com.shev.agent.update.UpdateCheckWorker
 
@@ -69,7 +69,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    LocalModelPanel(chatViewModel)
+                    SheVAppShell(chatViewModel)
                 }
             }
         }
