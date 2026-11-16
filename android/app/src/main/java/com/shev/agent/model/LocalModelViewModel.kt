@@ -2035,7 +2035,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             occurredAtEpochMillis = System.currentTimeMillis()
         )
 
-    /** Runs only an explicitly approved, offline, tool-free specialist definition. */
+    /** Runs an explicitly approved specialist with only its manifest-scoped tools. */
     suspend fun runApprovedSpecialist(manifestJson: String, input: String): String {
         require(input.isNotBlank()) { "Опиши задачу для специалиста." }
         val manifest = AgentManifestParser.parse(manifestJson)
