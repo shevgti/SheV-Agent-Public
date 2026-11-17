@@ -183,13 +183,20 @@ class McpToolRegistryBridge(
                         expiresAtEpochMillis = nowMillis + 120_000L
                     )
                 ) ?: error("Для этого удалённого вызова нет отдельного подтверждения пользователя")
+                val beforeNetworkCall = executionContext.beforeMcpNetworkCall
+                    ?: error("Для MCP-вызова отсутствует долговечная отметка начала сетевого действия")
                 val output = remoteClient.callApprovedTool(
                     nativeToolId = id,
                     toolName = tool.name,
                     arguments = args,
                     authorization = authorization,
                     authorizationVerifier = authorizationVerifier,
-                    executionContext = invocationContext
+                    executionContext = invocationContext,
+                    beforeNetworkCall = {
+                        check(beforeNetworkCall(invocationContext)) {
+                            "Не удалось зафиксировать начало MCP-вызова в журнале исполнения"
+                        }
+                    }
                 )
                 AgentToolResult(true, output)
             }
