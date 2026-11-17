@@ -105,13 +105,27 @@ class RoomAgentPlanRepository(
         if (taskId.isBlank()) return null
         val dao = database.agentDao()
         val stored = dao.getAgentPlan(taskId) ?: return null
-        val plan = runCatching {
+        val decoded = runCatching {
             gson.fromJson(stored.canonicalPlanJson, AgentPlan::class.java)
+        }.getOrNull() ?: return null
+        val plan = runCatching {
+            AgentPlan(
+                taskId = decoded.taskId,
+                revision = decoded.revision,
+                summary = decoded.summary,
+                steps = decoded.steps.map { it.copy(dependsOn = it.dependsOn.toSet()) },
+                budget = decoded.budget
+            )
         }.getOrNull() ?: return null
         if (plan.taskId != taskId || plan.revision != stored.planRevision) return null
         val steps = dao.getAgentPlanSteps(taskId)
+        val stepRowsById = steps.associateBy { it.stepId }
         if (steps.size != plan.steps.size ||
-            steps.any { it.planRevision != stored.planRevision || it.stepId !in plan.steps.map(PlanStep::id) }
+            steps.any { it.planRevision != stored.planRevision } ||
+            plan.steps.any { step ->
+                val persisted = stepRowsById[step.id] ?: return@any true
+                persisted.canonicalStepJson != canonicalStepJson(step)
+            }
         ) return null
         return PersistedAgentPlan(
             plan = plan,
@@ -143,7 +157,7 @@ class RoomAgentPlanRepository(
         addProperty("id", step.id)
         addProperty("toolId", step.toolId)
         addProperty("argumentsJson", step.argumentsJson)
-        add("dependsOn", JsonArray().apply { step.dependsOn.sorted().forEach(::add) })
+        add("dependsOn", JsonArray().apply { step.dependsOn.sorted().forEach { add(it) } })
         addProperty("risk", step.risk.name)
         addProperty("purpose", step.purpose)
         addProperty("expectedOutcome", step.expectedOutcome)
