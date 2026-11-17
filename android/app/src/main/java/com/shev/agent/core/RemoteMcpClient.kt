@@ -88,18 +88,35 @@ class RemoteMcpClient(
      * Arguments must already have passed the native JSON-schema validator.
      */
     suspend fun callApprovedTool(
+        nativeToolId: String,
         toolName: String,
         arguments: Map<String, Any?>,
-        authorizeThroughKernel: suspend (toolName: String, arguments: Map<String, Any?>) -> Boolean
+        authorization: McpInvocationAuthorization,
+        authorizationVerifier: McpInvocationAuthorizationVerifier
     ): String = mutex.withLock {
         require(McpToolAllowlist.isAllowed(profile, toolName)) {
             "MCP tool is not explicitly approved"
         }
-        require(authorizeThroughKernel(toolName, arguments)) {
-            "Agent Kernel denied this MCP tool invocation"
-        }
-        val client = checkNotNull(mcpClient) { "MCP server is not connected" }
         require(arguments.size <= MAX_ARGUMENTS) { "Too many MCP tool arguments" }
+        val client = checkNotNull(mcpClient) { "MCP server is not connected" }
+        val expectedBinding = McpInvocationBinding.create(
+            profile = profile,
+            nativeToolId = nativeToolId,
+            toolName = toolName,
+            arguments = arguments
+        )
+        require(authorization.binding == expectedBinding) {
+            "MCP invocation approval does not match this server, tool or argument set"
+        }
+        val nowMillis = System.currentTimeMillis()
+        require(
+            authorization.issuedAtEpochMillis <= nowMillis &&
+                authorization.expiresAtEpochMillis > nowMillis
+        ) { "MCP invocation approval has expired or is not yet valid" }
+        require(authorizationVerifier.consume(authorization, expectedBinding, nowMillis)) {
+            "Agent Kernel rejected or already consumed this MCP invocation approval"
+        }
+        // Consume the one-use authorization immediately before the network side effect.
         val result = client.callTool(
             name = toolName,
             arguments = arguments
