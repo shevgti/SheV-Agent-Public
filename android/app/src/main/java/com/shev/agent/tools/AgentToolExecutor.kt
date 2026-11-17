@@ -35,6 +35,14 @@ fun interface ContextualSuspendingAgentTool {
     suspend fun execute(input: String, context: AgentToolExecutionContext): AgentToolResult
 }
 
+/**
+ * Internal trust wrapper created by McpToolRegistryBridge only.
+ * Arbitrary app/plugin handlers cannot register themselves as authorized remote MCP handlers.
+ */
+class McpAuthorizedContextualSuspendingTool internal constructor(
+    internal val delegate: ContextualSuspendingAgentTool
+)
+
 data class AgentToolExecutionContext(
     val grantedCapabilities: Set<AgentCapability>,
     val explicitlyApprovedCapabilities: Set<AgentCapability> = emptySet(),
@@ -68,26 +76,26 @@ class AgentToolExecutor(
     handlers: Map<String, AgentTool>,
     private val maxInputChars: Int = DEFAULT_MAX_INPUT_CHARS,
     suspendingHandlers: Map<String, SuspendingAgentTool> = emptyMap(),
-    contextualSuspendingHandlers: Map<String, ContextualSuspendingAgentTool> = emptyMap()
+    mcpHandlers: Map<String, McpAuthorizedContextualSuspendingTool> = emptyMap()
 ) {
     private val handlers = ConcurrentHashMap<String, AgentTool>().apply { putAll(handlers) }
     private val suspendingHandlers = ConcurrentHashMap<String, SuspendingAgentTool>().apply { putAll(suspendingHandlers) }
-    private val contextualSuspendingHandlers =
-        ConcurrentHashMap<String, ContextualSuspendingAgentTool>().apply { putAll(contextualSuspendingHandlers) }
+    private val mcpHandlers =
+        ConcurrentHashMap<String, McpAuthorizedContextualSuspendingTool>().apply { putAll(mcpHandlers) }
 
-    /** Adds a live MCP handler only after its descriptor has been allowlisted in the native registry. */
-    fun registerContextualSuspendingHandler(
+    /** Only the kernel's MCP bridge may attach this internal authorization wrapper. */
+    internal fun registerMcpHandler(
         toolId: String,
-        handler: ContextualSuspendingAgentTool
+        handler: McpAuthorizedContextualSuspendingTool
     ): Boolean {
         val descriptor = registry.find(toolId) ?: return false
-        if (AgentCapability.REMOTE_MCP_OPERATION !in descriptor.capabilities) return false
-        return contextualSuspendingHandlers.putIfAbsent(toolId, handler) == null
+        if (descriptor.capabilities != setOf(AgentCapability.REMOTE_MCP_OPERATION)) return false
+        return mcpHandlers.putIfAbsent(toolId, handler) == null
     }
 
     /** Removes the dynamic handler; callers must also unregister its descriptor. */
-    fun unregisterContextualSuspendingHandler(toolId: String): Boolean =
-        contextualSuspendingHandlers.remove(toolId) != null
+    internal fun unregisterMcpHandler(toolId: String): Boolean =
+        mcpHandlers.remove(toolId) != null
     init {
         require(maxInputChars in 1..MAX_ALLOWED_INPUT_CHARS) {
             "Лимит входных данных должен быть от 1 до $MAX_ALLOWED_INPUT_CHARS символов"
@@ -165,7 +173,7 @@ class AgentToolExecutor(
         val descriptor = registry.find(request.toolId)
             ?: return AgentToolExecutionResult(AgentToolExecutionStatus.TOOL_NOT_FOUND)
 
-        val contextualHandler = contextualSuspendingHandlers[request.toolId]
+        val contextualHandler = mcpHandlers[request.toolId]?.delegate
         val hasDurableRemoteGate = request.capability == AgentCapability.REMOTE_MCP_OPERATION &&
             contextualHandler != null &&
             context.mcpInvocationContext != null &&
