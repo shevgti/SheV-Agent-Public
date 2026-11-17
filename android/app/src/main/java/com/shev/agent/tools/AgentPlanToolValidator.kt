@@ -17,6 +17,9 @@ object AgentPlanToolValidator {
         for (step in plan.steps) {
             val descriptor = registry.find(step.toolId)
                 ?: return AgentPlanValidationResult(false, "Шаг использует незарегистрированный инструмент.", step.id)
+            if (!descriptor.planExecutable) {
+                return AgentPlanValidationResult(false, "Служебный инструмент нельзя включать в план выполнения.", step.id)
+            }
             val schema = descriptor.inputSchema
                 ?: return AgentPlanValidationResult(false, "У инструмента нет строгой схемы аргументов.", step.id)
             if (!schema.validate(step.argumentsJson).accepted) {
