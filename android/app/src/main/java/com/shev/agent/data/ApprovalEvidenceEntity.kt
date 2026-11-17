@@ -67,13 +67,25 @@ class RoomAgentTaskAuthorizationVerifier(
         ) == 1
     }
 
-    override suspend fun isCompletionEvidenceValid(
+    override suspend fun consumeCompletionEvidence(
         taskId: String,
         expectedRevision: Long,
-        evidenceRef: String
-    ): Boolean = false
+        evidenceRef: String,
+        nowMillis: Long
+    ): Boolean {
+        val hash = runCatching { ApprovalEvidenceToken.digest(evidenceRef) }.getOrNull()
+            ?: return false
+        return dao.consumeApprovalEvidence(
+            evidenceHash = hash,
+            taskId = taskId,
+            expectedRevision = expectedRevision,
+            operation = COMPLETE_OPERATION,
+            nowMillis = nowMillis
+        ) == 1
+    }
 
     private companion object {
         const val APPROVE_OPERATION = "APPROVE"
+        const val COMPLETE_OPERATION = "COMPLETE"
     }
 }
