@@ -78,6 +78,7 @@ class McpInvocationAuthorizationRoomTest {
             endpoint = "https://example.org/mcp",
             nativeToolId = "test-server.search_docs",
             toolName = "search_docs",
+            toolDefinitionSha256 = "d".repeat(64),
             argumentsSha256 = "a".repeat(64)
         )
         val authorization = authorization(binding)
@@ -123,6 +124,7 @@ class McpInvocationAuthorizationRoomTest {
         endpoint = "https://example.org/mcp",
         nativeToolId = "test-server.search_docs",
         toolName = "search_docs",
+        toolDefinitionSha256 = "d".repeat(64),
         argumentsSha256 = "c".repeat(64)
     )
 
@@ -155,6 +157,7 @@ class McpInvocationAuthorizationRoomTest {
         endpoint = binding.endpoint,
         nativeToolId = binding.nativeToolId,
         remoteToolName = binding.toolName,
+        toolDefinitionSha256 = binding.toolDefinitionSha256,
         argumentsSha256 = binding.argumentsSha256,
         issuedAtEpochMillis = issuedAtEpochMillis,
         expiresAtEpochMillis = expiresAtEpochMillis
