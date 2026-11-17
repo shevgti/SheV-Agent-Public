@@ -8,11 +8,19 @@ import com.google.adk.kt.events.Event
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.shev.agent.AgentCapability
+import com.shev.agent.AgentPhase
+import com.shev.agent.AgentWorkflowCommand
 import com.shev.agent.data.ConversationMessageEntity
 import com.shev.agent.data.ConversationStateRepository
 import com.shev.agent.data.ConversationSummaryRead
 import com.shev.agent.data.AgentTaskDraftRequest
 import com.shev.agent.data.AgentTaskDraftResult
+import com.shev.agent.data.AgentTaskEntity
+import com.shev.agent.data.AgentTaskRepositoryResult
+import com.shev.agent.data.AgentTaskRepositoryRejection
+import com.shev.agent.data.AgentTaskTransitionRequest
+import com.shev.agent.data.PersistedAgentPlan
+import com.shev.agent.data.RoomAgentPlanRepository
 import com.shev.agent.data.RoomAgentTaskAuthorizationVerifier
 import com.shev.agent.data.RoomAgentTaskRepository
 import com.shev.agent.data.LocalMessageCipher
@@ -38,8 +46,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+data class PendingTaskApproval(
+    val task: AgentTaskEntity,
+    val plan: PersistedAgentPlan?
+)
 
 data class LocalModelUiState(
     val verified: Boolean = false,
@@ -54,7 +68,10 @@ data class LocalModelUiState(
     val backendName: String? = null,
     val deviceSummary: String = "Проверяю характеристики устройства…",
     val prompt: String = "",
-    val messages: List<String> = emptyList()
+    val messages: List<String> = emptyList(),
+    val pendingTaskApprovals: List<PendingTaskApproval> = emptyList(),
+    val taskActionBusyId: String? = null,
+    val taskActionMessage: String? = null
 )
 
 /** Owns the native runtime for the Activity lifetime, not a recyclable Compose list item. */
@@ -84,6 +101,15 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val useOmniRoute = !useOpenRouter && !useGemini && !useOpenAI && gatewayPreferences.getBoolean("use_for_primary_chat", false)
         mutableState.update { it.copy(useOmniRoute = useOmniRoute, useOpenAI = useOpenAI, useGemini = useGemini, useOpenRouter = useOpenRouter) }
         viewModelScope.launch(Dispatchers.IO) {
+            val planRepository = RoomAgentPlanRepository(database)
+            dao.observeTasks().collect { tasks ->
+                val pending = tasks
+                    .filter { it.phase == AgentPhase.WAITING_APPROVAL.name }
+                    .map { task -> PendingTaskApproval(task, planRepository.loadPlan(task.id)) }
+                mutableState.update { it.copy(pendingTaskApprovals = pending) }
+            }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
             val deviceSummary = DeviceDiagnostics.summary(getApplication())
             val available = store.findVerifiedModel() != null
             try {
@@ -109,6 +135,77 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 }
             }
+        }
+    }
+
+    /** Approves only a persisted task that already has a canonical validated plan. */
+    fun approveTask(taskId: String, expectedRevision: Long) {
+        if (taskId.isBlank() || expectedRevision < 0L || mutableState.value.taskActionBusyId != null) return
+        mutableState.update { it.copy(taskActionBusyId = taskId, taskActionMessage = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val message = try {
+                val plan = RoomAgentPlanRepository(database).loadPlan(taskId)
+                if (plan == null) {
+                    "Подтверждение отклонено: у поручения ещё нет сохранённого плана."
+                } else {
+                    val now = System.currentTimeMillis()
+                    val result = taskRepository.approveFromUser(
+                        taskId = taskId,
+                        expectedRevision = expectedRevision,
+                        eventId = UUID.nameUUIDFromBytes("approve:$taskId:$expectedRevision".toByteArray()).toString(),
+                        idempotencyKey = "task-approve:$taskId:$expectedRevision",
+                        occurredAtEpochMillis = now
+                    )
+                    when (result) {
+                        is AgentTaskRepositoryResult.Applied ->
+                            "План подтверждён. Выполнение ещё не запускалось."
+                        is AgentTaskRepositoryResult.Replayed ->
+                            "Это подтверждение уже было зарегистрировано ранее."
+                        is AgentTaskRepositoryResult.Rejected ->
+                            when (result.reason) {
+                                AgentTaskRepositoryRejection.INVALID_REVISION -> "План изменился. Обнови список и проверь его заново."
+                                AgentTaskRepositoryRejection.INVALID_PHASE -> "Это поручение уже нельзя подтвердить в текущем состоянии."
+                                AgentTaskRepositoryRejection.INVALID_APPROVAL_EVIDENCE -> "Не удалось проверить одноразовое подтверждение."
+                                else -> "Подтверждение отклонено: ${result.reason.name}."
+                            }
+                        AgentTaskRepositoryResult.NotFound -> "Поручение больше не найдено."
+                        AgentTaskRepositoryResult.IdempotencyConflict -> "Обнаружен конфликт повторного подтверждения."
+                    }
+                }
+            } catch (failure: Exception) {
+                "Не удалось подтвердить поручение: ${failure.message ?: failure.javaClass.simpleName}"
+            }
+            mutableState.update { it.copy(taskActionBusyId = null, taskActionMessage = message) }
+        }
+    }
+
+    /** Rejects a waiting task without dispatching any tool or external action. */
+    fun cancelTask(taskId: String, expectedRevision: Long) {
+        if (taskId.isBlank() || expectedRevision < 0L || mutableState.value.taskActionBusyId != null) return
+        mutableState.update { it.copy(taskActionBusyId = taskId, taskActionMessage = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            val result = runCatching {
+                taskRepository.transition(
+                    AgentTaskTransitionRequest(
+                        taskId = taskId,
+                        command = AgentWorkflowCommand.CANCEL,
+                        expectedRevision = expectedRevision,
+                        eventId = UUID.nameUUIDFromBytes("cancel:$taskId:$expectedRevision".toByteArray()).toString(),
+                        idempotencyKey = "task-cancel:$taskId:$expectedRevision",
+                        occurredAtEpochMillis = now
+                    )
+                )
+            }.getOrNull()
+            val message = when (result) {
+                is AgentTaskRepositoryResult.Applied -> "Поручение отклонено. Никакие действия не выполнялись."
+                is AgentTaskRepositoryResult.Replayed -> "Отклонение этого поручения уже зарегистрировано."
+                is AgentTaskRepositoryResult.Rejected -> "Не удалось отклонить поручение: ${result.reason.name}."
+                AgentTaskRepositoryResult.NotFound -> "Поручение больше не найдено."
+                AgentTaskRepositoryResult.IdempotencyConflict -> "Обнаружен конфликт отклонения поручения."
+                null -> "Не удалось отклонить поручение."
+            }
+            mutableState.update { it.copy(taskActionBusyId = null, taskActionMessage = message) }
         }
     }
 
