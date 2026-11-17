@@ -74,7 +74,7 @@ dependencies {
 
     // Official MCP Kotlin client (Streamable HTTP); Ktor engine + SSE parser.
     implementation("io.modelcontextprotocol:kotlin-sdk-client:0.16.0")
-    implementation("io.ktor:ktor-client-cio:3.6.1")
+    implementation("io.ktor:ktor-client-cio:3.5.2")
 
     // Optional offline Russian neural TTS runtime; model weights are downloaded on demand.
     implementation("com.k2fsa:sherpa-onnx:v2.0.1@aar")
