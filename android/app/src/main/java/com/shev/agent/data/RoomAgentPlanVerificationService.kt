@@ -107,7 +107,7 @@ class RoomAgentPlanVerificationService(
                     stepId = step.id,
                     verifierId = TRUSTED_VERIFIER_ID,
                     kind = AgentVerificationEvidenceKind.KERNEL_EXECUTION_RECEIPT,
-                    evidenceRef = "room://agent-plan/\$taskId/\${step.id}/\${execution.invocationId}",
+                    evidenceRef = "room://agent-plan/$taskId/${step.id}/${execution.invocationId}",
                     observedAtMillis = execution.completedAtEpochMillis,
                     sha256 = resultHash
                 )
@@ -145,10 +145,10 @@ class RoomAgentPlanVerificationService(
                     id = UUID.randomUUID().toString(),
                     taskId = taskId,
                     eventType = "VERIFICATION_PASSED",
-                    message = "Trusted local execution verification passed for \${decision.acceptedEvidenceRefs.size} plan steps",
+                    message = "Trusted local execution verification passed for ${decision.acceptedEvidenceRefs.size} plan steps",
                     createdAtEpochMillis = nowMillis,
                     revision = expectedTaskRevision,
-                    idempotencyKey = "verification-passed:\$taskId:\$expectedTaskRevision:\$tokenHash",
+                    idempotencyKey = "verification-passed:$taskId:$expectedTaskRevision:$tokenHash",
                     evidenceRef = tokenHash
                 )
             )
