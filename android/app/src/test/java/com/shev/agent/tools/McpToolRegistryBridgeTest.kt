@@ -77,7 +77,7 @@ class McpToolRegistryBridgeTest {
             client: RemoteMcpClient,
             registry: AgentToolRegistry,
             schema: ToolSchema
-        ) = McpToolRegistryBridge(profile, client).register(
+        ) = newBridge(profile, client).register(
             listOf(
                 RemoteMcpClient.DiscoveredTool("search_docs", "Search docs", schema),
                 RemoteMcpClient.DiscoveredTool("delete_everything", "Unapproved tool", schema)
