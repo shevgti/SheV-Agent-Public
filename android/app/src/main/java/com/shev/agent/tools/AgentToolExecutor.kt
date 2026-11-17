@@ -7,6 +7,7 @@ import com.shev.agent.ScopedCapabilityGrant
 import com.shev.agent.PersistentGrantPolicy
 import com.shev.agent.PersistentGrantDecision
 import com.shev.agent.core.McpInvocationExecutionContext
+import java.util.concurrent.ConcurrentHashMap
 
 data class AgentToolRequest(
     val toolId: String,
@@ -64,11 +65,29 @@ data class AgentToolExecutionResult(
  */
 class AgentToolExecutor(
     private val registry: AgentToolRegistry,
-    private val handlers: Map<String, AgentTool>,
+    handlers: Map<String, AgentTool>,
     private val maxInputChars: Int = DEFAULT_MAX_INPUT_CHARS,
-    private val suspendingHandlers: Map<String, SuspendingAgentTool> = emptyMap(),
-    private val contextualSuspendingHandlers: Map<String, ContextualSuspendingAgentTool> = emptyMap()
+    suspendingHandlers: Map<String, SuspendingAgentTool> = emptyMap(),
+    contextualSuspendingHandlers: Map<String, ContextualSuspendingAgentTool> = emptyMap()
 ) {
+    private val handlers = ConcurrentHashMap<String, AgentTool>().apply { putAll(handlers) }
+    private val suspendingHandlers = ConcurrentHashMap<String, SuspendingAgentTool>().apply { putAll(suspendingHandlers) }
+    private val contextualSuspendingHandlers =
+        ConcurrentHashMap<String, ContextualSuspendingAgentTool>().apply { putAll(contextualSuspendingHandlers) }
+
+    /** Adds a live MCP handler only after its descriptor has been allowlisted in the native registry. */
+    fun registerContextualSuspendingHandler(
+        toolId: String,
+        handler: ContextualSuspendingAgentTool
+    ): Boolean {
+        val descriptor = registry.find(toolId) ?: return false
+        if (AgentCapability.REMOTE_MCP_OPERATION !in descriptor.capabilities) return false
+        return contextualSuspendingHandlers.putIfAbsent(toolId, handler) == null
+    }
+
+    /** Removes the dynamic handler; callers must also unregister its descriptor. */
+    fun unregisterContextualSuspendingHandler(toolId: String): Boolean =
+        contextualSuspendingHandlers.remove(toolId) != null
     init {
         require(maxInputChars in 1..MAX_ALLOWED_INPUT_CHARS) {
             "Лимит входных данных должен быть от 1 до $MAX_ALLOWED_INPUT_CHARS символов"
