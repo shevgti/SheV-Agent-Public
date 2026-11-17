@@ -2,6 +2,8 @@ package com.shev.agent.tools
 
 import com.shev.agent.AgentCapability
 import com.shev.agent.core.McpInvocationAuthorizationProvider
+import com.shev.agent.core.McpInvocationApprovalPrompt
+import com.shev.agent.core.ToolRisk
 import com.shev.agent.core.McpInvocationAuthorizationVerifier
 import com.shev.agent.core.McpInvocationBinding
 import com.shev.agent.core.McpServerProfile
@@ -151,8 +153,35 @@ class McpToolRegistryBridge(
                 )
                 val invocationContext = executionContext.mcpInvocationContext
                     ?: error("Для MCP-вызова отсутствует доверенный контекст задачи и шага")
-                val authorization = authorizationProvider.issue(binding, invocationContext)
-                    ?: error("Для этого удалённого вызова нет отдельного подтверждения пользователя")
+                val nowMillis = System.currentTimeMillis()
+                val definitionJson = tool.definitionJson.ifBlank {
+                    JsonObject(
+                        mapOf(
+                            "name" to JsonPrimitive(tool.name),
+                            "description" to JsonPrimitive(tool.description),
+                            "inputSchema" to Json.parseToJsonElement(
+                                kotlinx.serialization.json.Json.encodeToString(
+                                    ToolSchema.serializer(),
+                                    tool.inputSchema
+                                )
+                            ),
+                            "definitionSha256" to JsonPrimitive(tool.definitionSha256)
+                        )
+                    ).toString()
+                }
+                val authorization = authorizationProvider.issue(
+                    McpInvocationApprovalPrompt(
+                        binding = binding,
+                        context = invocationContext,
+                        toolTitle = tool.name,
+                        toolDescription = tool.description,
+                        risk = ToolRisk.EXTERNAL_SIDE_EFFECT.name,
+                        toolDefinitionJson = definitionJson,
+                        argumentsJson = input,
+                        createdAtEpochMillis = nowMillis,
+                        expiresAtEpochMillis = nowMillis + 120_000L
+                    )
+                ) ?: error("Для этого удалённого вызова нет отдельного подтверждения пользователя")
                 val output = remoteClient.callApprovedTool(
                     nativeToolId = id,
                     toolName = tool.name,
