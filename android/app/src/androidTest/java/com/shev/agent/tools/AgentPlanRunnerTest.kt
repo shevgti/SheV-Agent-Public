@@ -13,6 +13,7 @@ import com.shev.agent.data.AgentTaskAuthorizationVerifier
 import com.shev.agent.data.AgentTaskEntity
 import com.shev.agent.data.RoomAgentPlanRepository
 import com.shev.agent.data.RoomAgentTaskRepository
+import com.shev.agent.data.RoomAgentTaskAuthorizationVerifier
 import com.shev.agent.data.SheVAgentDatabase
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -37,20 +38,7 @@ class AgentPlanRunnerTest {
         dao = database.agentDao()
         taskRepository = RoomAgentTaskRepository(
             database,
-            object : AgentTaskAuthorizationVerifier {
-                override suspend fun consumeApprovalEvidence(
-                    taskId: String,
-                    expectedRevision: Long,
-                    evidenceRef: String,
-                    nowMillis: Long
-                ) = false
-
-                override suspend fun isCompletionEvidenceValid(
-                    taskId: String,
-                    expectedRevision: Long,
-                    evidenceRef: String
-                ) = false
-            }
+            RoomAgentTaskAuthorizationVerifier(dao)
         )
         dao.insertTask(
             AgentTaskEntity(
@@ -94,7 +82,7 @@ class AgentPlanRunnerTest {
     }
 
     @Test
-    fun runnerStartsApprovedPlanAndMovesItToVerificationAfterAllStepsSucceed() = runBlocking {
+    fun runnerStartsApprovedPlanVerifiesItsExecutionReceiptAndCompletesTask() = runBlocking {
         var handlerCalled = false
         val registry = AgentToolRegistry().apply {
             register(
@@ -128,10 +116,10 @@ class AgentPlanRunnerTest {
 
         val result = runner.startApproved(TASK_ID, approvedRevision)
 
-        assertEquals(AgentPlanRunStatus.VERIFYING, result.status)
+        assertEquals(AgentPlanRunStatus.COMPLETED, result.status)
         assertEquals(1, result.completedSteps)
         assertTrue(handlerCalled)
-        assertEquals(AgentPhase.VERIFYING.name, dao.getTask(TASK_ID)?.phase)
+        assertEquals(AgentPhase.COMPLETED.name, dao.getTask(TASK_ID)?.phase)
     }
 
     private companion object {
