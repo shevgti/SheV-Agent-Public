@@ -9,11 +9,15 @@ import com.shev.agent.core.McpServerProfile
 import com.shev.agent.core.McpServerTrust
 import com.shev.agent.core.McpTransportKind
 
+fun interface McpProfileSource {
+    fun getProfile(profileId: String): McpServerProfile?
+}
+
 /**
  * Persists MCP endpoint metadata only. Credentials are stored separately in Android Keystore.
  * Every mutation requires an explicit user-approval signal from the settings/controller layer.
  */
-class McpServerProfileStore(context: Context) {
+class McpServerProfileStore(context: Context) : McpProfileSource {
     private val preferences = context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     @Synchronized
@@ -23,7 +27,7 @@ class McpServerProfileStore(context: Context) {
     }
 
     @Synchronized
-    fun getProfile(profileId: String): McpServerProfile? =
+    override fun getProfile(profileId: String): McpServerProfile? =
         listProfiles().firstOrNull { it.id == profileId }
 
     @Synchronized
