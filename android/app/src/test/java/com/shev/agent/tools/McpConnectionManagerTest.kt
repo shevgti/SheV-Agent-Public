@@ -16,7 +16,7 @@ class McpConnectionManagerTest {
         val profile = CuratedMcpProfiles.entries.first { it.id == "context7" }
             .copy(enabled = false, approvedToolNames = setOf("resolve-library-id"))
         var credentialLookups = 0
-        val credentials = McpCredentialSource {
+        val credentials = McpCredentialSource { _ ->
             credentialLookups += 1
             null
         }
@@ -27,7 +27,7 @@ class McpConnectionManagerTest {
             executor = executor,
             credentials = credentials,
             profiles = McpProfileSource { id -> if (id == "context7") profile else null },
-            authorizationProvider = McpInvocationAuthorizationProvider { null },
+            authorizationProvider = McpInvocationAuthorizationProvider { _ -> null },
             authorizationVerifier = McpInvocationAuthorizationVerifier { _, _, _ -> false }
         )
 
@@ -37,4 +37,20 @@ class McpConnectionManagerTest {
         assertTrue(manager.connectedProfileIds().isEmpty())
         assertFalse(manager.disconnect("context7"))
     }
+
+    @Test fun unknownProfileIsRejectedBeforeCredentialLookup() = runBlocking {
+        var credentialLookups = 0
+        val registry = AgentToolRegistry()
+        val manager = McpConnectionManager(
+            registry = registry,
+            executor = AgentToolExecutor(registry, emptyMap()),
+            credentials = McpCredentialSource { _ -> credentialLookups += 1; null },
+            profiles = McpProfileSource { null },
+            authorizationProvider = McpInvocationAuthorizationProvider { _ -> null },
+            authorizationVerifier = McpInvocationAuthorizationVerifier { _, _, _ -> false }
+        )
+        assertEquals(McpConnectionStatus.PROFILE_NOT_FOUND, manager.connect("missing").status)
+        assertEquals(0, credentialLookups)
+    }
+
 }
