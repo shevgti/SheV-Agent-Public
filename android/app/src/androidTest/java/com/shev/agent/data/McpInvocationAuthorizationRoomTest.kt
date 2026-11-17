@@ -82,7 +82,7 @@ class McpInvocationAuthorizationRoomTest {
             argumentsSha256 = "a".repeat(64)
         )
         val authorization = authorization(binding)
-        dao.insertMcpInvocationAuthorizationEvidence(authorization.toEntity())
+        insertAuthorization(authorization)
 
         val verifier = RoomMcpInvocationAuthorizationVerifier(database)
         val changedArguments = binding.copy(argumentsSha256 = "b".repeat(64))
@@ -96,7 +96,7 @@ class McpInvocationAuthorizationRoomTest {
     fun taskAndStepRevisionsArePartOfThePersistedBinding() = runBlocking {
         val binding = binding()
         val authorization = authorization(binding)
-        dao.insertMcpInvocationAuthorizationEvidence(authorization.toEntity())
+        insertAuthorization(authorization)
 
         val staleTask = authorization.copy(taskRevision = authorization.taskRevision + 1)
         val stalePlan = authorization.copy(planRevision = authorization.planRevision + 1)
@@ -113,7 +113,7 @@ class McpInvocationAuthorizationRoomTest {
     fun expiredAuthorizationIsRejectedBeforeDatabaseConsumption() = runBlocking {
         val binding = binding()
         val authorization = authorization(binding)
-        dao.insertMcpInvocationAuthorizationEvidence(authorization.toEntity())
+        insertAuthorization(authorization)
 
         val verifier = RoomMcpInvocationAuthorizationVerifier(database)
         assertFalse(verifier.consume(authorization, binding, authorization.expiresAtEpochMillis))
@@ -142,6 +142,37 @@ class McpInvocationAuthorizationRoomTest {
             SecureRandom().nextBytes(it)
         })
     )
+
+    private suspend fun insertAuthorization(authorization: McpInvocationAuthorization) {
+        dao.insertMcpInvocationAuthorizationEvidence(authorization.toEntity())
+        dao.insertMcpInvocationApprovalRequest(
+            McpInvocationApprovalRequestEntity(
+                invocationId = authorization.invocationId,
+                taskId = authorization.taskId,
+                taskRevision = authorization.taskRevision,
+                planRevision = authorization.planRevision,
+                stepId = authorization.stepId,
+                stepRevision = authorization.stepRevision,
+                profileId = authorization.binding.profileId,
+                endpoint = authorization.binding.endpoint,
+                nativeToolId = authorization.binding.nativeToolId,
+                remoteToolName = authorization.binding.toolName,
+                toolDefinitionSha256 = authorization.binding.toolDefinitionSha256,
+                argumentsSha256 = authorization.binding.argumentsSha256,
+                toolTitle = authorization.binding.toolName,
+                toolDescription = "test",
+                risk = com.shev.agent.core.ToolRisk.EXTERNAL_SIDE_EFFECT.name,
+                toolDefinitionCiphertext = LocalPlanCipher.encrypt("definition"),
+                argumentsCiphertext = LocalPlanCipher.encrypt("{}"),
+                createdAtEpochMillis = authorization.issuedAtEpochMillis,
+                expiresAtEpochMillis = authorization.expiresAtEpochMillis,
+                status = McpInvocationApprovalRequestEntity.STATUS_APPROVED,
+                decidedAtEpochMillis = authorization.issuedAtEpochMillis,
+                issuedAtEpochMillis = authorization.issuedAtEpochMillis,
+                authorizationNonceCiphertext = LocalPlanCipher.encrypt(authorization.nonce)
+            )
+        )
+    }
 
     private fun McpInvocationAuthorization.toEntity() = McpInvocationAuthorizationEntity(
         nonceDigest = MessageDigest.getInstance("SHA-256")
