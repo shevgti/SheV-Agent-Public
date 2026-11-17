@@ -5,7 +5,6 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.adk.kt.events.Event
-import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.shev.agent.AgentCapability
@@ -400,7 +399,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                             capabilities = setOf(AgentCapability.ANALYZE_DATA),
                             inputSchema = ToolInputSchema(
                                 listOf(ToolInputField("query", ToolInputType.STRING, required = false, maxLength = 32))
-                            )
+                            ),
+                            planExecutable = false
                         )
                     )
                     register(
@@ -415,7 +415,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                                     ToolInputField("summary", ToolInputType.STRING, required = true, maxLength = 2_000),
                                     ToolInputField("steps_json", ToolInputType.STRING, required = true, maxLength = 6_000)
                                 )
-                            )
+                            ),
+                            planExecutable = false
                         )
                     )
                     register(
