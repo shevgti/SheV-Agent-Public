@@ -1,8 +1,10 @@
 package com.shev.agent.tools
 
 import com.shev.agent.AgentCapability
+import com.shev.agent.core.McpInvocationExecutionContext
 import com.shev.agent.core.McpAuthenticationKind
 import com.shev.agent.core.McpInvocationAuthorizationProvider
+import com.shev.agent.tools.AgentToolExecutionContext
 import com.shev.agent.core.McpInvocationAuthorizationVerifier
 import com.shev.agent.core.McpServerProfile
 import com.shev.agent.core.McpServerTrust
@@ -39,7 +41,7 @@ class McpToolRegistryBridgeTest {
         val descriptor = registry.find("test-server.search_docs")
         assertNotNull(descriptor)
         assertEquals(setOf(AgentCapability.REMOTE_MCP_OPERATION), descriptor!!.capabilities)
-        assertTrue(result.suspendingHandlers.containsKey("test-server.search_docs"))
+        assertTrue(result.contextualSuspendingHandlers.containsKey("test-server.search_docs"))
     }
 
 
@@ -62,8 +64,14 @@ class McpToolRegistryBridgeTest {
         )
         val registration = Mc.shevBridge(profile, client, AgentToolRegistry(), schema)
         try {
-            registration.suspendingHandlers.getValue("test-server.search_docs")
-                .execute("""{"query":"kotlin"}""")
+            registration.contextualSuspendingHandlers.getValue("test-server.search_docs")
+                .execute(
+                    """{"query":"kotlin"}""",
+                    AgentToolExecutionContext(
+                        grantedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
+                        explicitlyApprovedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION)
+                    )
+                )
             fail("A remote MCP call without a per-invocation approval must fail")
         } catch (failure: IllegalStateException) {
             assertTrue(failure.message.orEmpty().contains("отдельного подтверждения"))
@@ -96,7 +104,7 @@ class McpToolRegistryBridgeTest {
     ) = McpToolRegistryBridge(
         profile = profile,
         remoteClient = client,
-        authorizationProvider = McpInvocationAuthorizationProvider { null },
+        authorizationProvider = McpInvocationAuthorizationProvider { _, _ -> null },
         authorizationVerifier = McpInvocationAuthorizationVerifier { _, _, _ -> false }
     )
 
