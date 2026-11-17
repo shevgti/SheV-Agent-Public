@@ -41,6 +41,7 @@ class RoomMcpInvocationAuthorizationVerifier(
             endpoint = binding.endpoint,
             nativeToolId = binding.nativeToolId,
             remoteToolName = binding.toolName,
+            toolDefinitionSha256 = binding.toolDefinitionSha256,
             argumentsSha256 = binding.argumentsSha256,
             issuedAtEpochMillis = authorization.issuedAtEpochMillis,
             expiresAtEpochMillis = authorization.expiresAtEpochMillis,
