@@ -45,27 +45,25 @@ class RoomAgentPlanRepository(
                 ?: return@withTransaction AgentPlanSaveResult.TASK_NOT_FOUND
             val previousPlan = dao.getAgentPlan(plan.taskId)
             val expectedPlanRevision = if (previousPlan == null) {
-                task.revision
+                0L
             } else {
-                if (task.revision == Long.MAX_VALUE) {
+                if (previousPlan.planRevision == Long.MAX_VALUE) {
                     return@withTransaction AgentPlanSaveResult.STALE_REVISION
                 }
-                task.revision + 1L
+                previousPlan.planRevision + 1L
             }
-            if (plan.revision != expectedPlanRevision) {
+            if (plan.revision != expectedPlanRevision || task.revision == Long.MAX_VALUE) {
                 return@withTransaction AgentPlanSaveResult.STALE_REVISION
             }
 
-            if (previousPlan != null) {
-                val advanced = dao.advanceTaskRevision(
-                    taskId = plan.taskId,
-                    expectedRevision = task.revision,
-                    newRevision = plan.revision,
-                    updatedAtEpochMillis = savedAtEpochMillis
-                )
-                if (advanced != 1) {
-                    return@withTransaction AgentPlanSaveResult.STALE_REVISION
-                }
+            val advanced = dao.advanceTaskRevision(
+                taskId = plan.taskId,
+                expectedRevision = task.revision,
+                newRevision = task.revision + 1L,
+                updatedAtEpochMillis = savedAtEpochMillis
+            )
+            if (advanced != 1) {
+                return@withTransaction AgentPlanSaveResult.STALE_REVISION
             }
 
             val previousSteps = dao.getAgentPlanSteps(plan.taskId).associateBy { it.stepId }
