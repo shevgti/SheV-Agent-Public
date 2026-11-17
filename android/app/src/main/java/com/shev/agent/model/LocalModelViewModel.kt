@@ -448,11 +448,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         )) {
                             is AgentTaskDraftResult.Created -> AgentToolResult(
                                 true,
-                                "Черновик поручения «${result.state.task.title}» сохранён. Он ожидает подтверждения во вкладке «Память». Никакое действие не запускалось."
+                                "Черновик поручения «${result.state.task.title}» сохранён. Он ожидает подтверждения в разделе «Поручения». Никакое действие не запускалось."
                             )
                             is AgentTaskDraftResult.Replayed -> AgentToolResult(
                                 true,
-                                "Это поручение уже сохранено и ожидает подтверждения во вкладке «Память». Повторная запись не создана."
+                                "Это поручение уже сохранено и ожидает подтверждения в разделе «Поручения». Повторная запись не создана."
                             )
                             AgentTaskDraftResult.InvalidRequest -> AgentToolResult(false, "Поручение не сохранено: некорректный запрос.", "INVALID_REQUEST")
                             AgentTaskDraftResult.Conflict -> AgentToolResult(false, "Поручение не сохранено: обнаружен конфликт записи.", "CONFLICT")
