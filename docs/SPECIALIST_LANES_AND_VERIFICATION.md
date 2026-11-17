@@ -77,3 +77,5 @@ This is a pure Kotlin validation contract with unit tests. Durable goal/task-boa
 - Every mutation requires an explicit approval signal. A profile cannot be enabled until it has a non-empty explicit tool allowlist; changing the allowlist disables the profile until reconfirmed.
 - Profile metadata is versioned, bounded and persisted locally. Corrupt/unknown-version storage fails closed and does not overwrite the damaged record.
 - Credential values remain exclusively in Android Keystore through the separate secret store.
+
+- MCP connection management now depends on a narrow credential-source interface; the Android Keystore provider is the production implementation. This allows deterministic tests proving disabled profiles are rejected before credential lookup or network setup.
