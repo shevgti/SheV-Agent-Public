@@ -148,6 +148,45 @@ class RoomAgentPlanExecutionRepositoryTest {
     }
 
     @Test
+    fun cancellationCancelsUndispatchedStepsAndInvalidatesPendingApprovalState() = runBlocking {
+        assertEquals(StartPlanExecutionResult.STARTED, repository.startPlan(TASK_ID, 1L, NOW + 2))
+        val claim = repository.claimStep(TASK_ID, "step_one", true, NOW + 3)
+        assertEquals(ClaimPlanStepStatus.CLAIMED, claim.status)
+        assertEquals(
+            AgentPlanStepExecutionEntity.WAITING_APPROVAL,
+            dao.getAgentPlanStepExecution(TASK_ID, "step_one")!!.status
+        )
+        assertTrue(repository.cancelTask(TASK_ID, expectedTaskRevision = 2L, nowMillis = NOW + 4))
+        assertEquals("CANCELLED", dao.getTask(TASK_ID)!!.phase)
+        assertEquals(
+            AgentPlanStepExecutionEntity.CANCELLED,
+            dao.getAgentPlanStepExecution(TASK_ID, "step_one")!!.status
+        )
+        assertEquals(
+            AgentPlanStepExecutionEntity.CANCELLED,
+            dao.getAgentPlanStepExecution(TASK_ID, "step_two")!!.status
+        )
+    }
+
+    @Test
+    fun cancellationAfterDispatchMarksStepOutcomeUnknown() = runBlocking {
+        assertEquals(StartPlanExecutionResult.STARTED, repository.startPlan(TASK_ID, 1L, NOW + 2))
+        val claim = repository.claimStep(TASK_ID, "step_one", false, NOW + 3).claim!!
+        assertTrue(
+            repository.markDispatched(
+                TASK_ID, "step_one", claim.execution.invocationId,
+                claim.execution.taskRevision, claim.execution.planRevision,
+                claim.execution.stepRevision, NOW + 4
+            )
+        )
+        assertTrue(repository.cancelTask(TASK_ID, expectedTaskRevision = 2L, nowMillis = NOW + 5))
+        assertEquals(
+            AgentPlanStepExecutionEntity.OUTCOME_UNKNOWN,
+            dao.getAgentPlanStepExecution(TASK_ID, "step_one")!!.status
+        )
+    }
+
+    @Test
     fun dispatchedStepWithUncertainFailureBecomesOutcomeUnknown() = runBlocking {
         assertEquals(StartPlanExecutionResult.STARTED, repository.startPlan(TASK_ID, 1L, NOW + 2))
         val claim = repository.claimStep(TASK_ID, "step_one", false, NOW + 3).claim!!
