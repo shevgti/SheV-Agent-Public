@@ -84,9 +84,9 @@ private fun JsonElement.toNativeValue(): Any? = when (this) {
 
 /**
  * Projects explicitly approved remote tools into the native registry.
- * Every projected tool is READ_REMOTE_DATA and therefore requires an explicit
- * action approval under CapabilityPolicy. Remote annotations are ignored:
- * hints from an untrusted server are never authorization evidence.
+ * Every projected tool is treated as a high-risk remote operation until an
+ * independent semantic verifier exists. Persistent read grants therefore cannot
+ * authorize it. Remote annotations are ignored as untrusted hints.
  */
 class McpToolRegistryBridge(
     private val profile: McpServerProfile,
@@ -128,7 +128,7 @@ class McpToolRegistryBridge(
                     id = id,
                     title = tool.name.take(100),
                     description = tool.description.ifBlank { "Remote MCP tool: ${tool.name}" }.take(1_000),
-                    capabilities = setOf(AgentCapability.READ_REMOTE_DATA),
+                    capabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
                     inputSchema = schema
                 )
             )
