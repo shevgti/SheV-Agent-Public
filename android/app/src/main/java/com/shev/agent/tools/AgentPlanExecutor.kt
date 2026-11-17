@@ -124,11 +124,24 @@ class AgentPlanExecutor(
         val execution = claim.execution
         val mcpContext = if (requiresInvocationApproval) {
             planRepository.createExecutionContext(taskId, step.id, execution.invocationId)
-                ?: return PlanExecutionAttemptResult(
-                    PlanExecutionAttemptStatus.STEP_FAILED,
-                    step.id,
-                    "MCP_EXECUTION_CONTEXT_MISSING"
-                )
+                ?: run {
+                    executionRepository.failStep(
+                        taskId = taskId,
+                        stepId = step.id,
+                        invocationId = execution.invocationId,
+                        taskRevision = execution.taskRevision,
+                        planRevision = execution.planRevision,
+                        stepRevision = execution.stepRevision,
+                        errorCode = "MCP_EXECUTION_CONTEXT_MISSING",
+                        mayHaveSideEffect = false,
+                        nowMillis = System.currentTimeMillis()
+                    )
+                    return PlanExecutionAttemptResult(
+                        PlanExecutionAttemptStatus.STEP_FAILED,
+                        step.id,
+                        "MCP_EXECUTION_CONTEXT_MISSING"
+                    )
+                }
         } else null
 
         val executionContext = AgentToolExecutionContext(
@@ -180,7 +193,9 @@ class AgentPlanExecutor(
                 taskRevision = execution.taskRevision,
                 planRevision = execution.planRevision,
                 stepRevision = execution.stepRevision,
-                output = result.output,
+                output = if (result.output.length > MAX_STEP_OUTPUT_CHARS) {
+                    result.output.take(MAX_STEP_OUTPUT_CHARS - 14) + "\\n...[truncated]"
+                } else result.output,
                 nowMillis = System.currentTimeMillis()
             )
             return if (completed) {
@@ -219,4 +234,8 @@ class AgentPlanExecutor(
 
     suspend fun recoverAfterProcessRestart(taskId: String, nowMillis: Long = System.currentTimeMillis()): Int =
         executionRepository.recoverAfterProcessRestart(taskId, nowMillis)
+
+    private companion object {
+        const val MAX_STEP_OUTPUT_CHARS = 12_000
+    }
 }
