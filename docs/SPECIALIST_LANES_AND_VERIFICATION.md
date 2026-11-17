@@ -29,3 +29,12 @@ The new policy classes are pure Kotlin contracts with unit tests. They are not y
 - NOMAD: specialist lanes, per-lane tool allowlists, budgets, and a separate reviewer.
 - DeepSeek Harness: plugin capability seams, team/task-board concepts, and independent guard policies.
 - SheV invariant: the Android Kotlin Agent Kernel remains the only authority for permissions, execution, persistence, and verification.
+
+## Reversible native plugin lifecycle
+
+- Added an in-process plugin registry for statically bundled Kotlin contributions.
+- Activation requires an explicit user-approval signal, stable plugin ID/version, namespaced tool IDs, and an all-or-nothing registration pass.
+- If any tool registration conflicts, already-added descriptors from that activation are rolled back.
+- Deactivation removes every descriptor owned by the plugin, so the executor can no longer resolve those tools.
+- This is deliberately not a dynamic script/plugin marketplace. No downloaded code, shell, reflection-based class loading, or permission grants are supported.
+- Current limitation: active plugin state is process-local and there is no management UI or Room persistence yet. Those are required before user-facing plugin installation.
