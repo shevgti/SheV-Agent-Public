@@ -744,7 +744,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         AgentPlanRunStatus.STEP_FAILED ->
             "Выполнение остановлено на шаге ${result.stepId ?: "?"}: ${result.errorCode ?: "ошибка шага"}."
         AgentPlanRunStatus.VERIFICATION_BLOCKED ->
-            "Шаги выполнены, но не удалось безопасно перевести поручение на проверку результата."
+            "Шаги выполнены, но доказательств недостаточно для безопасного завершения поручения."
         AgentPlanRunStatus.PUMP_LIMIT_REACHED ->
             "Выполнение приостановлено по лимиту одного цикла; состояние шагов сохранено."
         AgentPlanRunStatus.START_REJECTED ->
