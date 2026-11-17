@@ -183,3 +183,22 @@ Catalogue pages reviewed:
 - Added `core/McpServerProfile.kt`: HTTPS-only remote server profiles, authentication/trust metadata, disabled-by-default curated Context7 and GitHub endpoints, and explicit per-server tool allowlists. This is configuration/policy scaffolding, not yet a connected MCP transport.
 - Added `McpServerProfileTest.kt`: rejects plain HTTP and embedded URL credentials; verifies disabled-by-default and explicit tool allowlisting.
 - Next implementation step: integrate the official Kotlin MCP client with Streamable HTTP after a dedicated dependency/Android compatibility build; implement secure credential retrieval and an adapter that maps MCP tools into AgentToolRegistry without bypassing policy.
+
+## Agent Skills catalogue review
+
+The directory has a separate Agent Skills library (not the same thing as MCP servers). It lists reusable instruction/code packages for specialist workflows and shows official collections from Anthropic, OpenAI, GitHub, Microsoft, Cloudflare, Figma, Vercel, Google Workspace, Notion and Stripe. Useful examples surfaced include repository research/reproduction, browser testing with DevTools, frontend design, and coding best-practice skills.
+
+SheV Agent should support **declarative, versioned skills**, not blindly install or execute every item in the catalogue:
+- skill manifest: stable ID, semantic version, description, trigger phrases, instruction text, source URL, SHA-256, trust class and required native tool IDs;
+- skills are disabled until reviewed and explicitly enabled;
+- skill text is untrusted guidance, never a system/developer policy layer;
+- a skill cannot create tools, grant permissions, widen filesystem/network access, invoke shell or change approval requirements;
+- required tools must already exist in the native registry and pass the kernel's normal capability/approval policy;
+- community skill packages must be pinned to an immutable revision and checksum; updates require review;
+- executable scripts, if ever supported, must run in an isolated remote sandbox with bounded resources and explicit user approval, never as arbitrary code inside the Android process.
+
+Implementation added in this branch:
+- `core/AgentSkillManifest.kt`: declarative manifest, version/source/checksum validation, trust class and explicit tool dependency gate.
+- `AgentSkillManifestTest.kt`: validates version, HTTPS source, tool IDs and disabled/missing-tool behavior.
+
+The catalogue's browser skills and Chrome DevTools recipes are useful for a later hosted browser/QA worker, not a reason to make the Android app browser-first. Keep the core tool loop small and expose skills progressively only when relevant.
