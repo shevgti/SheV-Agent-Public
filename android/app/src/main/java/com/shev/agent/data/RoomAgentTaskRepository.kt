@@ -58,6 +58,7 @@ enum class AgentTaskRepositoryRejection {
     INVALID_REQUEST,
     INVALID_REVISION,
     INVALID_PHASE,
+    PLAN_REQUIRED,
     APPROVAL_REQUIRED,
     INVALID_APPROVAL_EVIDENCE,
     VERIFICATION_EVIDENCE_REQUIRED,
@@ -214,6 +215,9 @@ class RoomAgentTaskRepository(
             }
             if (stored.phase != AgentPhase.WAITING_APPROVAL.name) {
                 return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PHASE)
+            }
+            if (RoomAgentPlanRepository(database).loadPlan(taskId) == null) {
+                return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.PLAN_REQUIRED)
             }
 
             dao.deleteExpiredApprovalEvidence(occurredAtEpochMillis)
