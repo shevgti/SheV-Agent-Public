@@ -11,7 +11,9 @@ data class AgentToolDescriptor(
     val title: String,
     val description: String,
     val capabilities: Set<AgentCapability>,
-    val inputSchema: ToolInputSchema? = null
+    val inputSchema: ToolInputSchema? = null,
+    /** False for orchestration/meta-tools that must never appear inside a task plan. */
+    val planExecutable: Boolean = true
 ) {
     init {
         require(id.matches(Regex("[a-z][a-z0-9_.-]{1,63}"))) { "Некорректный идентификатор инструмента: $id" }
