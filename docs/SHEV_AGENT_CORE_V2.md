@@ -145,3 +145,41 @@ A task is not complete because a screen exists. It is complete only when:
 ## Known architectural conflict to resolve
 
 `docs/HYBRID_ARCHITECTURE.md` previously described ChatGPT as supervisory intelligence. That decision is superseded by this document. Do not delete historical notes; mark them superseded and migrate any still-useful protocol contracts into the kernel design.
+
+## MCP catalogue review — mcpservers.org/ru (2026-11-17)
+
+The directory is a discovery index, not an Android installer or a single SDK. Its categories and individual server pages were reviewed. The home page highlights official GitHub MCP, Context7, Playwright, Chrome DevTools, Exa, Firecrawl, E2B, Supabase and other integrations. Its memory category lists 137 servers, including local-first and provenance-aware options. The remote-server page lists hosted integrations such as GitHub, Context7, Notion, Linear, Supabase, Exa and others.
+
+Useful candidates for SheV Agent:
+
+1. **Context7** — official remote endpoint `https://mcp.context7.com/mcp`; version-specific library docs. Good first MCP connector for coding and API accuracy. The directory says an API key is recommended for higher limits. Keep credentials in Android Keystore; never place them in prompts or logs.
+2. **GitHub MCP** — official remote endpoint `https://api.githubcopilot.com/mcp/`; repository/code/issues/PR/Actions and code-security tools. OAuth/PAT scopes are required; expose only user-approved tool sets. Existing native GitHub integration remains in place; MCP is an optional adapter, not a duplicate authority.
+3. **Playwright MCP** — browser automation via accessibility snapshots, navigation, clicks, forms and screenshots. The catalog states Node.js 18+ is required and the common install uses local STDIO. This cannot be installed as a normal in-process Android library. Consider only a separately hosted, user-controlled remote deployment; not part of the first core release.
+4. **Chrome DevTools MCP** — live Chrome inspection, console/network/performance and browser actions. Requires Node.js and Chrome/Chrome for Testing. Not an Android-native dependency. Use only as a remote developer/QA tool, not as the SheV Agent core.
+5. **Memory category** — shortlist local-first/provenance-aware projects such as Simple Memory, State Memory, Talamus, GoodMemory, mneme and EleSync for design comparison. Do not outsource the first-party memory of the Android agent to a third-party cloud; Room remains the source of truth. Consider an optional sync/bridge only after conflict resolution, export, encryption and deletion behavior are defined.
+6. **Search / retrieval** — Exa and Firecrawl are candidates for optional research adapters. Their output is untrusted evidence, never instructions. Use bounded retrieval and cite source URLs.
+7. **Code execution / sandboxes** — E2B is a possible remote isolated execution service for later coding workflows, but requires network/account/possibly paid usage. No arbitrary local shell or code execution on the phone.
+
+### Android MCP integration constraints and decision
+
+- MCP is a protocol; entries in the directory are servers, not plug-and-play Android packages. Most community examples use STDIO + `npx`, which assumes a Node.js runtime and a process-spawning host. We will not bundle Node.js or a desktop runtime into the Android app merely to make those servers launch.
+- The first transport to support is **remote Streamable HTTP over HTTPS**. Do not add new SSE-only integrations; current MCP Kotlin SDK documentation marks SSE deprecated in favor of Streamable HTTP.
+- Official Kotlin client SDK candidate: https://github.com/modelcontextprotocol/kotlin-sdk (client-only artifact `io.modelcontextprotocol:kotlin-sdk-client`). SDK documentation shows `Client` + `StreamableHttpClientTransport` over Ktor and coroutine-friendly typed `listTools` / `callTool` APIs. Before adding dependency, verify Android compatibility, current SDK/Ktor versions, manifest/network constraints, auth headers, cancellation and protocol-version compatibility in a dedicated build commit.
+- Each remote MCP server is separately paired and disabled by default. Discovering a tool does not authorize it. The user must approve each server and each tool allowlist. Every call is converted to a native SheV tool descriptor and sent through AgentToolExecutor / CapabilityPolicy / scoped grants / approval broker.
+- Validate JSON schemas, cap input/output sizes, timeouts and concurrency; redact secrets; treat descriptions, prompts, resources and tool results as untrusted; never let a remote server alter kernel policies, memory rules or system instructions.
+- Remote MCP is an optional adapter layer. The kernel owns planning, tool authority, permissions, task state and verification. MCP servers do not become supervisors or agents-in-chief.
+
+Catalogue pages reviewed:
+- https://mcpservers.org/ru/
+- https://mcpservers.org/ru/remote-mcp-servers
+- https://mcpservers.org/ru/category/memory
+- https://mcpservers.org/ru/servers/context7-mcp-server
+- https://mcpservers.org/ru/servers/github-mcp-server
+- https://mcpservers.org/ru/servers/playwright-mcp-server
+- https://mcpservers.org/ru/servers/chrome-devtools-mcp-server
+
+### Initial MCP implementation in this branch
+
+- Added `core/McpServerProfile.kt`: HTTPS-only remote server profiles, authentication/trust metadata, disabled-by-default curated Context7 and GitHub endpoints, and explicit per-server tool allowlists. This is configuration/policy scaffolding, not yet a connected MCP transport.
+- Added `McpServerProfileTest.kt`: rejects plain HTTP and embedded URL credentials; verifies disabled-by-default and explicit tool allowlisting.
+- Next implementation step: integrate the official Kotlin MCP client with Streamable HTTP after a dedicated dependency/Android compatibility build; implement secure credential retrieval and an adapter that maps MCP tools into AgentToolRegistry without bypassing policy.
