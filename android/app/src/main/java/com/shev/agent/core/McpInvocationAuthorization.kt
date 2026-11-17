@@ -130,12 +130,26 @@ data class McpInvocationExecutionContext(
     }
 }
 
-/** Provider issues only after trusted UI approval of the exact action and execution context. */
+/**
+ * Complete, immutable material shown to the user before a remote invocation.
+ * Sensitive JSON is encrypted before persistence; the digest and trusted context
+ * are rechecked when approval is issued and consumed.
+ */
+data class McpInvocationApprovalPrompt(
+    val binding: McpInvocationBinding,
+    val context: McpInvocationExecutionContext,
+    val toolTitle: String,
+    val toolDescription: String,
+    val risk: String,
+    val toolDefinitionJson: String,
+    val argumentsJson: String,
+    val createdAtEpochMillis: Long,
+    val expiresAtEpochMillis: Long
+)
+
+/** Provider persists the exact request and waits for a trusted user decision. */
 fun interface McpInvocationAuthorizationProvider {
-    suspend fun issue(
-        binding: McpInvocationBinding,
-        context: McpInvocationExecutionContext
-    ): McpInvocationAuthorization?
+    suspend fun issue(prompt: McpInvocationApprovalPrompt): McpInvocationAuthorization?
 }
 
 /**
