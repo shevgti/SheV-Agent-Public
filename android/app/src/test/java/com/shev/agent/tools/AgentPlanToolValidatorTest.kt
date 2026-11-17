@@ -19,7 +19,8 @@ class AgentPlanToolValidatorTest {
                     capabilities = setOf(capability),
                     inputSchema = ToolInputSchema(
                         listOf(ToolInputField("query", ToolInputType.STRING, maxLength = 100))
-                    )
+                    ),
+                    planExecutable = true
                 )
             )
         }
