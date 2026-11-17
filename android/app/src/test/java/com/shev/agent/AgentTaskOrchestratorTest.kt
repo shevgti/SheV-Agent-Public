@@ -23,13 +23,28 @@ class AgentTaskOrchestratorTest {
         val approved = AgentTaskOrchestrator.transition(waiting, AgentWorkflowCommand.APPROVE).state
         assertEquals(AgentPhase.APPROVED, approved.task.phase)
 
-        val running = approved.copy(task = approved.task.copy(phase = AgentPhase.RUNNING))
-        val verifying = AgentTaskOrchestrator.transition(running, AgentWorkflowCommand.BEGIN_VERIFICATION).state
+        val running = AgentTaskOrchestrator.transition(approved, AgentWorkflowCommand.START_EXECUTION)
+        assertTrue(running.accepted)
+        assertEquals(AgentPhase.RUNNING, running.state.task.phase)
+        val verifying = AgentTaskOrchestrator.transition(running.state, AgentWorkflowCommand.BEGIN_VERIFICATION).state
         assertEquals(AgentPhase.VERIFYING, verifying.task.phase)
 
         val completed = AgentTaskOrchestrator.transition(verifying, AgentWorkflowCommand.COMPLETE)
         assertTrue(completed.accepted)
         assertEquals(AgentPhase.COMPLETED, completed.state.task.phase)
+    }
+
+    @Test fun onlyApprovedTasksCanStartExecution() {
+        val waiting = AgentTaskOrchestrator.transition(state(), AgentWorkflowCommand.REQUEST_START).state
+        val denied = AgentTaskOrchestrator.transition(waiting, AgentWorkflowCommand.START_EXECUTION)
+        assertFalse(denied.accepted)
+        assertEquals(AgentPhase.WAITING_APPROVAL, denied.state.task.phase)
+
+        val approved = AgentTaskOrchestrator.transition(waiting, AgentWorkflowCommand.APPROVE).state
+        val started = AgentTaskOrchestrator.transition(approved, AgentWorkflowCommand.START_EXECUTION)
+        assertTrue(started.accepted)
+        assertEquals(AgentPhase.RUNNING, started.state.task.phase)
+        assertEquals(3L, started.state.revision)
     }
 
     @Test fun completionCannotSkipVerification() {
