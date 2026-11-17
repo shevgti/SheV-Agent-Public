@@ -235,6 +235,12 @@ class AgentPlanExecutor(
     suspend fun recoverAfterProcessRestart(taskId: String, nowMillis: Long = System.currentTimeMillis()): Int =
         executionRepository.recoverAfterProcessRestart(taskId, nowMillis)
 
+    suspend fun cancelTask(
+        taskId: String,
+        expectedTaskRevision: Long,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean = executionRepository.cancelTask(taskId, expectedTaskRevision, nowMillis)
+
     private companion object {
         const val MAX_STEP_OUTPUT_CHARS = 12_000
     }
