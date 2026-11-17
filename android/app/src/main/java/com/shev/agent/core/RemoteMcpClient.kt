@@ -100,7 +100,8 @@ class RemoteMcpClient(
         toolName: String,
         arguments: Map<String, Any?>,
         authorization: McpInvocationAuthorization,
-        authorizationVerifier: McpInvocationAuthorizationVerifier
+        authorizationVerifier: McpInvocationAuthorizationVerifier,
+        executionContext: McpInvocationExecutionContext
     ): String = mutex.withLock {
         require(McpToolAllowlist.isAllowed(profile, toolName)) {
             "MCP tool is not explicitly approved"
@@ -115,6 +116,16 @@ class RemoteMcpClient(
         )
         require(authorization.binding == expectedBinding) {
             "MCP invocation approval does not match this server, tool or argument set"
+        }
+        require(
+            authorization.invocationId == executionContext.invocationId &&
+                authorization.taskId == executionContext.taskId &&
+                authorization.taskRevision == executionContext.taskRevision &&
+                authorization.planRevision == executionContext.planRevision &&
+                authorization.stepId == executionContext.stepId &&
+                authorization.stepRevision == executionContext.stepRevision
+        ) {
+            "MCP invocation approval does not match the current persisted task and step"
         }
         val nowMillis = System.currentTimeMillis()
         require(
