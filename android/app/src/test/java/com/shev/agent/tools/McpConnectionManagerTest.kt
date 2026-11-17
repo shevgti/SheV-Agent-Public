@@ -1,6 +1,7 @@
 package com.shev.agent.tools
 
 import com.shev.agent.core.CuratedMcpProfiles
+import com.shev.agent.data.McpProfileSource
 import com.shev.agent.core.McpInvocationAuthorizationProvider
 import com.shev.agent.core.McpInvocationAuthorizationVerifier
 import com.shev.agent.security.McpCredentialSource
@@ -23,13 +24,14 @@ class McpConnectionManagerTest {
             registry = registry,
             executor = executor,
             credentials = credentials,
+            profiles = McpProfileSource { id -> if (id == "context7") profile else null },
             authorizationProvider = McpInvocationAuthorizationProvider { null },
             authorizationVerifier = McpInvocationAuthorizationVerifier { _, _, _ -> false }
         )
         val profile = CuratedMcpProfiles.entries.first { it.id == "context7" }
             .copy(enabled = false, approvedToolNames = setOf("resolve-library-id"))
 
-        val result = manager.connect(profile)
+        val result = manager.connect("context7")
         assertEquals(McpConnectionStatus.PROFILE_DISABLED, result.status)
         assertEquals(0, credentialLookups)
         assertTrue(manager.connectedProfileIds().isEmpty())
