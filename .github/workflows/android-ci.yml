@@ -14,6 +14,10 @@ on:
       - ".github/workflows/android-ci.yml"
   workflow_dispatch:
 
+concurrency:
+  group: android-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
