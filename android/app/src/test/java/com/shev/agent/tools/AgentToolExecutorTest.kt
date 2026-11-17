@@ -356,6 +356,15 @@ class AgentToolExecutorTest {
         assertEquals(expectedContext, receivedContext)
     }
 
+    @Test fun suspendingExecutorCanInvokeSynchronousLocalHandler() = kotlinx.coroutines.runBlocking {
+        val result = setup().executeSuspending(
+            AgentToolRequest("local.echo", AgentCapability.ANALYZE_DATA, """{"text":"from-plan"}"""),
+            lowRiskContext()
+        )
+        assertEquals(AgentToolExecutionStatus.COMPLETED, result.status)
+        assertEquals("""ok:{"text":"from-plan"}""", result.result?.output)
+    }
+
     @Test fun suspendingHandlerCannotRunWithoutCapabilityGrant() = kotlinx.coroutines.runBlocking {
         val registry = AgentToolRegistry()
         registry.register(
