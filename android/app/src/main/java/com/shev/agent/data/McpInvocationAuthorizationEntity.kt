@@ -23,6 +23,7 @@ data class McpInvocationAuthorizationEntity(
     val invocationId: String,
     val taskId: String,
     val taskRevision: Long,
+    val planRevision: Long,
     val stepId: String,
     val stepRevision: Long,
     val profileId: String,
