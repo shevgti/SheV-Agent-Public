@@ -79,3 +79,5 @@ This is a pure Kotlin validation contract with unit tests. Durable goal/task-boa
 - Credential values remain exclusively in Android Keystore through the separate secret store.
 
 - MCP connection management now depends on a narrow credential-source interface; the Android Keystore provider is the production implementation. This allows deterministic tests proving disabled profiles are rejected before credential lookup or network setup.
+
+- The connection manager now resolves a profile by ID through the approved profile-source interface rather than accepting an arbitrary profile object. Production wiring must provide McpServerProfileStore, so callers cannot bypass the persisted disabled/allowlist state by constructing an enabled profile in memory.
