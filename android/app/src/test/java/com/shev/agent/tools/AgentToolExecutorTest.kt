@@ -331,11 +331,11 @@ class AgentToolExecutorTest {
         val executor = AgentToolExecutor(
             registry = registry,
             handlers = emptyMap(),
-            contextualSuspendingHandlers = mapOf(
-                "remote.search" to ContextualSuspendingAgentTool { input, executionContext ->
+            mcpHandlers = mapOf(
+                "remote.search" to McpAuthorizedContextualSuspendingTool(ContextualSuspendingAgentTool { input, executionContext ->
                     receivedContext = executionContext.mcpInvocationContext
                     AgentToolResult(true, input)
-                }
+                })
             )
         )
 
@@ -380,11 +380,11 @@ class AgentToolExecutorTest {
         val executor = AgentToolExecutor(
             registry = registry,
             handlers = emptyMap(),
-            contextualSuspendingHandlers = mapOf(
-                "remote.search" to ContextualSuspendingAgentTool { input, _ ->
+            mcpHandlers = mapOf(
+                "remote.search" to McpAuthorizedContextualSuspendingTool(ContextualSuspendingAgentTool { input, _ ->
                     called = true
                     AgentToolResult(true, input)
-                }
+                })
             )
         )
         val result = executor.executeSuspending(
@@ -430,11 +430,11 @@ class AgentToolExecutorTest {
         val executor = AgentToolExecutor(
             registry,
             emptyMap(),
-            contextualSuspendingHandlers = mapOf(
-                "remote.search" to ContextualSuspendingAgentTool { input, _ ->
+            mcpHandlers = mapOf(
+                "remote.search" to McpAuthorizedContextualSuspendingTool(ContextualSuspendingAgentTool { input, _ ->
                     called = true
                     AgentToolResult(true, input)
-                }
+                })
             )
         )
         val result = executor.executeSuspending(
