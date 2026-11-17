@@ -10,6 +10,7 @@ import com.shev.agent.core.RemoteMcpClient
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -39,6 +40,34 @@ class McpToolRegistryBridgeTest {
         assertNotNull(descriptor)
         assertEquals(setOf(AgentCapability.REMOTE_MCP_OPERATION), descriptor!!.capabilities)
         assertTrue(result.suspendingHandlers.containsKey("test-server.search_docs"))
+    }
+
+
+    @Test fun remoteHandlerFailsClosedWithoutInvocationApproval() = runBlocking {
+        val profile = McpServerProfile(
+            id = "test-server",
+            displayName = "Test server",
+            endpoint = "https://example.org/mcp",
+            authentication = McpAuthenticationKind.NONE,
+            trust = McpServerTrust.USER_HOSTED,
+            enabled = true,
+            approvedToolNames = setOf("search_docs")
+        )
+        val client = RemoteMcpClient(profile) { null }
+        val schema = ToolSchema(
+            properties = Json.parseToJsonElement(
+                """{"query":{"type":"string","maxLength":100}}"""
+            ) as JsonObject,
+            required = listOf("query")
+        )
+        val registration = Mc.shevBridge(profile, client, AgentToolRegistry(), schema)
+        try {
+            registration.suspendingHandlers.getValue("test-server.search_docs")
+                .execute("""{"query":"kotlin"}""")
+            fail("A remote MCP call without a per-invocation approval must fail")
+        } catch (failure: IllegalStateException) {
+            assertTrue(failure.message.orEmpty().contains("отдельного подтверждения"))
+        }
     }
 
     @Test fun disabledProfileCannotRegisterTools() {
