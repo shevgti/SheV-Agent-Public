@@ -96,8 +96,7 @@ class AgentToolExecutor(
         } ?: false
         val hasGrant = request.capability in context.grantedCapabilities || persistentGrantMatches
         val approved = request.capability in context.explicitlyApprovedCapabilities ||
-            (persistentGrantMatches && request.capability != AgentCapability.REMOTE_MCP_OPERATION) ||
-            hasDurableRemoteGate
+            (persistentGrantMatches && request.capability != AgentCapability.REMOTE_MCP_OPERATION)
         when (CapabilityPolicy.decide(request.capability, approved, hasGrant)) {
             ApprovalDecision.DENY ->
                 return AgentToolExecutionResult(AgentToolExecutionStatus.ACCESS_DENIED)
@@ -164,7 +163,8 @@ class AgentToolExecutor(
         } ?: false
         val hasGrant = request.capability in context.grantedCapabilities || persistentGrantMatches
         val approved = request.capability in context.explicitlyApprovedCapabilities ||
-            (persistentGrantMatches && request.capability != AgentCapability.REMOTE_MCP_OPERATION)
+            (persistentGrantMatches && request.capability != AgentCapability.REMOTE_MCP_OPERATION) ||
+            hasDurableRemoteGate
         when (CapabilityPolicy.decide(request.capability, approved, hasGrant)) {
             ApprovalDecision.DENY ->
                 return AgentToolExecutionResult(AgentToolExecutionStatus.ACCESS_DENIED)
