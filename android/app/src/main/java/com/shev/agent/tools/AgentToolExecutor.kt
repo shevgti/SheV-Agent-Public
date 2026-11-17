@@ -80,6 +80,11 @@ class AgentToolExecutor(
         val descriptor = registry.find(request.toolId)
             ?: return AgentToolExecutionResult(AgentToolExecutionStatus.TOOL_NOT_FOUND)
 
+        // Remote MCP must use the contextual suspending bridge and its per-call durable gate.
+        if (request.capability == AgentCapability.REMOTE_MCP_OPERATION) {
+            return AgentToolExecutionResult(AgentToolExecutionStatus.ACCESS_DENIED)
+        }
+
         if (request.capability !in descriptor.capabilities) {
             return AgentToolExecutionResult(AgentToolExecutionStatus.CAPABILITY_NOT_DECLARED)
         }
@@ -91,7 +96,8 @@ class AgentToolExecutor(
         } ?: false
         val hasGrant = request.capability in context.grantedCapabilities || persistentGrantMatches
         val approved = request.capability in context.explicitlyApprovedCapabilities ||
-            (persistentGrantMatches && request.capability != AgentCapability.REMOTE_MCP_OPERATION)
+            (persistentGrantMatches && request.capability != AgentCapability.REMOTE_MCP_OPERATION) ||
+            hasDurableRemoteGate
         when (CapabilityPolicy.decide(request.capability, approved, hasGrant)) {
             ApprovalDecision.DENY ->
                 return AgentToolExecutionResult(AgentToolExecutionStatus.ACCESS_DENIED)
@@ -138,6 +144,15 @@ class AgentToolExecutor(
         val descriptor = registry.find(request.toolId)
             ?: return AgentToolExecutionResult(AgentToolExecutionStatus.TOOL_NOT_FOUND)
 
+        val contextualHandler = contextualSuspendingHandlers[request.toolId]
+        val hasDurableRemoteGate = request.capability == AgentCapability.REMOTE_MCP_OPERATION &&
+            contextualHandler != null &&
+            context.mcpInvocationContext != null &&
+            context.beforeMcpNetworkCall != null
+        if (request.capability == AgentCapability.REMOTE_MCP_OPERATION && !hasDurableRemoteGate) {
+            return AgentToolExecutionResult(AgentToolExecutionStatus.ACCESS_DENIED)
+        }
+
         if (request.capability !in descriptor.capabilities) {
             return AgentToolExecutionResult(AgentToolExecutionStatus.CAPABILITY_NOT_DECLARED)
         }
@@ -168,7 +183,6 @@ class AgentToolExecutor(
             return AgentToolExecutionResult(AgentToolExecutionStatus.INVALID_INPUT)
         }
 
-        val contextualHandler = contextualSuspendingHandlers[request.toolId]
         val handler = suspendingHandlers[request.toolId]
         val synchronousHandler = handlers[request.toolId]
         if (contextualHandler == null && handler == null && synchronousHandler == null) {
