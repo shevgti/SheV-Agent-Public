@@ -87,7 +87,10 @@ interface AgentDao {
 
     @Query("SELECT * FROM mcp_invocation_approval_requests WHERE invocationId = :invocationId LIMIT 1")
     suspend fun getMcpInvocationApprovalRequest(invocationId: String): McpInvocationApprovalRequestEntity?
-\n    @Query("SELECT * FROM mcp_invocation_approval_requests WHERE invocationId = :invocationId LIMIT 1")\n    fun observeMcpInvocationApprovalRequest(invocationId: String): Flow<McpInvocationApprovalRequestEntity?>\n
+
+    @Query("SELECT * FROM mcp_invocation_approval_requests WHERE invocationId = :invocationId LIMIT 1")
+    fun observeMcpInvocationApprovalRequest(invocationId: String): Flow<McpInvocationApprovalRequestEntity?>
+
     @Query("SELECT * FROM mcp_invocation_approval_requests WHERE status = 'PENDING' ORDER BY createdAtEpochMillis ASC")
     fun observePendingMcpInvocationApprovalRequests(): Flow<List<McpInvocationApprovalRequestEntity>>
 
