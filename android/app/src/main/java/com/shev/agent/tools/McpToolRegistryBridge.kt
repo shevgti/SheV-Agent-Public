@@ -9,6 +9,7 @@ import com.shev.agent.core.McpInvocationBinding
 import com.shev.agent.core.McpServerProfile
 import com.shev.agent.core.RemoteMcpClient
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
