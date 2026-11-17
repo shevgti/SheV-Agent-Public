@@ -47,10 +47,15 @@ interface AgentDao {
                 AND current_task.revision = :taskRevision
           )
           AND EXISTS (
+              SELECT 1 FROM agent_plans current_plan
+              WHERE current_plan.taskId = :taskId
+                AND current_plan.planRevision = :planRevision
+          )
+          AND EXISTS (
               SELECT 1 FROM agent_plan_steps current_step
               WHERE current_step.taskId = :taskId
                 AND current_step.stepId = :stepId
-                AND current_step.planRevision = :taskRevision
+                AND current_step.planRevision = :planRevision
                 AND current_step.stepRevision = :stepRevision
           )
           AND issuedAtEpochMillis <= :nowMillis
@@ -105,6 +110,7 @@ interface AgentDao {
           AND invocationId = :invocationId
           AND taskId = :taskId
           AND taskRevision = :taskRevision
+          AND planRevision = :planRevision
           AND stepId = :stepId
           AND stepRevision = :stepRevision
           AND profileId = :profileId
@@ -123,6 +129,7 @@ interface AgentDao {
         invocationId: String,
         taskId: String,
         taskRevision: Long,
+        planRevision: Long,
         stepId: String,
         stepRevision: Long,
         profileId: String,
