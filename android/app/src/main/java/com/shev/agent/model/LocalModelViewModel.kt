@@ -33,6 +33,9 @@ import com.shev.agent.data.RoomAgentTaskRepository
 import com.shev.agent.data.LocalMessageCipher
 import com.shev.agent.data.SheVAgentDatabaseProvider
 import com.shev.agent.tools.AgentPlanToolValidator
+import com.shev.agent.tools.AgentPlanExecutor
+import com.shev.agent.tools.PlanExecutionAttemptStatus
+import com.shev.agent.data.StartPlanExecutionResult
 import com.shev.agent.tools.AgentTool
 import com.shev.agent.tools.LocalTimeTool
 import com.shev.agent.tools.SuspendingAgentTool
@@ -55,6 +58,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -86,6 +90,7 @@ data class LocalModelUiState(
     val pendingTaskApprovals: List<PendingTaskApproval> = emptyList(),
     val taskActionBusyId: String? = null,
     val taskActionMessage: String? = null,
+    val planExecutionMessage: String? = null,
     val pendingMcpInvocationApprovals: List<PendingMcpInvocationApproval> = emptyList(),
     val mcpInvocationActionBusyId: String? = null,
     val mcpInvocationActionMessage: String? = null
@@ -105,6 +110,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private val mutableState = MutableStateFlow(LocalModelUiState())
     val state: StateFlow<LocalModelUiState> = mutableState.asStateFlow()
     private var runtime: SheVAgentRuntime? = null
+    @Volatile private var planExecutor: AgentPlanExecutor? = null
     private var downloadJob: Job? = null
     private var responseJob: Job? = null
     @Volatile private var pendingPlanTaskId: String? = null
@@ -190,7 +196,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     )
                     when (result) {
                         is AgentTaskRepositoryResult.Applied ->
-                            "План подтверждён. Выполнение ещё не запускалось."
+                            startAndRunApprovedPlan(taskId, result.state.revision)
                         is AgentTaskRepositoryResult.Replayed ->
                             "Это подтверждение уже было зарегистрировано ранее."
                         is AgentTaskRepositoryResult.Rejected ->
@@ -219,6 +225,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch(Dispatchers.IO) {
             val now = System.currentTimeMillis()
             val result = runCatching {
+                val currentTask = dao.getTask(taskId)
+                val engine = planExecutor
+                if (currentTask?.phase in setOf(AgentPhase.APPROVED.name, AgentPhase.RUNNING.name) && engine != null) {
+                    return@runCatching engine.cancelTask(taskId, currentTask.revision, now)
+                }
                 taskRepository.transition(
                     AgentTaskTransitionRequest(
                         taskId = taskId,
@@ -655,6 +666,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         SheVAgentAdkTools.CREATE_TASK_PLAN_ID to taskPlanHandler
                     )
                 )
+                planExecutor = AgentPlanExecutor(database, registry, executor)
                 val tools = SheVAgentAdkTools(
                     executor,
                     AgentToolExecutionContext(
@@ -663,6 +675,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 )
                 runtime = SheVAgentRuntime.load(getApplication(), store, tools)
                 mutableState.update { it.copy(ready = true, backendName = runtime?.backendName) }
+                viewModelScope.launch(Dispatchers.IO) { recoverAndResumePersistedPlans() }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Throwable) {
@@ -672,6 +685,97 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             } finally {
                 mutableState.update { it.copy(busy = false) }
             }
+        }
+    }
+
+
+    /**
+     * Starts execution only after the explicit task approval has been persisted.
+     * The current runtime allowlist contains only the local read-only clock tool;
+     * every other capability remains unavailable until its own approval flow exists.
+     */
+    private suspend fun startAndRunApprovedPlan(taskId: String, approvedRevision: Long): String {
+        val engine = planExecutor
+            ?: return "План подтверждён и сохранён. Запусти SheV, чтобы подключить исполнитель и продолжить."
+        return when (engine.startPlan(taskId, approvedRevision, System.currentTimeMillis())) {
+            StartPlanExecutionResult.STARTED,
+            StartPlanExecutionResult.ALREADY_STARTED -> executePersistedPlan(taskId, engine)
+            StartPlanExecutionResult.STALE_TASK -> "План подтверждён, но ревизия поручения изменилась. Обнови список и проверь состояние."
+            StartPlanExecutionResult.NOT_FOUND -> "Не удалось запустить план: поручение не найдено."
+            StartPlanExecutionResult.INVALID_PHASE -> "Не удалось запустить план: поручение находится не на этапе запуска."
+            StartPlanExecutionResult.PLAN_NOT_FOUND -> "Не удалось запустить план: сохранённый план не найден."
+            StartPlanExecutionResult.INVALID_PLAN -> "Не удалось запустить план: сохранённая структура плана не прошла проверку."
+            StartPlanExecutionResult.CONFLICT -> "Не удалось запустить план: обнаружен конфликт состояния выполнения."
+        }
+    }
+
+    private suspend fun executePersistedPlan(
+        taskId: String,
+        engine: AgentPlanExecutor
+    ): String {
+        repeat(MAX_PLAN_STEPS_PER_PUMP) {
+            when (val attempt = engine.executeNext(
+                taskId = taskId,
+                grantedCapabilities = setOf(AgentCapability.ANALYZE_DATA),
+                explicitlyApprovedCapabilities = setOf(AgentCapability.ANALYZE_DATA)
+            )) {
+                is com.shev.agent.tools.PlanExecutionAttemptResult -> when (attempt.status) {
+                    PlanExecutionAttemptStatus.STEP_COMPLETED -> Unit
+                    PlanExecutionAttemptStatus.PLAN_COMPLETE -> {
+                        val task = dao.getTask(taskId)
+                            ?: return "Шаги выполнены, но поручение не найдено для перехода к проверке."
+                        val transition = taskRepository.transition(
+                            AgentTaskTransitionRequest(
+                                taskId = taskId,
+                                command = AgentWorkflowCommand.BEGIN_VERIFICATION,
+                                expectedRevision = task.revision,
+                                eventId = UUID.nameUUIDFromBytes("verify:$taskId:${task.revision}".toByteArray()).toString(),
+                                idempotencyKey = "plan-verify:$taskId:${task.revision}",
+                                occurredAtEpochMillis = System.currentTimeMillis()
+                            )
+                        )
+                        return when (transition) {
+                            is AgentTaskRepositoryResult.Applied -> "Все шаги плана выполнены. Поручение переведено на этап проверки результата."
+                            is AgentTaskRepositoryResult.Replayed -> "Шаги плана выполнены. Проверка результата уже была запущена."
+                            else -> "Шаги плана выполнены, но не удалось безопасно начать проверку: ${transition.javaClass.simpleName}."
+                        }
+                    }
+                    PlanExecutionAttemptStatus.BLOCKED ->
+                        return "Выполнение остановлено: следующий шаг заблокирован или ожидает отдельного разрешения."
+                    PlanExecutionAttemptStatus.TASK_NOT_RUNNING ->
+                        return "Выполнение остановлено: поручение больше не находится в состоянии RUNNING."
+                    PlanExecutionAttemptStatus.TOOL_NOT_AVAILABLE ->
+                        return "Выполнение остановлено: инструмент шага не зарегистрирован в этом запуске SheV."
+                    PlanExecutionAttemptStatus.TOOL_CONFIGURATION_INVALID ->
+                        return "Выполнение остановлено: инструмент не разрешён для планового запуска."
+                    PlanExecutionAttemptStatus.STEP_FAILED ->
+                        return "Выполнение остановлено на шаге ${attempt.stepId ?: "?"}: ${attempt.errorCode ?: "ошибка шага"}."
+                    PlanExecutionAttemptStatus.OUTCOME_UNKNOWN ->
+                        return "Результат шага ${attempt.stepId ?: "?"} неизвестен. Повторный запуск заблокирован до ручной проверки."
+                }
+            }
+        }
+        return "Выполнение приостановлено после ${MAX_PLAN_STEPS_PER_PUMP} шагов. Продолжение будет выполнено отдельным циклом."
+    }
+
+    /** Reconciles interrupted dispatches before resuming any still-undispatched work. */
+    private suspend fun recoverAndResumePersistedPlans() {
+        val engine = planExecutor ?: return
+        val tasks = dao.observeTasks().first()
+        tasks.filter { it.phase == AgentPhase.RUNNING.name }.forEach { task ->
+            val uncertain = engine.recoverAfterProcessRestart(task.id, System.currentTimeMillis())
+            if (uncertain > 0) {
+                mutableState.update {
+                    it.copy(planExecutionMessage = "Поручение «${task.title}»: найдено ${uncertain} незавершённых отправок. Их результат неизвестен; автоматический повтор запрещён.")
+                }
+            } else {
+                val message = executePersistedPlan(task.id, engine)
+                mutableState.update { it.copy(planExecutionMessage = "Поручение «${task.title}»: $message") }
+            }
+        }
+        tasks.filter { it.phase == AgentPhase.APPROVED.name }.forEach { task ->
+            val message = startAndRunApprovedPlan(task.id, task.revision)
+            mutableState.update { it.copy(planExecutionMessage = "Поручение «${task.title}»: $message") }
         }
     }
 
@@ -1191,6 +1295,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
 
     private companion object {
         const val HISTORY_DISPLAY_LIMIT = 80
+        const val MAX_PLAN_STEPS_PER_PUMP = 50
         const val CONTEXT_HISTORY_LIMIT = 12
     }
 }
