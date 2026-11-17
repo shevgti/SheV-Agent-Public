@@ -218,3 +218,19 @@ Implementation in branch:
 - Existing Android manifest already has INTERNET permission.
 - The remote client is a transport adapter only. It is not yet wired to UI, persistent credential storage, native tool schema conversion or a production OAuth flow. Those remain required before enabling Context7/GitHub in the app.
 - CI started for dependency and client commits; check the exact latest branch head before claiming a pass. Do not merge PR #63 yet.
+
+### MCP → native tool bridge — 2026-11-17
+
+Added `core/RemoteMcpClient.kt` discovery metadata carrying the server's `ToolSchema`, then added `tools/McpToolRegistryBridge.kt` and `McpToolSchemaAdapter`.
+- Only user-allowlisted tool names are projected into `AgentToolRegistry`.
+- Only a strict schema subset is accepted: flat object properties with string, integer, or boolean fields; bounded string length, string enums and integer bounds. Nested objects, arrays, references, definitions and unknown schema keywords fail closed.
+- MCP tool annotations are ignored for trust/permission decisions.
+- Every bridged tool is classified as `READ_REMOTE_DATA`; `AgentToolExecutor.executeSuspending` must check the existing capability grant and per-action approval before its handler can call the remote server.
+- Added unit tests for schema projection, bounds, enums, unsupported shapes and invalid required fields.
+
+Latest commits on this branch:
+- `1d31f82`: include MCP input schema in discovery records.
+- `b018c8d`: add allowlist + schema-limited bridge into native tool registry.
+- `46983d1`: add schema adapter unit tests.
+Latest head `46983d18545c54043ef6795d67fb2752aa913b92`; Android CI for bridge commit `b018c8d` is still in progress (run #44016428745); latest SheV Agent Android run #44016441665 is pending with no jobs reported yet. Prior exact head `41238c4` passed both Android CI and SheV Agent Android.
+Operational note: a bridge file was initially committed to the default branch by omitting the optional branch argument. This was immediately removed in a follow-up commit `2f37dfb`; the file now exists only on the intended PR branch. Net source state on main has no bridge file. Continue to keep PR #63 draft and do not merge until latest branch CI succeeds.
