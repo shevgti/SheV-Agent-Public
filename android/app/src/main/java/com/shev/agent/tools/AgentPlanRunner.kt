@@ -6,12 +6,15 @@ import com.shev.agent.AgentWorkflowCommand
 import com.shev.agent.data.AgentTaskRepositoryResult
 import com.shev.agent.data.AgentTaskTransitionRequest
 import com.shev.agent.data.RoomAgentTaskRepository
+import com.shev.agent.data.RoomAgentPlanVerificationService
+import com.shev.agent.data.PlanVerificationStatus
 import com.shev.agent.data.SheVAgentDatabase
 import com.shev.agent.data.StartPlanExecutionResult
 import java.util.UUID
 import kotlinx.coroutines.flow.first
 
 enum class AgentPlanRunStatus {
+    COMPLETED,
     VERIFYING,
     OUTCOME_UNKNOWN,
     BLOCKED,
@@ -48,7 +51,8 @@ class AgentPlanRunner(
     private val taskRepository: RoomAgentTaskRepository,
     private val grantedCapabilities: Set<AgentCapability> = setOf(AgentCapability.ANALYZE_DATA),
     private val explicitlyApprovedCapabilities: Set<AgentCapability> = setOf(AgentCapability.ANALYZE_DATA),
-    private val maxStepsPerPump: Int = DEFAULT_MAX_STEPS_PER_PUMP
+    private val maxStepsPerPump: Int = DEFAULT_MAX_STEPS_PER_PUMP,
+    private val verificationService: RoomAgentPlanVerificationService = RoomAgentPlanVerificationService(database)
 ) {
     init {
         require(maxStepsPerPump in 1..100)
@@ -93,6 +97,9 @@ class AgentPlanRunner(
         tasks.filter { it.phase == AgentPhase.RUNNING.name }.forEach { task ->
             results += recoverRunning(task.id)
         }
+        tasks.filter { it.phase == AgentPhase.VERIFYING.name }.forEach { task ->
+            results += verifyTask(task.id, task.title)
+        }
         tasks.filter { it.phase == AgentPhase.APPROVED.name }.forEach { task ->
             results += startApproved(task.id, task.revision)
         }
@@ -130,20 +137,16 @@ class AgentPlanRunner(
                             occurredAtEpochMillis = System.currentTimeMillis()
                         )
                     )
-                    val status = when (transition) {
-                        is AgentTaskRepositoryResult.Applied,
-                        is AgentTaskRepositoryResult.Replayed -> AgentPlanRunStatus.VERIFYING
-                        is AgentTaskRepositoryResult.Rejected,
-                        AgentTaskRepositoryResult.NotFound,
-                        AgentTaskRepositoryResult.IdempotencyConflict -> AgentPlanRunStatus.VERIFICATION_BLOCKED
+                    if (transition !is AgentTaskRepositoryResult.Applied &&
+                        transition !is AgentTaskRepositoryResult.Replayed
+                    ) {
+                        return AgentPlanRunResult(
+                            taskId, title, AgentPlanRunStatus.VERIFICATION_BLOCKED,
+                            completedSteps = completedSteps,
+                            errorCode = transition.javaClass.simpleName
+                        )
                     }
-                    return AgentPlanRunResult(
-                        taskId, title, status,
-                        completedSteps = completedSteps,
-                        errorCode = if (status == AgentPlanRunStatus.VERIFICATION_BLOCKED) {
-                            transition.javaClass.simpleName
-                        } else null
-                    )
+                    return verifyTask(taskId, title, completedSteps)
                 }
                 PlanExecutionAttemptStatus.BLOCKED ->
                     return result(taskId, title, AgentPlanRunStatus.BLOCKED, completedSteps, attempt.stepId, attempt.errorCode)
@@ -162,6 +165,70 @@ class AgentPlanRunner(
         return AgentPlanRunResult(
             taskId, title, AgentPlanRunStatus.PUMP_LIMIT_REACHED,
             completedSteps = completedSteps
+        )
+    }
+
+    private suspend fun verifyTask(
+        taskId: String,
+        title: String,
+        completedSteps: Int = 0
+    ): AgentPlanRunResult {
+        val task = database.agentDao().getTask(taskId)
+            ?: return AgentPlanRunResult(
+                taskId, title, AgentPlanRunStatus.VERIFICATION_BLOCKED,
+                completedSteps = completedSteps, errorCode = "TASK_NOT_FOUND"
+            )
+        if (task.phase == AgentPhase.COMPLETED.name) {
+            return AgentPlanRunResult(taskId, title, AgentPlanRunStatus.COMPLETED, completedSteps)
+        }
+        if (task.phase != AgentPhase.VERIFYING.name) {
+            return AgentPlanRunResult(
+                taskId, title, AgentPlanRunStatus.VERIFICATION_BLOCKED,
+                completedSteps = completedSteps, errorCode = "TASK_NOT_VERIFYING"
+            )
+        }
+
+        val nowMillis = System.currentTimeMillis()
+        val verification = verificationService.verifyAndIssueCompletionEvidence(
+            taskId = taskId,
+            expectedTaskRevision = task.revision,
+            nowMillis = nowMillis
+        )
+        val token = verification.completionEvidenceToken
+        if (verification.status != PlanVerificationStatus.VERIFIED || token == null) {
+            return AgentPlanRunResult(
+                taskId, title, AgentPlanRunStatus.VERIFICATION_BLOCKED,
+                completedSteps = completedSteps,
+                errorCode = "VERIFICATION_${verification.status.name}:${verification.failure?.name ?: verification.failedStepId.orEmpty()}"
+            )
+        }
+
+        val completion = taskRepository.transition(
+            AgentTaskTransitionRequest(
+                taskId = taskId,
+                command = AgentWorkflowCommand.COMPLETE,
+                expectedRevision = task.revision,
+                eventId = UUID.nameUUIDFromBytes(
+                    "complete:$taskId:${task.revision}".toByteArray()
+                ).toString(),
+                idempotencyKey = "plan-complete:$taskId:${task.revision}",
+                occurredAtEpochMillis = nowMillis,
+                evidenceRef = token
+            )
+        )
+        val status = when (completion) {
+            is AgentTaskRepositoryResult.Applied,
+            is AgentTaskRepositoryResult.Replayed -> AgentPlanRunStatus.COMPLETED
+            is AgentTaskRepositoryResult.Rejected,
+            AgentTaskRepositoryResult.NotFound,
+            AgentTaskRepositoryResult.IdempotencyConflict -> AgentPlanRunStatus.VERIFICATION_BLOCKED
+        }
+        return AgentPlanRunResult(
+            taskId, title, status,
+            completedSteps = completedSteps,
+            errorCode = if (status == AgentPlanRunStatus.VERIFICATION_BLOCKED) {
+                completion.javaClass.simpleName
+            } else null
         )
     }
 
