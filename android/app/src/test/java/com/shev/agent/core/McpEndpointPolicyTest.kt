@@ -1,7 +1,6 @@
 package com.shev.agent.core
 
 import java.net.InetAddress
-import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
