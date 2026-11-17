@@ -4,8 +4,8 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [AgentTaskEntity::class, AgentEventEntity::class, ImprovementEntity::class, CapabilityGrantEntity::class, WorkspaceLayoutEntity::class, ConversationMessageEntity::class, ApprovalEvidenceEntity::class, ConversationStateEntity::class, McpInvocationAuthorizationEntity::class, McpInvocationApprovalRequestEntity::class, AgentPlanEntity::class, AgentPlanStepEntity::class],
-    version = 15,
+    entities = [AgentTaskEntity::class, AgentEventEntity::class, ImprovementEntity::class, CapabilityGrantEntity::class, WorkspaceLayoutEntity::class, ConversationMessageEntity::class, ApprovalEvidenceEntity::class, ConversationStateEntity::class, McpInvocationAuthorizationEntity::class, McpInvocationApprovalRequestEntity::class, AgentPlanStepExecutionEntity::class, AgentPlanEntity::class, AgentPlanStepEntity::class],
+    version = 16,
     exportSchema = false
 )
 abstract class SheVAgentDatabase : RoomDatabase() {
@@ -139,6 +139,15 @@ internal val MIGRATION_14_15 = object : androidx.room.migration.Migration(14, 15
     }
 }
 
+internal val MIGRATION_15_16 = object : androidx.room.migration.Migration(15, 16) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS agent_plan_step_executions (taskId TEXT NOT NULL, stepId TEXT NOT NULL, planRevision INTEGER NOT NULL, stepRevision INTEGER NOT NULL, invocationId TEXT NOT NULL, attempt INTEGER NOT NULL, status TEXT NOT NULL, createdAtEpochMillis INTEGER NOT NULL, updatedAtEpochMillis INTEGER NOT NULL, dispatchStartedAtEpochMillis INTEGER, dispatchedAtEpochMillis INTEGER, completedAtEpochMillis INTEGER, resultCiphertext TEXT, errorCode TEXT, PRIMARY KEY(taskId, stepId))")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_agent_plan_step_executions_taskId_planRevision_status ON agent_plan_step_executions (taskId, planRevision, status)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_agent_plan_step_executions_invocationId ON agent_plan_step_executions (invocationId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_agent_plan_step_executions_status_updatedAtEpochMillis ON agent_plan_step_executions (status, updatedAtEpochMillis)")
+    }
+}
+
 object SheVAgentDatabaseProvider {
     @Volatile
     private var instance: SheVAgentDatabase? = null
@@ -163,7 +172,8 @@ object SheVAgentDatabaseProvider {
                 MIGRATION_11_12,
                 MIGRATION_12_13,
                 MIGRATION_13_14,
-                MIGRATION_14_15
+                MIGRATION_14_15,
+                MIGRATION_15_16
             ).build().also { instance = it }
         }
 }
