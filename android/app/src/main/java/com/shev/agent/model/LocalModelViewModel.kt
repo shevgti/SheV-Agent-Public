@@ -35,8 +35,9 @@ import com.shev.agent.data.LocalMessageCipher
 import com.shev.agent.data.SheVAgentDatabaseProvider
 import com.shev.agent.tools.AgentPlanToolValidator
 import com.shev.agent.tools.AgentPlanExecutor
-import com.shev.agent.tools.PlanExecutionAttemptStatus
-import com.shev.agent.data.StartPlanExecutionResult
+import com.shev.agent.tools.AgentPlanRunner
+import com.shev.agent.tools.AgentPlanRunResult
+import com.shev.agent.tools.AgentPlanRunStatus
 import com.shev.agent.tools.AgentTool
 import com.shev.agent.tools.LocalTimeTool
 import com.shev.agent.tools.SuspendingAgentTool
@@ -59,7 +60,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -111,7 +111,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private val mutableState = MutableStateFlow(LocalModelUiState())
     val state: StateFlow<LocalModelUiState> = mutableState.asStateFlow()
     private var runtime: SheVAgentRuntime? = null
-    @Volatile private var planExecutor: AgentPlanExecutor? = null
+    @Volatile private var planRunner: AgentPlanRunner? = null
     private var downloadJob: Job? = null
     private var responseJob: Job? = null
     @Volatile private var pendingPlanTaskId: String? = null
@@ -233,11 +233,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             val message = runCatching {
                 val currentTask = dao.getTask(taskId)
                     ?: return@runCatching "Поручение больше не найдено."
-                val engine = planExecutor
+                val runner = planRunner
                 when (currentTask.phase) {
                     AgentPhase.RUNNING.name -> {
-                        val cancelled = if (engine != null) {
-                            engine.cancelTask(taskId, expectedRevision, now)
+                        val cancelled = if (runner != null) {
+                            runner.cancelTask(taskId, expectedRevision)
                         } else {
                             RoomAgentPlanExecutionRepository(database).cancelTask(taskId, expectedRevision, now)
                         }
@@ -245,7 +245,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         else "Не удалось остановить поручение: состояние изменилось или отмена уже невозможна."
                     }
                     AgentPhase.APPROVED.name -> {
-                        val cancelled = engine?.cancelTask(taskId, expectedRevision, now)
+                        val cancelled = runner?.cancelTask(taskId, expectedRevision)
                         if (cancelled == true) "Подтверждённое поручение остановлено."
                         else if (cancelled == false) "Не удалось остановить поручение: состояние изменилось."
                         else "Не удалось остановить поручение: исполнитель ещё не подключён."
@@ -687,7 +687,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         SheVAgentAdkTools.CREATE_TASK_PLAN_ID to taskPlanHandler
                     )
                 )
-                planExecutor = AgentPlanExecutor(database, registry, executor)
+                planRunner = AgentPlanRunner(database, AgentPlanExecutor(database, registry, executor), taskRepository)
                 val tools = SheVAgentAdkTools(
                     executor,
                     AgentToolExecutionContext(
@@ -710,93 +710,43 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
 
-    /**
-     * Starts execution only after the explicit task approval has been persisted.
-     * The current runtime allowlist contains only the local read-only clock tool;
-     * every other capability remains unavailable until its own approval flow exists.
-     */
+    /** UI adapter: kernel runner returns typed state; this layer only localizes it. */
     private suspend fun startAndRunApprovedPlan(taskId: String, approvedRevision: Long): String {
-        val engine = planExecutor
+        val runner = planRunner
             ?: return "План подтверждён и сохранён. Запусти SheV, чтобы подключить исполнитель и продолжить."
-        return when (engine.startPlan(taskId, approvedRevision, System.currentTimeMillis())) {
-            StartPlanExecutionResult.STARTED,
-            StartPlanExecutionResult.ALREADY_STARTED -> executePersistedPlan(taskId, engine)
-            StartPlanExecutionResult.STALE_TASK -> "План подтверждён, но ревизия поручения изменилась. Обнови список и проверь состояние."
-            StartPlanExecutionResult.NOT_FOUND -> "Не удалось запустить план: поручение не найдено."
-            StartPlanExecutionResult.INVALID_PHASE -> "Не удалось запустить план: поручение находится не на этапе запуска."
-            StartPlanExecutionResult.PLAN_NOT_FOUND -> "Не удалось запустить план: сохранённый план не найден."
-            StartPlanExecutionResult.INVALID_PLAN -> "Не удалось запустить план: сохранённая структура плана не прошла проверку."
-            StartPlanExecutionResult.CONFLICT -> "Не удалось запустить план: обнаружен конфликт состояния выполнения."
-        }
+        return describePlanRunResult(runner.startApproved(taskId, approvedRevision))
     }
 
-    private suspend fun executePersistedPlan(
-        taskId: String,
-        engine: AgentPlanExecutor
-    ): String {
-        repeat(MAX_PLAN_STEPS_PER_PUMP) {
-            val attempt = engine.executeNext(
-                taskId = taskId,
-                grantedCapabilities = setOf(AgentCapability.ANALYZE_DATA),
-                explicitlyApprovedCapabilities = setOf(AgentCapability.ANALYZE_DATA)
-            )
-            when (attempt.status) {
-                    PlanExecutionAttemptStatus.STEP_COMPLETED -> Unit
-                    PlanExecutionAttemptStatus.PLAN_COMPLETE -> {
-                        val task = dao.getTask(taskId)
-                            ?: return "Шаги выполнены, но поручение не найдено для перехода к проверке."
-                        val transition = taskRepository.transition(
-                            AgentTaskTransitionRequest(
-                                taskId = taskId,
-                                command = AgentWorkflowCommand.BEGIN_VERIFICATION,
-                                expectedRevision = task.revision,
-                                eventId = UUID.nameUUIDFromBytes("verify:$taskId:${task.revision}".toByteArray()).toString(),
-                                idempotencyKey = "plan-verify:$taskId:${task.revision}",
-                                occurredAtEpochMillis = System.currentTimeMillis()
-                            )
-                        )
-                        return when (transition) {
-                            is AgentTaskRepositoryResult.Applied -> "Все шаги плана выполнены. Поручение переведено на этап проверки результата."
-                            is AgentTaskRepositoryResult.Replayed -> "Шаги плана выполнены. Проверка результата уже была запущена."
-                            else -> "Шаги плана выполнены, но не удалось безопасно начать проверку: ${transition.javaClass.simpleName}."
-                        }
-                    }
-                    PlanExecutionAttemptStatus.BLOCKED ->
-                        return "Выполнение остановлено: следующий шаг заблокирован или ожидает отдельного разрешения."
-                    PlanExecutionAttemptStatus.TASK_NOT_RUNNING ->
-                        return "Выполнение остановлено: поручение больше не находится в состоянии RUNNING."
-                    PlanExecutionAttemptStatus.TOOL_NOT_AVAILABLE ->
-                        return "Выполнение остановлено: инструмент шага не зарегистрирован в этом запуске SheV."
-                    PlanExecutionAttemptStatus.TOOL_CONFIGURATION_INVALID ->
-                        return "Выполнение остановлено: инструмент не разрешён для планового запуска."
-                    PlanExecutionAttemptStatus.STEP_FAILED ->
-                        return "Выполнение остановлено на шаге ${attempt.stepId ?: "?"}: ${attempt.errorCode ?: "ошибка шага"}."
-                    PlanExecutionAttemptStatus.OUTCOME_UNKNOWN ->
-                        return "Результат шага ${attempt.stepId ?: "?"} неизвестен. Повторный запуск заблокирован до ручной проверки."
-            }
-        }
-        return "Выполнение приостановлено после ${MAX_PLAN_STEPS_PER_PUMP} шагов. Продолжение будет выполнено отдельным циклом."
-    }
-
-    /** Reconciles interrupted dispatches before resuming any still-undispatched work. */
     private suspend fun recoverAndResumePersistedPlans() {
-        val engine = planExecutor ?: return
-        val tasks = dao.observeTasks().first()
-        tasks.filter { it.phase == AgentPhase.RUNNING.name }.forEach { task ->
-            val uncertain = engine.recoverAfterProcessRestart(task.id, System.currentTimeMillis())
-            if (uncertain > 0) {
-                mutableState.update {
-                    it.copy(planExecutionMessage = "Поручение «${task.title}»: найдено ${uncertain} незавершённых отправок. Их результат неизвестен; автоматический повтор запрещён.")
-                }
-            } else {
-                val message = executePersistedPlan(task.id, engine)
-                mutableState.update { it.copy(planExecutionMessage = "Поручение «${task.title}»: $message") }
+        val runner = planRunner ?: return
+        runner.recoverAndResume().forEach { result ->
+            mutableState.update {
+                it.copy(planExecutionMessage = "Поручение «${result.taskTitle}»: ${describePlanRunResult(result)}")
             }
         }
-        tasks.filter { it.phase == AgentPhase.APPROVED.name }.forEach { task ->
-            val message = startAndRunApprovedPlan(task.id, task.revision)
-            mutableState.update { it.copy(planExecutionMessage = "Поручение «${task.title}»: $message") }
-        }
+    }
+
+    private fun describePlanRunResult(result: AgentPlanRunResult): String = when (result.status) {
+        AgentPlanRunStatus.VERIFYING ->
+            "Все шаги выполнены; поручение переведено на проверку результата, но ещё не помечено завершённым."
+        AgentPlanRunStatus.OUTCOME_UNKNOWN ->
+            "Результат шага ${result.stepId ?: "?"} неизвестен (${result.uncertainSteps} незавершённых отправок). Автоматический повтор запрещён."
+        AgentPlanRunStatus.BLOCKED ->
+            "Выполнение остановлено: следующий шаг заблокирован или ожидает отдельного разрешения."
+        AgentPlanRunStatus.TASK_NOT_RUNNING ->
+            "Выполнение остановлено: поручение больше не находится в состоянии RUNNING."
+        AgentPlanRunStatus.TOOL_NOT_AVAILABLE ->
+            "Выполнение остановлено: инструмент шага не зарегистрирован в этом запуске SheV."
+        AgentPlanRunStatus.TOOL_CONFIGURATION_INVALID ->
+            "Выполнение остановлено: инструмент не разрешён для планового запуска."
+        AgentPlanRunStatus.STEP_FAILED ->
+            "Выполнение остановлено на шаге ${result.stepId ?: "?"}: ${result.errorCode ?: "ошибка шага"}."
+        AgentPlanRunStatus.VERIFICATION_BLOCKED ->
+            "Шаги выполнены, но не удалось безопасно перевести поручение на проверку результата."
+        AgentPlanRunStatus.PUMP_LIMIT_REACHED ->
+            "Выполнение приостановлено по лимиту одного цикла; состояние шагов сохранено."
+        AgentPlanRunStatus.START_REJECTED ->
+            "Не удалось запустить план: ${result.startStatus?.name ?: "неизвестная причина"}."
     }
 
     private fun sendLocalTimeReply(message: String) {
