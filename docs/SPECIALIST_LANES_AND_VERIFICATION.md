@@ -69,3 +69,11 @@ This is a pure Kotlin validation contract with unit tests. Durable goal/task-boa
 - Current limit: the manager is not yet instantiated by the Android settings UI/runtime, and active connections are process-local. User pairing UI, profile persistence, reconnect policy and device-level network/DNS pinning remain open. A successful manager connection is not implied by the existence of the class.
 
 - Remote handler registration uses an internal authorization wrapper produced by the native MCP bridge. The executor accepts only this wrapper and only for descriptors whose capability set is exactly REMOTE_MCP_OPERATION; generic app/plugin handlers cannot attach themselves as remote MCP executors.
+
+## MCP profile persistence
+
+- Added a local profile store for endpoint metadata, transport, auth type, trust label, enabled state and exact approved tool names. No credential material is stored in this file.
+- Curated Context7 and GitHub profiles remain disabled and empty-allowlist by default.
+- Every mutation requires an explicit approval signal. A profile cannot be enabled until it has a non-empty explicit tool allowlist; changing the allowlist disables the profile until reconfirmed.
+- Profile metadata is versioned, bounded and persisted locally. Corrupt/unknown-version storage fails closed and does not overwrite the damaged record.
+- Credential values remain exclusively in Android Keystore through the separate secret store.
