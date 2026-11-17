@@ -71,7 +71,7 @@ class AgentToolExecutorTest {
                 nowMillis = 5_000
             )
         )
-        assertEquals(AgentToolExecutionStatus.APPROVAL_REQUIRED, result.status)
+        assertEquals(AgentToolExecutionStatus.ACCESS_DENIED, result.status)
     }
 
     @Test fun explicitApprovalAllowsGrantedHighRiskOperation() {
@@ -348,12 +348,66 @@ class AgentToolExecutorTest {
             AgentToolExecutionContext(
                 grantedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
                 explicitlyApprovedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
-                mcpInvocationContext = expectedContext
+                mcpInvocationContext = expectedContext,
+                beforeMcpNetworkCall = { it == expectedContext }
             )
         )
 
         assertEquals(AgentToolExecutionStatus.COMPLETED, result.status)
         assertEquals(expectedContext, receivedContext)
+    }
+
+    @Test fun remoteMcpCannotRunWithoutDurableDispatchCallback() = kotlinx.coroutines.runBlocking {
+        val registry = AgentToolRegistry()
+        registry.register(
+            AgentToolDescriptor(
+                "remote.search",
+                "Удалённый поиск",
+                "Тестирует обязательную отметку перед сетевым действием",
+                setOf(AgentCapability.REMOTE_MCP_OPERATION),
+                ToolInputSchema(listOf(ToolInputField("query", ToolInputType.STRING)))
+            )
+        )
+        var called = false
+        val context = McpInvocationExecutionContext(
+            invocationId = "invocation-000001",
+            taskId = "task-1",
+            taskRevision = 3L,
+            planRevision = 1L,
+            stepId = "step-1",
+            stepRevision = 2L
+        )
+        val executor = AgentToolExecutor(
+            registry = registry,
+            handlers = emptyMap(),
+            contextualSuspendingHandlers = mapOf(
+                "remote.search" to ContextualSuspendingAgentTool { input, _ ->
+                    called = true
+                    AgentToolResult(true, input)
+                }
+            )
+        )
+        val result = executor.executeSuspending(
+            AgentToolRequest("remote.search", AgentCapability.REMOTE_MCP_OPERATION, """{"query":"docs"}"""),
+            AgentToolExecutionContext(
+                grantedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
+                explicitlyApprovedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
+                mcpInvocationContext = context
+            )
+        )
+        assertEquals(AgentToolExecutionStatus.ACCESS_DENIED, result.status)
+        assertFalse(called)
+    }
+
+    @Test fun synchronousRemoteMcpPathIsAlwaysDenied() {
+        val result = setup().execute(
+            AgentToolRequest("local.echo", AgentCapability.REMOTE_MCP_OPERATION, """{"text":"call"}"""),
+            AgentToolExecutionContext(
+                grantedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
+                explicitlyApprovedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION)
+            )
+        )
+        assertEquals(AgentToolExecutionStatus.ACCESS_DENIED, result.status)
     }
 
     @Test fun suspendingExecutorCanInvokeSynchronousLocalHandler() = kotlinx.coroutines.runBlocking {
