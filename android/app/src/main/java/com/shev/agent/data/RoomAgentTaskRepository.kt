@@ -21,10 +21,11 @@ interface AgentTaskAuthorizationVerifier {
         nowMillis: Long
     ): Boolean
 
-    suspend fun isCompletionEvidenceValid(
+    suspend fun consumeCompletionEvidence(
         taskId: String,
         expectedRevision: Long,
-        evidenceRef: String
+        evidenceRef: String,
+        nowMillis: Long
     ): Boolean
 }
 
