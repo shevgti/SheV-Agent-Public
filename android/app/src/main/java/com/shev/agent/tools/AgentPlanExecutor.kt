@@ -194,7 +194,7 @@ class AgentPlanExecutor(
                 planRevision = execution.planRevision,
                 stepRevision = execution.stepRevision,
                 output = if (result.output.length > MAX_STEP_OUTPUT_CHARS) {
-                    result.output.take(MAX_STEP_OUTPUT_CHARS - 14) + "\\n...[truncated]"
+                    result.output.take(MAX_STEP_OUTPUT_CHARS - 15) + "\\n...[truncated]"
                 } else result.output,
                 nowMillis = System.currentTimeMillis()
             )
