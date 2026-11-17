@@ -64,9 +64,12 @@ class RoomAgentPlanRepository(
             val stepRows = plan.steps.map { step ->
                 val canonicalStep = canonicalStepJson(step)
                 val previous = previousSteps[step.id]
+                val previousCanonical = previous?.let {
+                    runCatching { LocalPlanCipher.decrypt(it.canonicalStepJson) }.getOrNull()
+                }
                 val nextStepRevision = when {
                     previous == null -> 0L
-                    previous.canonicalStepJson == canonicalStep -> previous.stepRevision
+                    previousCanonical == canonicalStep -> previous.stepRevision
                     previous.stepRevision == Long.MAX_VALUE -> return@withTransaction AgentPlanSaveResult.STALE_REVISION
                     else -> previous.stepRevision + 1L
                 }
@@ -75,7 +78,7 @@ class RoomAgentPlanRepository(
                     stepId = step.id,
                     planRevision = plan.revision,
                     stepRevision = nextStepRevision,
-                    canonicalStepJson = canonicalStep
+                    canonicalStepJson = LocalPlanCipher.encrypt(canonicalStep)
                 )
             }
 
@@ -93,7 +96,7 @@ class RoomAgentPlanRepository(
                 AgentPlanEntity(
                     taskId = plan.taskId,
                     planRevision = plan.revision,
-                    canonicalPlanJson = canonicalPlanJson(plan),
+                    canonicalPlanJson = LocalPlanCipher.encrypt(canonicalPlanJson(plan)),
                     savedAtEpochMillis = savedAtEpochMillis
                 )
             )
@@ -118,8 +121,11 @@ class RoomAgentPlanRepository(
         if (taskId.isBlank()) return null
         val dao = database.agentDao()
         val stored = dao.getAgentPlan(taskId) ?: return null
+        val plainPlanJson = runCatching {
+            LocalPlanCipher.decrypt(stored.canonicalPlanJson)
+        }.getOrNull() ?: return null
         val decoded = runCatching {
-            gson.fromJson(stored.canonicalPlanJson, AgentPlan::class.java)
+            gson.fromJson(plainPlanJson, AgentPlan::class.java)
         }.getOrNull() ?: return null
         val plan = runCatching {
             AgentPlan(
@@ -137,7 +143,7 @@ class RoomAgentPlanRepository(
             steps.any { it.planRevision != stored.planRevision } ||
             plan.steps.any { step ->
                 val persisted = stepRowsById[step.id] ?: return@any true
-                persisted.canonicalStepJson != canonicalStepJson(step)
+                runCatching { LocalPlanCipher.decrypt(persisted.canonicalStepJson) }.getOrNull() != canonicalStepJson(step)
             }
         ) return null
         return PersistedAgentPlan(
