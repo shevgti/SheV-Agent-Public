@@ -114,6 +114,9 @@ class McpInvocationApprovalRequestRoomTest {
         )
         val verifier = RoomMcpInvocationAuthorizationVerifier(database)
         assertTrue(verifier.consume(authorization, binding(), NOW + 11))
+        val consumed = dao.getMcpInvocationApprovalRequest(INVOCATION_ID)!!
+        assertEquals(McpInvocationApprovalRequestEntity.STATUS_CONSUMED, consumed.status)
+        assertEquals(null, consumed.authorizationNonceCiphertext)
         assertFalse(verifier.consume(authorization, binding(), NOW + 12))
     }
 
