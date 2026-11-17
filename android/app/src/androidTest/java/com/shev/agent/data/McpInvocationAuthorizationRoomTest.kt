@@ -98,10 +98,12 @@ class McpInvocationAuthorizationRoomTest {
         dao.insertMcpInvocationAuthorizationEvidence(authorization.toEntity())
 
         val staleTask = authorization.copy(taskRevision = authorization.taskRevision + 1)
+        val stalePlan = authorization.copy(planRevision = authorization.planRevision + 1)
         val staleStep = authorization.copy(stepRevision = authorization.stepRevision + 1)
         val verifier = RoomMcpInvocationAuthorizationVerifier(dao)
 
         assertFalse(verifier.consume(staleTask, binding, NOW + 1))
+        assertFalse(verifier.consume(stalePlan, binding, NOW + 1))
         assertFalse(verifier.consume(staleStep, binding, NOW + 1))
         assertTrue(verifier.consume(authorization, binding, NOW + 1))
     }
