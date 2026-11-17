@@ -79,7 +79,7 @@ class RoomAgentPlanRepositoryTest {
         assertNotNull(afterReplan)
         assertEquals(changed, afterReplan!!.plan)
         assertEquals(mapOf("lookup" to 1L, "summarize" to 0L), afterReplan.stepRevisions)
-        assertEquals(1L, dao.getTask(TASK_ID)!!.revision)
+        assertEquals(2L, dao.getTask(TASK_ID)!!.revision)
     }
 
     @Test
