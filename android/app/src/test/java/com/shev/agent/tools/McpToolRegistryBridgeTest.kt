@@ -144,7 +144,7 @@ class McpToolRegistryBridgeTest {
     ) = McpToolRegistryBridge(
         profile = profile,
         remoteClient = client,
-        authorizationProvider = McpInvocationAuthorizationProvider { _, _ -> null },
+        authorizationProvider = McpInvocationAuthorizationProvider { _ -> null },
         authorizationVerifier = McpInvocationAuthorizationVerifier { _, _, _ -> false }
     )
 
@@ -157,7 +157,7 @@ class McpToolRegistryBridgeTest {
         ) = McpToolRegistryBridge(
             profile = profile,
             remoteClient = client,
-            authorizationProvider = McpInvocationAuthorizationProvider { _, _ -> null },
+            authorizationProvider = McpInvocationAuthorizationProvider { _ -> null },
             authorizationVerifier = McpInvocationAuthorizationVerifier { _, _, _ -> false }
         ).register(
             listOf(
