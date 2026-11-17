@@ -6,6 +6,7 @@ import com.shev.agent.CapabilityPolicy
 import com.shev.agent.ScopedCapabilityGrant
 import com.shev.agent.PersistentGrantPolicy
 import com.shev.agent.PersistentGrantDecision
+import com.shev.agent.core.McpInvocationExecutionContext
 
 data class AgentToolRequest(
     val toolId: String,
@@ -28,11 +29,18 @@ fun interface SuspendingAgentTool {
     suspend fun execute(input: String): AgentToolResult
 }
 
+/** Context-aware adapter for operations that must bind to a persisted task step. */
+fun interface ContextualSuspendingAgentTool {
+    suspend fun execute(input: String, context: AgentToolExecutionContext): AgentToolResult
+}
+
 data class AgentToolExecutionContext(
     val grantedCapabilities: Set<AgentCapability>,
     val explicitlyApprovedCapabilities: Set<AgentCapability> = emptySet(),
     val persistentGrants: List<ScopedCapabilityGrant> = emptyList(),
-    val nowMillis: Long = System.currentTimeMillis()
+    val nowMillis: Long = System.currentTimeMillis(),
+    /** Set only by the trusted task executor from persisted plan/step state. */
+    val mcpInvocationContext: McpInvocationExecutionContext? = null
 )
 
 enum class AgentToolExecutionStatus {
@@ -54,7 +62,8 @@ class AgentToolExecutor(
     private val registry: AgentToolRegistry,
     private val handlers: Map<String, AgentTool>,
     private val maxInputChars: Int = DEFAULT_MAX_INPUT_CHARS,
-    private val suspendingHandlers: Map<String, SuspendingAgentTool> = emptyMap()
+    private val suspendingHandlers: Map<String, SuspendingAgentTool> = emptyMap(),
+    private val contextualSuspendingHandlers: Map<String, ContextualSuspendingAgentTool> = emptyMap()
 ) {
     init {
         require(maxInputChars in 1..MAX_ALLOWED_INPUT_CHARS) {
@@ -157,13 +166,16 @@ class AgentToolExecutor(
             return AgentToolExecutionResult(AgentToolExecutionStatus.INVALID_INPUT)
         }
 
+        val contextualHandler = contextualSuspendingHandlers[request.toolId]
         val handler = suspendingHandlers[request.toolId]
-            ?: return AgentToolExecutionResult(AgentToolExecutionStatus.HANDLER_NOT_REGISTERED)
+        if (contextualHandler == null && handler == null) {
+            return AgentToolExecutionResult(AgentToolExecutionStatus.HANDLER_NOT_REGISTERED)
+        }
 
         return try {
             AgentToolExecutionResult(
                 AgentToolExecutionStatus.COMPLETED,
-                handler.execute(request.input)
+                contextualHandler?.execute(request.input, context) ?: handler!!.execute(request.input)
             )
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
