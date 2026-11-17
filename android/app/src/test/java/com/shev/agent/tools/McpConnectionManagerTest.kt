@@ -13,6 +13,8 @@ import org.junit.Test
 
 class McpConnectionManagerTest {
     @Test fun disabledProfileIsRejectedBeforeCredentialOrNetworkAccess() = runBlocking {
+        val profile = CuratedMcpProfiles.entries.first { it.id == "context7" }
+            .copy(enabled = false, approvedToolNames = setOf("resolve-library-id"))
         var credentialLookups = 0
         val credentials = McpCredentialSource {
             credentialLookups += 1
@@ -28,8 +30,6 @@ class McpConnectionManagerTest {
             authorizationProvider = McpInvocationAuthorizationProvider { null },
             authorizationVerifier = McpInvocationAuthorizationVerifier { _, _, _ -> false }
         )
-        val profile = CuratedMcpProfiles.entries.first { it.id == "context7" }
-            .copy(enabled = false, approvedToolNames = setOf("resolve-library-id"))
 
         val result = manager.connect("context7")
         assertEquals(McpConnectionStatus.PROFILE_DISABLED, result.status)
