@@ -41,13 +41,13 @@ class McpInvocationAuthorizationRoomTest {
                     requiresApproval = true,
                     createdAtEpochMillis = NOW,
                     updatedAtEpochMillis = NOW,
-                    revision = TASK_REVISION
+                    revision = INITIAL_TASK_REVISION
                 )
             )
             val persisted = RoomAgentPlanRepository(database).saveValidatedPlan(
                 AgentPlan(
                     taskId = TASK_ID,
-                    revision = TASK_REVISION,
+                    revision = PLAN_REVISION,
                     summary = "План для проверки точного подтверждения",
                     steps = listOf(
                         PlanStep(
@@ -128,6 +128,7 @@ class McpInvocationAuthorizationRoomTest {
         invocationId = "invocation-000001",
         taskId = TASK_ID,
         taskRevision = TASK_REVISION,
+        planRevision = PLAN_REVISION,
         stepId = STEP_ID,
         stepRevision = 0L,
         binding = binding,
@@ -145,6 +146,7 @@ class McpInvocationAuthorizationRoomTest {
         invocationId = invocationId,
         taskId = taskId,
         taskRevision = taskRevision,
+        planRevision = planRevision,
         stepId = stepId,
         stepRevision = stepRevision,
         profileId = binding.profileId,
@@ -159,7 +161,9 @@ class McpInvocationAuthorizationRoomTest {
     private companion object {
         const val TASK_ID = "task-1"
         const val STEP_ID = "step-1"
-        const val TASK_REVISION = 4L
+        const val INITIAL_TASK_REVISION = 4L
+        const val TASK_REVISION = 5L
+        const val PLAN_REVISION = 0L
         const val NOW = 10_000L
     }
 }
