@@ -202,3 +202,19 @@ Implementation added in this branch:
 - `AgentSkillManifestTest.kt`: validates version, HTTPS source, tool IDs and disabled/missing-tool behavior.
 
 The catalogue's browser skills and Chrome DevTools recipes are useful for a later hosted browser/QA worker, not a reason to make the Android app browser-first. Keep the core tool loop small and expose skills progressively only when relevant.
+
+### Remote MCP transport implementation update — 2026-11-17
+
+The official Kotlin MCP SDK was checked against its immutable 0.16.0 release and version catalog:
+- Kotlin SDK `0.16.0`, compiled with Kotlin 2.4.21 (matches this app's Kotlin Gradle plugin 2.4.21).
+- SDK Ktor baseline `3.6.1`.
+- Client artifact: `io.modelcontextprotocol:kotlin-sdk-client:0.16.0`.
+- Android transport dependencies: `io.ktor:ktor-client-cio:3.6.1` and `io.ktor:ktor-client-sse:3.6.1`.
+- Official SDK exposes `Client`, `StreamableHttpClientTransport`, `listTools()`, `callTool()`; requestBuilder can add auth headers. SSE transport itself is deprecated; the SSE Ktor plugin is used for event-stream parsing inside Streamable HTTP.
+
+Implementation in branch:
+- Added the three dependencies to `android/app/build.gradle.kts`.
+- Added `core/RemoteMcpClient.kt`: HTTPS profile endpoint, credential supplied at connection time (not stored), Streamable HTTP transport, bounded tool discovery and result output, explicit profile allowlist, and mandatory per-invocation authorization callback supplied by the Agent Kernel before every remote tool call.
+- Existing Android manifest already has INTERNET permission.
+- The remote client is a transport adapter only. It is not yet wired to UI, persistent credential storage, native tool schema conversion or a production OAuth flow. Those remain required before enabling Context7/GitHub in the app.
+- CI started for dependency and client commits; check the exact latest branch head before claiming a pass. Do not merge PR #63 yet.
