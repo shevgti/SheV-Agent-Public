@@ -444,7 +444,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                             capabilities = setOf(AgentCapability.CREATE_DRAFT),
                             inputSchema = ToolInputSchema(
                                 listOf(ToolInputField("title", ToolInputType.STRING, required = true, maxLength = 2_000))
-                            )
+                            ),
+                            planExecutable = false
                         )
                     )
                 }
