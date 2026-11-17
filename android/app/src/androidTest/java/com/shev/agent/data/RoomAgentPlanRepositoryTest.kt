@@ -10,8 +10,10 @@ import com.shev.agent.core.ToolRisk
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -65,6 +67,12 @@ class RoomAgentPlanRepositoryTest {
         assertNotNull(restored)
         assertEquals(initial, restored!!.plan)
         assertEquals(mapOf("lookup" to 0L, "summarize" to 0L), restored.stepRevisions)
+        val storedPlan = dao.getAgentPlan(TASK_ID)!!
+        assertTrue(storedPlan.canonicalPlanJson.startsWith("enc:v1:"))
+        assertFalse(storedPlan.canonicalPlanJson.contains("alpha"))
+        val storedStep = dao.getAgentPlanSteps(TASK_ID).first { it.stepId == "lookup" }
+        assertTrue(storedStep.canonicalStepJson.startsWith("enc:v1:"))
+        assertFalse(storedStep.canonicalStepJson.contains("alpha"))
 
         val changed = plan(
             revision = 1L,
