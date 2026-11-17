@@ -4,7 +4,6 @@ import com.shev.agent.AgentCapability
 import com.shev.agent.core.McpInvocationExecutionContext
 import com.shev.agent.core.McpAuthenticationKind
 import com.shev.agent.core.McpInvocationAuthorizationProvider
-import com.shev.agent.tools.AgentToolExecutionContext
 import com.shev.agent.core.McpInvocationAuthorizationVerifier
 import com.shev.agent.core.McpServerProfile
 import com.shev.agent.core.McpServerTrust
@@ -69,12 +68,53 @@ class McpToolRegistryBridgeTest {
                     """{"query":"kotlin"}""",
                     AgentToolExecutionContext(
                         grantedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
-                        explicitlyApprovedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION)
+                        explicitlyApprovedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
+                        mcpInvocationContext = McpInvocationExecutionContext(
+                            invocationId = "invocation-000001",
+                            taskId = "task-1",
+                            taskRevision = 3L,
+                            planRevision = 1L,
+                            stepId = "step-1",
+                            stepRevision = 0L
+                        )
                     )
                 )
             fail("A remote MCP call without a per-invocation approval must fail")
         } catch (failure: IllegalStateException) {
             assertTrue(failure.message.orEmpty().contains("отдельного подтверждения"))
+        }
+    }
+
+    @Test fun remoteHandlerFailsClosedWithoutTrustedTaskStepContext() = runBlocking {
+        val profile = McpServerProfile(
+            id = "test-server",
+            displayName = "Test server",
+            endpoint = "https://example.org/mcp",
+            authentication = McpAuthenticationKind.NONE,
+            trust = McpServerTrust.USER_HOSTED,
+            enabled = true,
+            approvedToolNames = setOf("search_docs")
+        )
+        val client = RemoteMcpClient(profile) { null }
+        val schema = ToolSchema(
+            properties = Json.parseToJsonElement(
+                """{"query":{"type":"string","maxLength":100}}"""
+            ) as JsonObject,
+            required = listOf("query")
+        )
+        val registration = Mc.shevBridge(profile, client, AgentToolRegistry(), schema)
+        try {
+            registration.contextualSuspendingHandlers.getValue("test-server.search_docs")
+                .execute(
+                    """{"query":"kotlin"}""",
+                    AgentToolExecutionContext(
+                        grantedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
+                        explicitlyApprovedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION)
+                    )
+                )
+            fail("A remote MCP call without trusted task/step context must fail")
+        } catch (failure: IllegalStateException) {
+            assertTrue(failure.message.orEmpty().contains("доверенный контекст"))
         }
     }
 
@@ -117,7 +157,7 @@ class McpToolRegistryBridgeTest {
         ) = McpToolRegistryBridge(
             profile = profile,
             remoteClient = client,
-            authorizationProvider = McpInvocationAuthorizationProvider { null },
+            authorizationProvider = McpInvocationAuthorizationProvider { _, _ -> null },
             authorizationVerifier = McpInvocationAuthorizationVerifier { _, _, _ -> false }
         ).register(
             listOf(
