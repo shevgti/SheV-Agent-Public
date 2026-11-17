@@ -57,6 +57,13 @@ class McpServerProfileStoreTest {
         assertEquals(setOf("query-docs"), profile.approvedToolNames)
     }
 
+
+    @Test fun directSaveCannotEnableProfileWithoutAllowlist() {
+        val profile = CuratedMcpProfiles.entries.first { it.id == "context7" }.copy(enabled = true)
+        assertFalse(store.saveProfile(profile, explicitlyApprovedByUser = true))
+        assertFalse(store.getProfile("context7")!!.enabled)
+    }
+
     @Test fun profileMetadataPersistsAcrossStoreInstances() {
         store.setApprovedTools("context7", setOf("resolve-library-id"), true)
         val reloaded = McpServerProfileStore(context).getProfile("context7")
