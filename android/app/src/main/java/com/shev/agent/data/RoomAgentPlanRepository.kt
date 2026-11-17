@@ -6,7 +6,6 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.shev.agent.core.AgentPlan
 import com.shev.agent.core.PlanStep
-import com.shev.agent.core.TaskBudget
 
 enum class AgentPlanSaveResult {
     STORED,
@@ -56,16 +55,6 @@ class RoomAgentPlanRepository(
                 return@withTransaction AgentPlanSaveResult.STALE_REVISION
             }
 
-            val advanced = dao.advanceTaskRevision(
-                taskId = plan.taskId,
-                expectedRevision = task.revision,
-                newRevision = task.revision + 1L,
-                updatedAtEpochMillis = savedAtEpochMillis
-            )
-            if (advanced != 1) {
-                return@withTransaction AgentPlanSaveResult.STALE_REVISION
-            }
-
             val previousSteps = dao.getAgentPlanSteps(plan.taskId).associateBy { it.stepId }
             val stepRows = plan.steps.map { step ->
                 val canonicalStep = canonicalStepJson(step)
@@ -83,6 +72,16 @@ class RoomAgentPlanRepository(
                     stepRevision = nextStepRevision,
                     canonicalStepJson = canonicalStep
                 )
+            }
+
+            val advanced = dao.advanceTaskRevision(
+                taskId = plan.taskId,
+                expectedRevision = task.revision,
+                newRevision = task.revision + 1L,
+                updatedAtEpochMillis = savedAtEpochMillis
+            )
+            if (advanced != 1) {
+                return@withTransaction AgentPlanSaveResult.STALE_REVISION
             }
 
             dao.saveAgentPlan(
