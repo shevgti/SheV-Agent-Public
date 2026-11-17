@@ -91,6 +91,27 @@ class RoomAgentPlanRepositoryTest {
     }
 
     @Test
+    fun executionContextIsDerivedOnlyFromCurrentRunningTaskAndPersistedStep() = runBlocking {
+        assertEquals(
+            AgentPlanSaveResult.STORED,
+            repository.saveValidatedPlan(plan(0L, """{"query":"alpha"}"""), NOW + 1)
+        )
+        assertNull(repository.createExecutionContext(TASK_ID, "lookup", "invocation-000001"))
+
+        val currentTask = dao.getTask(TASK_ID)!!
+        dao.saveTask(currentTask.copy(phase = "RUNNING", revision = currentTask.revision + 1L))
+
+        val context = repository.createExecutionContext(TASK_ID, "lookup", "invocation-000001")
+        assertNotNull(context)
+        assertEquals(TASK_ID, context!!.taskId)
+        assertEquals(2L, context.taskRevision)
+        assertEquals(0L, context.planRevision)
+        assertEquals("lookup", context.stepId)
+        assertEquals(0L, context.stepRevision)
+        assertNull(repository.createExecutionContext(TASK_ID, "not-in-plan", "invocation-000002"))
+    }
+
+    @Test
     fun stalePlanRevisionCannotOverwriteCurrentPlan() = runBlocking {
         val initial = plan(0L, """{"query":"alpha"}""")
         assertEquals(AgentPlanSaveResult.STORED, repository.saveValidatedPlan(initial, NOW + 1))
