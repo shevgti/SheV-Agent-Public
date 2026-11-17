@@ -48,3 +48,13 @@ Added an AES-256-GCM secret store backed by Android Keystore:
 - explicit removal is supported; no token values are logged or returned in diagnostics.
 
 This is a storage primitive only. The MCP connection UI and credential lifecycle are not yet wired to it. OAuth refresh/expiry and backup/restore behavior still require explicit design. The Android instrumentation tests cover round-trip, ciphertext-at-rest, profile-binding and tamper rejection.
+## Goal → milestone → task orchestration contract
+
+Added a validated hierarchical goal graph:
+- goal contains ordered milestones and task nodes;
+- milestones may depend only on known milestones and must form an acyclic graph;
+- tasks belong to exactly one known milestone and form their own acyclic dependency graph;
+- cross-milestone task dependencies may point only to the same or an ancestor milestone, never a future/unrelated milestone;
+- per-task and aggregate step/time/model-call budgets are bounded before scheduling.
+
+This is a pure Kotlin validation contract with unit tests. Durable goal/task-board persistence, milestone state transitions, WorkManager scheduling and UI are still separate integration stages; no background work is launched by this model.
