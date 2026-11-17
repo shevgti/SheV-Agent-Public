@@ -4,8 +4,8 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [AgentTaskEntity::class, AgentEventEntity::class, ImprovementEntity::class, CapabilityGrantEntity::class, WorkspaceLayoutEntity::class, ConversationMessageEntity::class, ApprovalEvidenceEntity::class, ConversationStateEntity::class],
-    version = 9,
+    entities = [AgentTaskEntity::class, AgentEventEntity::class, ImprovementEntity::class, CapabilityGrantEntity::class, WorkspaceLayoutEntity::class, ConversationMessageEntity::class, ApprovalEvidenceEntity::class, ConversationStateEntity::class, McpInvocationAuthorizationEntity::class],
+    version = 10,
     exportSchema = false
 )
 abstract class SheVAgentDatabase : RoomDatabase() {
@@ -68,6 +68,15 @@ internal val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
     }
 }
 
+internal val MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS mcp_invocation_authorizations (nonceDigest TEXT NOT NULL PRIMARY KEY, invocationId TEXT NOT NULL, taskId TEXT NOT NULL, taskRevision INTEGER NOT NULL, stepId TEXT NOT NULL, stepRevision INTEGER NOT NULL, profileId TEXT NOT NULL, endpoint TEXT NOT NULL, nativeToolId TEXT NOT NULL, remoteToolName TEXT NOT NULL, argumentsSha256 TEXT NOT NULL, issuedAtEpochMillis INTEGER NOT NULL, expiresAtEpochMillis INTEGER NOT NULL, consumedAtEpochMillis INTEGER)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_mcp_invocation_authorizations_invocationId ON mcp_invocation_authorizations (invocationId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_mcp_invocation_authorizations_taskId_taskRevision_stepId_stepRevision ON mcp_invocation_authorizations (taskId, taskRevision, stepId, stepRevision)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_mcp_invocation_authorizations_expiresAtEpochMillis ON mcp_invocation_authorizations (expiresAtEpochMillis)")
+    }
+}
+
 object SheVAgentDatabaseProvider {
     @Volatile
     private var instance: SheVAgentDatabase? = null
@@ -86,7 +95,8 @@ object SheVAgentDatabaseProvider {
                 MIGRATION_5_6,
                 MIGRATION_6_7,
                 MIGRATION_7_8,
-                MIGRATION_8_9
+                MIGRATION_8_9,
+                MIGRATION_9_10
             ).build().also { instance = it }
         }
 }
