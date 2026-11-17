@@ -41,6 +41,18 @@ interface AgentDao {
           AND expectedRevision = :expectedRevision
           AND operation = :operation
           AND consumedAtEpochMillis IS NULL
+          AND EXISTS (
+              SELECT 1 FROM agent_tasks current_task
+              WHERE current_task.id = :taskId
+                AND current_task.revision = :taskRevision
+          )
+          AND EXISTS (
+              SELECT 1 FROM agent_plan_steps current_step
+              WHERE current_step.taskId = :taskId
+                AND current_step.stepId = :stepId
+                AND current_step.planRevision = :taskRevision
+                AND current_step.stepRevision = :stepRevision
+          )
           AND issuedAtEpochMillis <= :nowMillis
           AND expiresAtEpochMillis > :nowMillis
     """)
