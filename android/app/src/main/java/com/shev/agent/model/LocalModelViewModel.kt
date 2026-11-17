@@ -28,6 +28,7 @@ import com.shev.agent.data.McpInvocationApprovalRequestEntity
 import com.shev.agent.data.McpInvocationApprovalResult
 import com.shev.agent.data.RoomMcpInvocationApprovalRepository
 import com.shev.agent.data.RoomAgentPlanRepository
+import com.shev.agent.data.RoomAgentPlanExecutionRepository
 import com.shev.agent.data.RoomAgentTaskAuthorizationVerifier
 import com.shev.agent.data.RoomAgentTaskRepository
 import com.shev.agent.data.LocalMessageCipher
@@ -227,7 +228,14 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             val result = runCatching {
                 val currentTask = dao.getTask(taskId)
                 val engine = planExecutor
-                if (currentTask?.phase in setOf(AgentPhase.APPROVED.name, AgentPhase.RUNNING.name) && engine != null) {
+                if (currentTask?.phase == AgentPhase.RUNNING.name) {
+                    return@runCatching if (engine != null) {
+                        engine.cancelTask(taskId, currentTask.revision, now)
+                    } else {
+                        RoomAgentPlanExecutionRepository(database).cancelTask(taskId, currentTask.revision, now)
+                    }
+                }
+                if (currentTask?.phase == AgentPhase.APPROVED.name && engine != null) {
                     return@runCatching engine.cancelTask(taskId, currentTask.revision, now)
                 }
                 taskRepository.transition(
@@ -714,12 +722,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         engine: AgentPlanExecutor
     ): String {
         repeat(MAX_PLAN_STEPS_PER_PUMP) {
-            when (val attempt = engine.executeNext(
+            val attempt = engine.executeNext(
                 taskId = taskId,
                 grantedCapabilities = setOf(AgentCapability.ANALYZE_DATA),
                 explicitlyApprovedCapabilities = setOf(AgentCapability.ANALYZE_DATA)
-            )) {
-                is com.shev.agent.tools.PlanExecutionAttemptResult -> when (attempt.status) {
+            )
+            when (attempt.status) {
                     PlanExecutionAttemptStatus.STEP_COMPLETED -> Unit
                     PlanExecutionAttemptStatus.PLAN_COMPLETE -> {
                         val task = dao.getTask(taskId)
@@ -752,7 +760,6 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         return "Выполнение остановлено на шаге ${attempt.stepId ?: "?"}: ${attempt.errorCode ?: "ошибка шага"}."
                     PlanExecutionAttemptStatus.OUTCOME_UNKNOWN ->
                         return "Результат шага ${attempt.stepId ?: "?"} неизвестен. Повторный запуск заблокирован до ручной проверки."
-                }
             }
         }
         return "Выполнение приостановлено после ${MAX_PLAN_STEPS_PER_PUMP} шагов. Продолжение будет выполнено отдельным циклом."
