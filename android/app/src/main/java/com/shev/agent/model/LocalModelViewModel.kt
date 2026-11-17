@@ -433,7 +433,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                                     maxLength = 8,
                                     allowedValues = setOf("now")
                                 ))
-                            )
+                            ),
+                            planExecutable = true
                         )
                     )
                     register(
