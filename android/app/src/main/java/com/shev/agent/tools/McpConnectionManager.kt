@@ -2,16 +2,15 @@ package com.shev.agent.tools
 
 import com.shev.agent.core.McpInvocationAuthorizationProvider
 import com.shev.agent.core.McpInvocationAuthorizationVerifier
-import com.shev.agent.core.McpServerProfile
 import com.shev.agent.core.RemoteMcpClient
 import com.shev.agent.data.McpProfileSource
-import com.shev.agent.security.KeystoreMcpCredentialProvider
+import com.shev.agent.security.McpCredentialSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 enum class McpConnectionStatus {
-    CONNECTED, PROFILE_DISABLED, ALREADY_CONNECTED, NO_APPROVED_TOOLS, CONNECTION_FAILED
+    CONNECTED, PROFILE_NOT_FOUND, PROFILE_DISABLED, ALREADY_CONNECTED, NO_APPROVED_TOOLS, CONNECTION_FAILED
 }
 
 data class McpConnectionResult(
@@ -29,7 +28,8 @@ data class McpConnectionResult(
 class McpConnectionManager(
     private val registry: AgentToolRegistry,
     private val executor: AgentToolExecutor,
-    private val credentials: KeystoreMcpCredentialProvider,
+    private val credentials: McpCredentialSource,
+    private val profiles: McpProfileSource,
     private val authorizationProvider: McpInvocationAuthorizationProvider,
     private val authorizationVerifier: McpInvocationAuthorizationVerifier
 ) {
