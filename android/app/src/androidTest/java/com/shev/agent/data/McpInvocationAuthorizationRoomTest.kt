@@ -1,0 +1,127 @@
+package com.shev.agent.data
+
+import android.content.Context
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.shev.agent.core.McpInvocationAuthorization
+import com.shev.agent.core.McpInvocationBinding
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.security.MessageDigest
+import java.security.SecureRandom
+import java.util.Base64
+
+@RunWith(AndroidJUnit4::class)
+class McpInvocationAuthorizationRoomTest {
+    private lateinit var database: SheVAgentDatabase
+    private lateinit var dao: AgentDao
+
+    @Before
+    fun setUp() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        database = Room.inMemoryDatabaseBuilder(context, SheVAgentDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        dao = database.agentDao()
+    }
+
+    @After
+    fun tearDown() {
+        database.close()
+    }
+
+    @Test
+    fun exactBindingIsConsumedOnceAndCannotBeReplayed() = runBlocking {
+        val binding = McpInvocationBinding(
+            profileId = "test-server",
+            endpoint = "https://example.org/mcp",
+            nativeToolId = "test-server.search_docs",
+            toolName = "search_docs",
+            argumentsSha256 = "a".repeat(64)
+        )
+        val authorization = authorization(binding)
+        dao.insertMcpInvocationAuthorizationEvidence(authorization.toEntity())
+
+        val verifier = RoomMcpInvocationAuthorizationVerifier(dao)
+        val changedArguments = binding.copy(argumentsSha256 = "b".repeat(64))
+
+        assertFalse(verifier.consume(authorization, changedArguments, NOW + 1))
+        assertTrue(verifier.consume(authorization, binding, NOW + 1))
+        assertFalse(verifier.consume(authorization, binding, NOW + 2))
+    }
+
+    @Test
+    fun taskAndStepRevisionsArePartOfThePersistedBinding() = runBlocking {
+        val binding = binding()
+        val authorization = authorization(binding)
+        dao.insertMcpInvocationAuthorizationEvidence(authorization.toEntity())
+
+        val staleTask = authorization.copy(taskRevision = authorization.taskRevision + 1)
+        val staleStep = authorization.copy(stepRevision = authorization.stepRevision + 1)
+        val verifier = RoomMcpInvocationAuthorizationVerifier(dao)
+
+        assertFalse(verifier.consume(staleTask, binding, NOW + 1))
+        assertFalse(verifier.consume(staleStep, binding, NOW + 1))
+        assertTrue(verifier.consume(authorization, binding, NOW + 1))
+    }
+
+    @Test
+    fun expiredAuthorizationIsRejectedBeforeDatabaseConsumption() = runBlocking {
+        val binding = binding()
+        val authorization = authorization(binding)
+        dao.insertMcpInvocationAuthorizationEvidence(authorization.toEntity())
+
+        val verifier = RoomMcpInvocationAuthorizationVerifier(dao)
+        assertFalse(verifier.consume(authorization, binding, authorization.expiresAtEpochMillis))
+    }
+
+    private fun binding() = McpInvocationBinding(
+        profileId = "test-server",
+        endpoint = "https://example.org/mcp",
+        nativeToolId = "test-server.search_docs",
+        toolName = "search_docs",
+        argumentsSha256 = "c".repeat(64)
+    )
+
+    private fun authorization(binding: McpInvocationBinding) = McpInvocationAuthorization(
+        invocationId = "invocation-000001",
+        taskId = "task-1",
+        taskRevision = 4,
+        stepId = "step-1",
+        stepRevision = 2,
+        binding = binding,
+        issuedAtEpochMillis = NOW,
+        expiresAtEpochMillis = NOW + 60_000,
+        nonce = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32).also {
+            SecureRandom().nextBytes(it)
+        })
+    )
+
+    private fun McpInvocationAuthorization.toEntity() = McpInvocationAuthorizationEntity(
+        nonceDigest = MessageDigest.getInstance("SHA-256")
+            .digest(nonce.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) },
+        invocationId = invocationId,
+        taskId = taskId,
+        taskRevision = taskRevision,
+        stepId = stepId,
+        stepRevision = stepRevision,
+        profileId = binding.profileId,
+        endpoint = binding.endpoint,
+        nativeToolId = binding.nativeToolId,
+        remoteToolName = binding.toolName,
+        argumentsSha256 = binding.argumentsSha256,
+        issuedAtEpochMillis = issuedAtEpochMillis,
+        expiresAtEpochMillis = expiresAtEpochMillis
+    )
+
+    private companion object {
+        const val NOW = 10_000L
+    }
+}
