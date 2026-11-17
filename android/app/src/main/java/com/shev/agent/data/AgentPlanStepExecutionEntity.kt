@@ -19,6 +19,7 @@ import androidx.room.Index
 data class AgentPlanStepExecutionEntity(
     val taskId: String,
     val stepId: String,
+    val taskRevision: Long,
     val planRevision: Long,
     val stepRevision: Long,
     val invocationId: String,
