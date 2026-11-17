@@ -727,6 +727,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private fun describePlanRunResult(result: AgentPlanRunResult): String = when (result.status) {
+        AgentPlanRunStatus.COMPLETED ->
+            "Поручение завершено: проверка подтвердила выполнение всех локальных шагов только для чтения."
         AgentPlanRunStatus.VERIFYING ->
             "Все шаги выполнены; поручение переведено на проверку результата, но ещё не помечено завершённым."
         AgentPlanRunStatus.OUTCOME_UNKNOWN ->
