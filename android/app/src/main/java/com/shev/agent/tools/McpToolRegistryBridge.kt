@@ -134,7 +134,8 @@ class McpToolRegistryBridge(
                     title = tool.name.take(100),
                     description = tool.description.ifBlank { "Remote MCP tool: ${tool.name}" }.take(1_000),
                     capabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
-                    inputSchema = schema
+                    inputSchema = schema,
+                    planExecutable = true
                 )
             )
             handlers[id] = ContextualSuspendingAgentTool { input, executionContext ->
