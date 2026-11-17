@@ -232,8 +232,9 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             val now = System.currentTimeMillis()
             val message = runCatching {
                 val currentTask = dao.getTask(taskId)
+                    ?: return@runCatching "Поручение больше не найдено."
                 val engine = planExecutor
-                when (currentTask?.phase) {
+                when (currentTask.phase) {
                     AgentPhase.RUNNING.name -> {
                         val cancelled = if (engine != null) {
                             engine.cancelTask(taskId, expectedRevision, now)
