@@ -6,6 +6,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.shev.agent.core.AgentPlan
 import com.shev.agent.core.PlanStep
+import java.util.UUID
 
 enum class AgentPlanSaveResult {
     STORED,
@@ -94,6 +95,17 @@ class RoomAgentPlanRepository(
             )
             dao.deleteAgentPlanSteps(plan.taskId)
             dao.insertAgentPlanSteps(stepRows)
+            dao.appendEvent(
+                AgentEventEntity(
+                    id = UUID.randomUUID().toString(),
+                    taskId = plan.taskId,
+                    eventType = "PLAN_PROPOSED",
+                    message = plan.summary.take(2_000),
+                    createdAtEpochMillis = savedAtEpochMillis,
+                    revision = task.revision + 1L,
+                    idempotencyKey = "plan-proposed:${plan.taskId}:${plan.revision}"
+                )
+            )
             AgentPlanSaveResult.STORED
         }
     }
