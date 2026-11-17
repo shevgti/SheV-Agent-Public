@@ -166,6 +166,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                                 AgentTaskRepositoryRejection.INVALID_REVISION -> "План изменился. Обнови список и проверь его заново."
                                 AgentTaskRepositoryRejection.INVALID_PHASE -> "Это поручение уже нельзя подтвердить в текущем состоянии."
                                 AgentTaskRepositoryRejection.INVALID_APPROVAL_EVIDENCE -> "Не удалось проверить одноразовое подтверждение."
+                                AgentTaskRepositoryRejection.PLAN_REQUIRED -> "Сначала нужно сформировать и сохранить план действий."
                                 else -> "Подтверждение отклонено: ${result.reason.name}."
                             }
                         AgentTaskRepositoryResult.NotFound -> "Поручение больше не найдено."
