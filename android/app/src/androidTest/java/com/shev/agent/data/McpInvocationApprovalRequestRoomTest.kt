@@ -6,11 +6,16 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.shev.agent.core.AgentPlan
 import com.shev.agent.core.McpInvocationAuthorization
+import com.shev.agent.core.McpInvocationApprovalPrompt
 import com.shev.agent.core.McpInvocationBinding
 import com.shev.agent.core.McpInvocationExecutionContext
 import com.shev.agent.core.PlanStep
 import com.shev.agent.core.ToolRisk
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -146,6 +151,49 @@ class McpInvocationApprovalRequestRoomTest {
     fun expiredRequestCannotBeApproved() = runBlocking {
         assertEquals(McpInvocationApprovalResult.CREATED, repository.createPending(draft()))
         assertEquals(McpInvocationApprovalResult.EXPIRED, repository.approve(INVOCATION_ID, NOW + 10_000))
+    }
+
+    @Test
+    fun providerPersistsRequestWaitsForApprovalAndReturnsOneUseAuthorization() = runBlocking {
+        val now = System.currentTimeMillis()
+        val context = McpInvocationExecutionContext(
+            invocationId = INVOCATION_ID,
+            taskId = TASK_ID,
+            taskRevision = TASK_REVISION,
+            planRevision = PLAN_REVISION,
+            stepId = STEP_ID,
+            stepRevision = 0L
+        )
+        val prompt = McpInvocationApprovalPrompt(
+            binding = binding(),
+            context = context,
+            toolTitle = "Поиск документов",
+            toolDescription = "Тестовый удалённый поиск",
+            risk = ToolRisk.EXTERNAL_SIDE_EFFECT.name,
+            toolDefinitionJson = "tool-definition",
+            argumentsJson = ARGUMENTS,
+            createdAtEpochMillis = now,
+            expiresAtEpochMillis = now + 120_000L
+        )
+        val provider = RoomMcpInvocationAuthorizationProvider(database, repository)
+        val pendingAuthorization = async(Dispatchers.IO) { provider.issue(prompt) }
+
+        withTimeout(5_000L) {
+            dao.observePendingMcpInvocationApprovalRequests().first { requests ->
+                requests.any { it.invocationId == INVOCATION_ID }
+            }
+        }
+        assertEquals(
+            McpInvocationApprovalResult.APPROVED,
+            repository.approve(INVOCATION_ID, System.currentTimeMillis())
+        )
+        val authorization = pendingAuthorization.await()
+            ?: error("Provider did not return the approved invocation authorization.")
+        assertEquals(INVOCATION_ID, authorization.invocationId)
+        assertEquals(binding(), authorization.binding)
+
+        val verifier = RoomMcpInvocationAuthorizationVerifier(database)
+        assertTrue(verifier.consume(authorization, binding(), System.currentTimeMillis()))
     }
 
     private fun draft() = McpInvocationApprovalDraft(
