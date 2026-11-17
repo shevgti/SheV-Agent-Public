@@ -96,7 +96,8 @@ class AgentToolExecutor(
                 request.capability, target, context.persistentGrants, context.nowMillis
             ) == PersistentGrantDecision.ALLOW
         } ?: false
-        val hasGrant = request.capability in context.grantedCapabilities ||\n            (persistentGrantMatches && request.capability != AgentCapability.REMOTE_MCP_OPERATION)
+        val hasGrant = request.capability in context.grantedCapabilities ||
+            (persistentGrantMatches && request.capability != AgentCapability.REMOTE_MCP_OPERATION)
         val approved = request.capability in context.explicitlyApprovedCapabilities ||
             (persistentGrantMatches && request.capability != AgentCapability.REMOTE_MCP_OPERATION)
         when (CapabilityPolicy.decide(request.capability, approved, hasGrant)) {
@@ -163,7 +164,8 @@ class AgentToolExecutor(
                 request.capability, target, context.persistentGrants, context.nowMillis
             ) == PersistentGrantDecision.ALLOW
         } ?: false
-        val hasGrant = request.capability in context.grantedCapabilities ||\n            (persistentGrantMatches && request.capability != AgentCapability.REMOTE_MCP_OPERATION)
+        val hasGrant = request.capability in context.grantedCapabilities ||
+            (persistentGrantMatches && request.capability != AgentCapability.REMOTE_MCP_OPERATION)
         val approved = request.capability in context.explicitlyApprovedCapabilities ||
             (persistentGrantMatches && request.capability != AgentCapability.REMOTE_MCP_OPERATION) ||
             hasDurableRemoteGate
