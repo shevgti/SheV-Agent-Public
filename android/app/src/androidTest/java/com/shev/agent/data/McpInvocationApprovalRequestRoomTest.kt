@@ -126,6 +126,14 @@ class McpInvocationApprovalRequestRoomTest {
     }
 
     @Test
+    fun callerCannotDowngradeNativeRemoteMcpRisk() = runBlocking {
+        assertEquals(
+            McpInvocationApprovalResult.INVALID_REQUEST,
+            repository.createPending(draft().copy(risk = ToolRisk.READ_ONLY.name))
+        )
+    }
+
+    @Test
     fun approvalFailsIfTaskRevisionChangesAfterRequest() = runBlocking {
         assertEquals(McpInvocationApprovalResult.CREATED, repository.createPending(draft()))
         val task = dao.getTask(TASK_ID)!!
