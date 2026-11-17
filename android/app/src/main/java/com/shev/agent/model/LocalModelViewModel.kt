@@ -230,37 +230,44 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         mutableState.update { it.copy(taskActionBusyId = taskId, taskActionMessage = null) }
         viewModelScope.launch(Dispatchers.IO) {
             val now = System.currentTimeMillis()
-            val result = runCatching {
+            val message = runCatching {
                 val currentTask = dao.getTask(taskId)
                 val engine = planExecutor
-                if (currentTask?.phase == AgentPhase.RUNNING.name) {
-                    return@runCatching if (engine != null) {
-                        engine.cancelTask(taskId, currentTask.revision, now)
-                    } else {
-                        RoomAgentPlanExecutionRepository(database).cancelTask(taskId, currentTask.revision, now)
+                when (currentTask?.phase) {
+                    AgentPhase.RUNNING.name -> {
+                        val cancelled = if (engine != null) {
+                            engine.cancelTask(taskId, currentTask.revision, now)
+                        } else {
+                            RoomAgentPlanExecutionRepository(database).cancelTask(taskId, currentTask.revision, now)
+                        }
+                        if (cancelled) "Поручение остановлено. Неотправленные шаги отменены; отправленные с неизвестным результатом не будут повторены."
+                        else "Не удалось остановить поручение: состояние изменилось или отмена уже невозможна."
+                    }
+                    AgentPhase.APPROVED.name -> {
+                        val cancelled = engine?.cancelTask(taskId, currentTask.revision, now)
+                        if (cancelled == true) "Подтверждённое поручение остановлено."
+                        else if (cancelled == false) "Не удалось остановить поручение: состояние изменилось."
+                        else "Не удалось остановить поручение: исполнитель ещё не подключён."
+                    }
+                    else -> when (val result = taskRepository.transition(
+                        AgentTaskTransitionRequest(
+                            taskId = taskId,
+                            command = AgentWorkflowCommand.CANCEL,
+                            expectedRevision = expectedRevision,
+                            eventId = UUID.nameUUIDFromBytes("cancel:$taskId:$expectedRevision".toByteArray()).toString(),
+                            idempotencyKey = "task-cancel:$taskId:$expectedRevision",
+                            occurredAtEpochMillis = now
+                        )
+                    )) {
+                        is AgentTaskRepositoryResult.Applied -> "Поручение отклонено. Никакие действия не выполнялись."
+                        is AgentTaskRepositoryResult.Replayed -> "Отклонение этого поручения уже зарегистрировано."
+                        is AgentTaskRepositoryResult.Rejected -> "Не удалось отклонить поручение: ${result.reason.name}."
+                        AgentTaskRepositoryResult.NotFound -> "Поручение больше не найдено."
+                        AgentTaskRepositoryResult.IdempotencyConflict -> "Обнаружен конфликт отклонения поручения."
                     }
                 }
-                if (currentTask?.phase == AgentPhase.APPROVED.name && engine != null) {
-                    return@runCatching engine.cancelTask(taskId, currentTask.revision, now)
-                }
-                taskRepository.transition(
-                    AgentTaskTransitionRequest(
-                        taskId = taskId,
-                        command = AgentWorkflowCommand.CANCEL,
-                        expectedRevision = expectedRevision,
-                        eventId = UUID.nameUUIDFromBytes("cancel:$taskId:$expectedRevision".toByteArray()).toString(),
-                        idempotencyKey = "task-cancel:$taskId:$expectedRevision",
-                        occurredAtEpochMillis = now
-                    )
-                )
-            }.getOrNull()
-            val message = when (result) {
-                is AgentTaskRepositoryResult.Applied -> "Поручение отклонено. Никакие действия не выполнялись."
-                is AgentTaskRepositoryResult.Replayed -> "Отклонение этого поручения уже зарегистрировано."
-                is AgentTaskRepositoryResult.Rejected -> "Не удалось отклонить поручение: ${result.reason.name}."
-                AgentTaskRepositoryResult.NotFound -> "Поручение больше не найдено."
-                AgentTaskRepositoryResult.IdempotencyConflict -> "Обнаружен конфликт отклонения поручения."
-                null -> "Не удалось отклонить поручение."
+            }.getOrElse { failure ->
+                "Не удалось остановить поручение: ${failure.message ?: failure.javaClass.simpleName}."
             }
             mutableState.update { it.copy(taskActionBusyId = null, taskActionMessage = message) }
         }
