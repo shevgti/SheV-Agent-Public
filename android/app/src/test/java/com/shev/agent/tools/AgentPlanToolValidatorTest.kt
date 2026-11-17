@@ -69,6 +69,29 @@ class AgentPlanToolValidatorTest {
         )
     }
 
+    @Test fun orchestrationMetaToolsCannotBeIncludedInTaskPlans() {
+        val metaRegistry = AgentToolRegistry().apply {
+            register(
+                AgentToolDescriptor(
+                    id = "agent.save_task_plan",
+                    title = "Сохранить план",
+                    description = "Служебный инструмент оркестрации",
+                    capabilities = setOf(AgentCapability.CREATE_DRAFT),
+                    inputSchema = ToolInputSchema(
+                        listOf(ToolInputField("query", ToolInputType.STRING))
+                    ),
+                    planExecutable = false
+                )
+            )
+        }
+        assertFalse(
+            AgentPlanToolValidator.validate(
+                plan(toolId = "agent.save_task_plan"),
+                metaRegistry
+            ).accepted
+        )
+    }
+
     @Test fun modelCannotUnderstateRiskOfRemoteOperation() {
         assertFalse(
             AgentPlanToolValidator.validate(
