@@ -862,6 +862,13 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                 onCancel = viewModel::cancelTask,
                 onClose = { showTaskInbox = false }
             )
+            McpInvocationApprovalInbox(
+                requests = state.pendingMcpInvocationApprovals,
+                busyInvocationId = state.mcpInvocationActionBusyId,
+                message = state.mcpInvocationActionMessage,
+                onApprove = viewModel::approveMcpInvocation,
+                onReject = viewModel::rejectMcpInvocation
+            )
         }
 
         if (!state.ready && !state.useOmniRoute && !state.useOpenAI && !state.useGemini && !state.useOpenRouter) {
@@ -1137,6 +1144,95 @@ private fun TaskApprovalInbox(
                 if (item != tasks.last()) {
                     androidx.compose.material3.HorizontalDivider()
                 }
+            }
+            message?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun McpInvocationApprovalInbox(
+    requests: List<PendingMcpInvocationApproval>,
+    busyInvocationId: String?,
+    message: String?,
+    onApprove: (String) -> Unit,
+    onReject: (String) -> Unit
+) {
+    if (requests.isEmpty() && message == null) return
+    Card(
+        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                "Удалённые вызовы MCP",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (requests.isEmpty()) {
+                Text("Нет ожидающих подтверждения удалённых вызовов.", style = MaterialTheme.typography.bodySmall)
+            }
+            requests.forEach { item ->
+                val request = item.request
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(request.toolTitle, fontWeight = FontWeight.SemiBold)
+                    Text(request.toolDescription, style = MaterialTheme.typography.bodySmall)
+                    Text("Сервер: ${request.profileId}", style = MaterialTheme.typography.bodySmall)
+                    Text("Адрес: ${request.endpoint}", style = MaterialTheme.typography.bodySmall)
+                    Text("Инструмент: ${request.remoteToolName}", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "Риск: ${request.risk} · требуется отдельное подтверждение",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Задача ${request.taskId} · ревизия ${request.taskRevision}",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                    Text(
+                        "План ${request.planRevision} · шаг ${request.stepId} · ревизия шага ${request.stepRevision}",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                    Text("SHA-256 определения инструмента:", style = MaterialTheme.typography.labelSmall)
+                    Text(request.toolDefinitionSha256, style = MaterialTheme.typography.labelSmall)
+                    Text("SHA-256 аргументов:", style = MaterialTheme.typography.labelSmall)
+                    Text(request.argumentsSha256, style = MaterialTheme.typography.labelSmall)
+                    Text("Аргументы (секретные поля скрыты):", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelSmall)
+                    Text(
+                        item.argumentsJson?.let(::safePlanArgumentsPreview) ?: "Не удалось безопасно расшифровать аргументы.",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                    Text("Полное определение инструмента:", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelSmall)
+                    Text(
+                        item.toolDefinitionJson?.take(6_000) ?: "Не удалось расшифровать определение.",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                    if ((item.toolDefinitionJson?.length ?: 0) > 6_000) {
+                        Text("Показаны первые 6000 символов; полный отпечаток SHA-256 приведён выше.", style = MaterialTheme.typography.labelSmall)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            enabled = busyInvocationId == null &&
+                                item.argumentsJson != null && item.toolDefinitionJson != null,
+                            onClick = { onApprove(request.invocationId) }
+                        ) {
+                            Text(if (busyInvocationId == request.invocationId) "Подтверждаю…" else "Разрешить этот вызов")
+                        }
+                        TextButton(
+                            enabled = busyInvocationId == null,
+                            onClick = { onReject(request.invocationId) }
+                        ) { Text("Отклонить") }
+                    }
+                }
+                if (item != requests.last()) androidx.compose.material3.HorizontalDivider()
             }
             message?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
