@@ -81,12 +81,7 @@ class RemoteMcpClient(
                     name = tool.name,
                     description = fullDescription.take(1_000),
                     inputSchema = tool.inputSchema,
-                    definitionSha256 = McpToolDefinitionFingerprint.compute(
-                        name = tool.name,
-                        description = fullDescription,
-                        inputSchema = tool.inputSchema,
-                        additionalMetadata = tool.toString()
-                    )
+                    definitionSha256 = McpToolDefinitionFingerprint.computeSdkTool(tool)
                 )
             }.take(MAX_DISCOVERED_TOOLS)
             httpClient = engine
@@ -118,12 +113,7 @@ class RemoteMcpClient(
         val client = checkNotNull(mcpClient) { "MCP server is not connected" }
         val liveTool = client.listTools().tools.firstOrNull { it.name == toolName }
             ?: error("MCP tool disappeared or is no longer advertised")
-        val currentDefinitionSha256 = McpToolDefinitionFingerprint.compute(
-            name = liveTool.name,
-            description = liveTool.description.orEmpty(),
-            inputSchema = liveTool.inputSchema,
-            additionalMetadata = liveTool.toString()
-        )
+        val currentDefinitionSha256 = McpToolDefinitionFingerprint.computeSdkTool(liveTool)
         val expectedBinding = McpInvocationBinding.create(
             profile = profile,
             nativeToolId = nativeToolId,
