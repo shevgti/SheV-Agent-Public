@@ -146,6 +146,7 @@ class McpToolRegistryBridge(
                     profile = profile,
                     nativeToolId = id,
                     toolName = tool.name,
+                    toolDefinitionSha256 = tool.definitionSha256,
                     arguments = args
                 )
                 val invocationContext = executionContext.mcpInvocationContext
