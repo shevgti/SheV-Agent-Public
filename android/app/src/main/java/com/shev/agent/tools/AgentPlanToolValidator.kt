@@ -13,6 +13,23 @@ data class AgentPlanValidationResult(
 
 /** Validates model-proposed plans against the exact local registry before persistence. */
 object AgentPlanToolValidator {
+    fun validate(
+        plan: AgentPlan,
+        registry: AgentToolRegistry,
+        assignment: com.shev.agent.core.AgentSpecialistAssignment,
+        lane: com.shev.agent.core.AgentSpecialistLanePolicy
+    ): AgentPlanValidationResult {
+        val laneResult = com.shev.agent.core.AgentSpecialistPolicy.validate(assignment, lane, plan)
+        if (!laneResult.accepted) {
+            return AgentPlanValidationResult(
+                accepted = false,
+                reason = "План не соответствует ограничениям специализированной роли: ${laneResult.failure}.",
+                stepId = laneResult.stepId
+            )
+        }
+        return validate(plan, registry)
+    }
+
     fun validate(plan: AgentPlan, registry: AgentToolRegistry): AgentPlanValidationResult {
         for (step in plan.steps) {
             val descriptor = registry.find(step.toolId)
