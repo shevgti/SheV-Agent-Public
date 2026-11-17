@@ -38,3 +38,13 @@ The new policy classes are pure Kotlin contracts with unit tests. They are not y
 - Deactivation removes every descriptor owned by the plugin, so the executor can no longer resolve those tools.
 - This is deliberately not a dynamic script/plugin marketplace. No downloaded code, shell, reflection-based class loading, or permission grants are supported.
 - Current limitation: active plugin state is process-local and there is no management UI or Room persistence yet. Those are required before user-facing plugin installation.
+## Android Keystore credential storage
+
+Added an AES-256-GCM secret store backed by Android Keystore:
+- the encryption key is non-exportable and generated in Android Keystore;
+- SharedPreferences stores only a versioned ciphertext envelope;
+- each secret ID is authenticated as GCM additional data to prevent ciphertext swapping between server profiles;
+- tampered, malformed or undecryptable values fail closed and return no credential;
+- explicit removal is supported; no token values are logged or returned in diagnostics.
+
+This is a storage primitive only. The MCP connection UI and credential lifecycle are not yet wired to it. OAuth refresh/expiry and backup/restore behavior still require explicit design. The Android instrumentation tests cover round-trip, ciphertext-at-rest, profile-binding and tamper rejection.
