@@ -4,8 +4,8 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [AgentTaskEntity::class, AgentEventEntity::class, ImprovementEntity::class, CapabilityGrantEntity::class, WorkspaceLayoutEntity::class, ConversationMessageEntity::class, ApprovalEvidenceEntity::class, ConversationStateEntity::class, McpInvocationAuthorizationEntity::class, AgentPlanEntity::class, AgentPlanStepEntity::class],
-    version = 14,
+    entities = [AgentTaskEntity::class, AgentEventEntity::class, ImprovementEntity::class, CapabilityGrantEntity::class, WorkspaceLayoutEntity::class, ConversationMessageEntity::class, ApprovalEvidenceEntity::class, ConversationStateEntity::class, McpInvocationAuthorizationEntity::class, McpInvocationApprovalRequestEntity::class, AgentPlanEntity::class, AgentPlanStepEntity::class],
+    version = 15,
     exportSchema = false
 )
 abstract class SheVAgentDatabase : RoomDatabase() {
@@ -131,6 +131,14 @@ internal val MIGRATION_13_14 = object : androidx.room.migration.Migration(13, 14
     }
 }
 
+internal val MIGRATION_14_15 = object : androidx.room.migration.Migration(14, 15) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS mcp_invocation_approval_requests (invocationId TEXT NOT NULL PRIMARY KEY, taskId TEXT NOT NULL, taskRevision INTEGER NOT NULL, planRevision INTEGER NOT NULL, stepId TEXT NOT NULL, stepRevision INTEGER NOT NULL, profileId TEXT NOT NULL, endpoint TEXT NOT NULL, nativeToolId TEXT NOT NULL, remoteToolName TEXT NOT NULL, toolDefinitionSha256 TEXT NOT NULL, argumentsSha256 TEXT NOT NULL, toolTitle TEXT NOT NULL, toolDescription TEXT NOT NULL, risk TEXT NOT NULL, toolDefinitionCiphertext TEXT NOT NULL, argumentsCiphertext TEXT NOT NULL, createdAtEpochMillis INTEGER NOT NULL, expiresAtEpochMillis INTEGER NOT NULL, status TEXT NOT NULL, decidedAtEpochMillis INTEGER, issuedAtEpochMillis INTEGER, authorizationNonceCiphertext TEXT)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_mcp_invocation_approval_requests_status_expiresAtEpochMillis ON mcp_invocation_approval_requests (status, expiresAtEpochMillis)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_mcp_invocation_approval_requests_taskId_taskRevision_planRevision_stepId_stepRevision ON mcp_invocation_approval_requests (taskId, taskRevision, planRevision, stepId, stepRevision)")
+    }
+}
+
 object SheVAgentDatabaseProvider {
     @Volatile
     private var instance: SheVAgentDatabase? = null
@@ -154,7 +162,8 @@ object SheVAgentDatabaseProvider {
                 MIGRATION_10_11,
                 MIGRATION_11_12,
                 MIGRATION_12_13,
-                MIGRATION_13_14
+                MIGRATION_13_14,
+                MIGRATION_14_15
             ).build().also { instance = it }
         }
 }
