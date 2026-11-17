@@ -123,10 +123,11 @@ class RoomAgentTaskApprovalTest {
             nowMillis: Long
         ) = true
 
-        override suspend fun isCompletionEvidenceValid(
+        override suspend fun consumeCompletionEvidence(
             taskId: String,
             expectedRevision: Long,
-            evidenceRef: String
+            evidenceRef: String,
+            nowMillis: Long
         ) = true
     }
 
