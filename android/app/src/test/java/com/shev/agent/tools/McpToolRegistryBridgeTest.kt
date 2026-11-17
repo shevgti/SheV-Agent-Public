@@ -106,7 +106,12 @@ class McpToolRegistryBridgeTest {
             client: RemoteMcpClient,
             registry: AgentToolRegistry,
             schema: ToolSchema
-        ) = newBridge(profile, client).register(
+        ) = McpToolRegistryBridge(
+            profile = profile,
+            remoteClient = client,
+            authorizationProvider = McpInvocationAuthorizationProvider { null },
+            authorizationVerifier = McpInvocationAuthorizationVerifier { _, _, _ -> false }
+        ).register(
             listOf(
                 RemoteMcpClient.DiscoveredTool("search_docs", "Search docs", schema),
                 RemoteMcpClient.DiscoveredTool("delete_everything", "Unapproved tool", schema)
