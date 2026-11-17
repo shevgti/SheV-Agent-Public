@@ -107,9 +107,31 @@ data class McpInvocationAuthorization(
     }
 }
 
-/** Trusted provider must derive task/step identity from persisted kernel state. */
+/**
+ * Trusted execution coordinates supplied by the kernel after selecting a persisted
+ * plan step. These identifiers must never be accepted from model-generated arguments.
+ */
+data class McpInvocationExecutionContext(
+    val invocationId: String,
+    val taskId: String,
+    val taskRevision: Long,
+    val planRevision: Long,
+    val stepId: String,
+    val stepRevision: Long
+) {
+    init {
+        require(invocationId.matches(Regex("[A-Za-z0-9_-]{16,80}")))
+        require(taskId.isNotBlank() && taskRevision >= 0L && planRevision >= 0L)
+        require(stepId.matches(Regex("[A-Za-z0-9_-]{1,64}")) && stepRevision >= 0L)
+    }
+}
+
+/** Provider issues only after trusted UI approval of the exact action and execution context. */
 fun interface McpInvocationAuthorizationProvider {
-    suspend fun issue(binding: McpInvocationBinding): McpInvocationAuthorization?
+    suspend fun issue(
+        binding: McpInvocationBinding,
+        context: McpInvocationExecutionContext
+    ): McpInvocationAuthorization?
 }
 
 /**
