@@ -106,7 +106,8 @@ class RemoteMcpClient(
         arguments: Map<String, Any?>,
         authorization: McpInvocationAuthorization,
         authorizationVerifier: McpInvocationAuthorizationVerifier,
-        executionContext: McpInvocationExecutionContext
+        executionContext: McpInvocationExecutionContext,
+        beforeNetworkCall: suspend () -> Unit = {}
     ): String = mutex.withLock {
         require(McpToolAllowlist.isAllowed(profile, toolName)) {
             "MCP tool is not explicitly approved"
@@ -144,7 +145,8 @@ class RemoteMcpClient(
         require(authorizationVerifier.consume(authorization, expectedBinding, nowMillis)) {
             "Agent Kernel rejected or already consumed this MCP invocation approval"
         }
-        // Consume the one-use authorization immediately before the network side effect.
+        // Consume authorization, persist DISPATCHED, then perform the network side effect.
+        beforeNetworkCall()
         val result = client.callTool(
             name = toolName,
             arguments = arguments
