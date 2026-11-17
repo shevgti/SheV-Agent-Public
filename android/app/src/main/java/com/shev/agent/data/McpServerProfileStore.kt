@@ -77,6 +77,7 @@ class McpServerProfileStore(context: Context) {
                     approvedToolNames = item.getJSONArray("approvedToolNames").toStringSet(),
                     notes = item.optString("notes")
                 )
+                require(!profile.enabled || profile.approvedToolNames.isNotEmpty())
                 require(result.put(id, profile) == null)
             }
             result
