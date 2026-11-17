@@ -22,7 +22,7 @@ object McpToolDefinitionFingerprint {
         val schema = JsonObject(
             mapOf(
                 "properties" to (inputSchema.properties?.let(::normalize) ?: JsonObject(emptyMap())),
-                "required" to JsonArray(inputSchema.required.orEmpty().sorted().map(::JsonPrimitive)),
+                "required" to JsonArray(inputSchema.required.orEmpty().sorted().map { JsonPrimitive(it) }),
                 "defs" to (inputSchema.defs?.let(::normalize) ?: JsonObject(emptyMap()))
             )
         )
