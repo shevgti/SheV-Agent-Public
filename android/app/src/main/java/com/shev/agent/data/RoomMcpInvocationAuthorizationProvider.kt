@@ -35,10 +35,11 @@ class RoomMcpInvocationAuthorizationProvider(
         }
 
         val dao = database.agentDao()
+        val initial = dao.getMcpInvocationApprovalRequest(prompt.context.invocationId) ?: return null
         val now = System.currentTimeMillis()
         dao.expireMcpInvocationApprovalRequests(now)
         dao.expireApprovedMcpInvocationApprovalRequests(now)
-        val remainingMillis = (prompt.expiresAtEpochMillis - now).coerceAtLeast(1L)
+        val remainingMillis = (initial.expiresAtEpochMillis - now).coerceAtLeast(1L)
         val changed = withTimeoutOrNull(remainingMillis) {
             dao.observeMcpInvocationApprovalRequest(prompt.context.invocationId).first {
                 it != null && it.status != McpInvocationApprovalRequestEntity.STATUS_PENDING
