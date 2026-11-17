@@ -52,6 +52,53 @@ interface AgentDao {
         nowMillis: Long
     ): Int
 
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertMcpInvocationAuthorizationEvidence(evidence: McpInvocationAuthorizationEntity)
+
+    /**
+     * One conditional UPDATE is the atomic one-use claim. Every persisted binding
+     * field must match the presented authorization and the expected current action.
+     */
+    @Query("""
+        UPDATE mcp_invocation_authorizations
+        SET consumedAtEpochMillis = :nowMillis
+        WHERE nonceDigest = :nonceDigest
+          AND invocationId = :invocationId
+          AND taskId = :taskId
+          AND taskRevision = :taskRevision
+          AND stepId = :stepId
+          AND stepRevision = :stepRevision
+          AND profileId = :profileId
+          AND endpoint = :endpoint
+          AND nativeToolId = :nativeToolId
+          AND remoteToolName = :remoteToolName
+          AND argumentsSha256 = :argumentsSha256
+          AND issuedAtEpochMillis = :issuedAtEpochMillis
+          AND expiresAtEpochMillis = :expiresAtEpochMillis
+          AND consumedAtEpochMillis IS NULL
+          AND issuedAtEpochMillis <= :nowMillis
+          AND expiresAtEpochMillis > :nowMillis
+    """)
+    suspend fun consumeMcpInvocationAuthorization(
+        nonceDigest: String,
+        invocationId: String,
+        taskId: String,
+        taskRevision: Long,
+        stepId: String,
+        stepRevision: Long,
+        profileId: String,
+        endpoint: String,
+        nativeToolId: String,
+        remoteToolName: String,
+        argumentsSha256: String,
+        issuedAtEpochMillis: Long,
+        expiresAtEpochMillis: Long,
+        nowMillis: Long
+    ): Int
+
+    @Query("DELETE FROM mcp_invocation_authorizations WHERE expiresAtEpochMillis <= :nowMillis")
+    suspend fun deleteExpiredMcpInvocationAuthorizations(nowMillis: Long): Int
+
     @Query("DELETE FROM approval_evidence WHERE evidenceHash = :evidenceHash")
     suspend fun deleteApprovalEvidence(evidenceHash: String): Int
 
