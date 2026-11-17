@@ -100,6 +100,7 @@ interface AgentDao {
           AND endpoint = :endpoint
           AND nativeToolId = :nativeToolId
           AND remoteToolName = :remoteToolName
+          AND toolDefinitionSha256 = :toolDefinitionSha256
           AND argumentsSha256 = :argumentsSha256
           AND issuedAtEpochMillis = :issuedAtEpochMillis
           AND expiresAtEpochMillis = :expiresAtEpochMillis
@@ -136,6 +137,7 @@ interface AgentDao {
         endpoint: String,
         nativeToolId: String,
         remoteToolName: String,
+        toolDefinitionSha256: String,
         argumentsSha256: String,
         issuedAtEpochMillis: Long,
         expiresAtEpochMillis: Long,
