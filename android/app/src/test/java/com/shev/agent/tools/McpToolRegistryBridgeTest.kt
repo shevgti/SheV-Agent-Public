@@ -2,6 +2,8 @@ package com.shev.agent.tools
 
 import com.shev.agent.AgentCapability
 import com.shev.agent.core.McpAuthenticationKind
+import com.shev.agent.core.McpInvocationAuthorizationProvider
+import com.shev.agent.core.McpInvocationAuthorizationVerifier
 import com.shev.agent.core.McpServerProfile
 import com.shev.agent.core.McpServerTrust
 import com.shev.agent.core.RemoteMcpClient
@@ -50,7 +52,7 @@ class McpToolRegistryBridgeTest {
             approvedToolNames = setOf("search_docs")
         )
         val client = RemoteMcpClient(profile) { null }
-        val bridge = McpToolRegistryBridge(profile, client)
+        val bridge = newBridge(profile, client)
         try {
             bridge.register(emptyList(), AgentToolRegistry())
             fail("Expected disabled profile to be rejected")
@@ -58,6 +60,16 @@ class McpToolRegistryBridgeTest {
             // Expected.
         }
     }
+
+    private fun newBridge(
+        profile: McpServerProfile,
+        client: RemoteMcpClient
+    ) = McpToolRegistryBridge(
+        profile = profile,
+        remoteClient = client,
+        authorizationProvider = McpInvocationAuthorizationProvider { null },
+        authorizationVerifier = McpInvocationAuthorizationVerifier { _, _, _ -> false }
+    )
 
     private object Mc {
         fun shevBridge(
