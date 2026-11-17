@@ -843,7 +843,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF16834A), contentColor = Color.White)
                 ) { Text("Обновить") }
             }
-            if (state.pendingTaskApprovals.isNotEmpty() || state.taskActionMessage != null) {
+            if (state.pendingTaskApprovals.isNotEmpty() || state.taskActionMessage != null || state.planExecutionMessage != null) {
                 TextButton(onClick = { showTaskInbox = !showTaskInbox }) {
                     Text("Поручения ${state.pendingTaskApprovals.size}")
                 }
@@ -858,6 +858,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                 tasks = state.pendingTaskApprovals,
                 busyTaskId = state.taskActionBusyId,
                 message = state.taskActionMessage,
+                executionMessage = state.planExecutionMessage,
                 onApprove = viewModel::approveTask,
                 onCancel = viewModel::cancelTask,
                 onClose = { showTaskInbox = false }
@@ -1044,6 +1045,7 @@ private fun TaskApprovalInbox(
     tasks: List<PendingTaskApproval>,
     busyTaskId: String?,
     message: String?,
+    executionMessage: String?,
     onApprove: (String, Long) -> Unit,
     onCancel: (String, Long) -> Unit,
     onClose: () -> Unit
@@ -1123,7 +1125,7 @@ private fun TaskApprovalInbox(
                             }
                         }
                         Text(
-                            "Подтверждение разрешает план к следующему этапу, но не запускает его. Удалённые MCP-вызовы должны отдельно показывать сервер, адрес, инструмент и аргументы и получать отдельное подтверждение.",
+                            "Подтверждение запускает только зарегистрированные и разрешённые локальные шаги. Каждый удалённый MCP-вызов требует отдельного подтверждения с показом сервера, инструмента и аргументов.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.secondary
                         )
@@ -1147,6 +1149,9 @@ private fun TaskApprovalInbox(
             }
             message?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            }
+            executionMessage?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
         }
     }
