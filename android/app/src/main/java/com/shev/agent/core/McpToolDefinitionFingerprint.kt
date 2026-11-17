@@ -10,14 +10,14 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * Fingerprint of the advertised remote tool contract. The extra metadata is the
- * SDK tool representation so changes to fields outside the currently adapted
- * input-schema subset also force re-approval where the SDK exposes them.
+ * Fingerprint of the advertised remote tool contract. The SDK serializer covers
+ * the complete serializable Tool definition, while normalization makes JSON
+ * object key order and the set-like JSON Schema "required" array deterministic.
  */
 object McpToolDefinitionFingerprint {
     private val sdkJson = Json { encodeDefaults = true }
 
-    /** Uses the SDK's generated serializer so output schema, annotations, icons, execution and _meta are included. */
+    /** Includes output schema, annotations, icons, execution and _meta when exposed by the SDK. */
     fun computeSdkTool(tool: Tool): String {
         val serialized = sdkJson.encodeToJsonElement(Tool.serializer(), tool)
         return sha256(normalize(serialized).toString())
@@ -44,8 +44,7 @@ object McpToolDefinitionFingerprint {
                 "sdkMetadata" to JsonPrimitive(additionalMetadata)
             )
         )
-        val canonical = normalize(definition).toString()
-        return sha256(canonical)
+        return sha256(normalize(definition).toString())
     }
 
     private fun sha256(value: String): String =
@@ -55,7 +54,16 @@ object McpToolDefinitionFingerprint {
 
     private fun normalize(value: JsonElement): JsonElement = when (value) {
         is JsonObject -> JsonObject(
-            value.entries.sortedBy { it.key }.associate { (key, nested) -> key to normalize(nested) }
+            value.entries.sortedBy { it.key }.associate { (key, nested) ->
+                val normalized = normalize(nested)
+                // JSON Schema "required" is a set of property names, not an ordered list.
+                val canonical = if (key == "required" && normalized is JsonArray) {
+                    JsonArray(normalized.sortedBy { it.toString() })
+                } else {
+                    normalized
+                }
+                key to canonical
+            }
         )
         is JsonArray -> JsonArray(value.map(::normalize))
         else -> value
