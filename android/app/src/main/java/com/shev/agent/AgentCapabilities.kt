@@ -14,6 +14,7 @@ enum class AgentCapability(
     CREATE_DRAFT(CapabilityRisk.LOW, "Создание черновиков", "Создавать локальные черновики документов и сообщений."),
     RUN_LOCAL_TESTS(CapabilityRisk.LOW, "Локальные тесты", "Запускать тесты в разрешённом рабочем каталоге."),
     READ_REMOTE_DATA(CapabilityRisk.MEDIUM, "Чтение из сети", "Получать данные из явно подключённого внешнего сервиса."),
+    REMOTE_MCP_OPERATION(CapabilityRisk.HIGH, "Вызов удалённого MCP-инструмента", "Вызывать инструмент внешнего MCP-сервера; каждый вызов требует отдельного подтверждения."),
     WRITE_PROJECT_FILES(CapabilityRisk.HIGH, "Изменение файлов", "Создавать или изменять файлы проекта."),
     INSTALL_OR_UPDATE_SOFTWARE(CapabilityRisk.HIGH, "Установка и обновление", "Устанавливать или обновлять программное обеспечение."),
     SEND_MESSAGE_OR_PUBLISH(CapabilityRisk.CRITICAL, "Отправка и публикация", "Отправлять сообщения или публиковать материалы от имени пользователя."),
