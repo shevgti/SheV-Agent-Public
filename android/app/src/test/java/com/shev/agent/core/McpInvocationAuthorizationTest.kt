@@ -74,6 +74,29 @@ class McpInvocationAuthorizationTest {
     }
 
     @Test
+    fun sdkFingerprintIsStableAcrossJsonObjectKeyOrdering() {
+        val schemaA = ToolSchema(
+            properties = Json.parseToJsonElement(
+                """{"alpha":{"type":"string"},"beta":{"type":"integer"}}"""
+            ) as JsonObject,
+            required = listOf("alpha", "beta")
+        )
+        val schemaB = ToolSchema(
+            properties = Json.parseToJsonElement(
+                """{"beta":{"type":"integer"},"alpha":{"type":"string"}}"""
+            ) as JsonObject,
+            required = listOf("beta", "alpha")
+        )
+        val first = McpToolDefinitionFingerprint.computeSdkTool(
+            Tool(name = "lookup", inputSchema = schemaA, description = "Lookup")
+        )
+        val second = McpToolDefinitionFingerprint.computeSdkTool(
+            Tool(name = "lookup", inputSchema = schemaB, description = "Lookup")
+        )
+        assertEquals(first, second)
+    }
+
+    @Test
     fun sdkFingerprintIncludesOutputSchemaAndAnnotations() {
         val inputSchema = ToolSchema(
             properties = Json.parseToJsonElement("""{"query":{"type":"string"}}""") as JsonObject,
