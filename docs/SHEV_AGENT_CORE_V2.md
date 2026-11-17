@@ -234,3 +234,23 @@ Latest commits on this branch:
 - `46983d1`: add schema adapter unit tests.
 Latest head `46983d18545c54043ef6795d67fb2752aa913b92`; Android CI for bridge commit `b018c8d` is still in progress (run #44016428745); latest SheV Agent Android run #44016441665 is pending with no jobs reported yet. Prior exact head `41238c4` passed both Android CI and SheV Agent Android.
 Operational note: a bridge file was initially committed to the default branch by omitting the optional branch argument. This was immediately removed in a follow-up commit `2f37dfb`; the file now exists only on the intended PR branch. Net source state on main has no bridge file. Continue to keep PR #63 draft and do not merge until latest branch CI succeeds.
+
+
+## Current implementation checkpoint — plan executor wired to Android runtime (2026-11-17)
+
+The durable plan execution layer is now connected to the native Android runtime:
+
+- `LocalModelViewModel.launchAgent()` constructs `AgentPlanExecutor` from the same local `AgentToolRegistry` and `AgentToolExecutor` used by the ADK gateway.
+- The explicit task approval action persists APPROVED first; only then does the execution repository transition to RUNNING and create durable step rows.
+- The ViewModel pumps one ready DAG step at a time. Room remains authoritative for task/plan/step revisions, dependency state, invocation IDs, dispatch intent, dispatch confirmation, encrypted outputs and terminal step state.
+- On runtime startup, APPROVED plans are started and RUNNING plans are recovered. A step found in DISPATCHING/DISPATCHED after process death is marked OUTCOME_UNKNOWN and is not automatically retried.
+- Active APPROVED/RUNNING/VERIFYING tasks remain visible in the task inbox. Cancellation uses the revision displayed by the UI and updates the execution ledger; ambiguous dispatched steps remain OUTCOME_UNKNOWN.
+- When every step succeeds, the task moves to VERIFYING. It must not be marked COMPLETED until a trusted verifier has checked expected outcomes and persisted completion evidence.
+
+### Deliberate current limits
+
+- This is a narrow vertical slice, not a claim of general-purpose action execution. Only `ANALYZE_DATA` is granted to plan execution, and the only `planExecutable` tool currently registered in the runtime is the local current-time reader.
+- Remote MCP remains fail-closed: durable request/approval components exist, but production server-profile pairing, credential lifecycle and runtime registration are not yet wired into this app runtime.
+- The current pump runs in the ViewModel IO scope and is bounded. WorkManager-backed continuation and background execution policy are still future work; startup recovery runs when the local runtime launches.
+- Default CI compiles Android instrumentation sources but does not execute the optional API 36 emulator suite. Physical-device and emulator verification remain part of definition of done.
+- DNS preflight is not DNS pinning; connection-time destination enforcement remains open.
