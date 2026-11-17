@@ -1,5 +1,8 @@
 package com.shev.agent.core
 
+import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
@@ -14,6 +17,29 @@ class McpInvocationAuthorizationTest {
         enabled = true,
         approvedToolNames = setOf("search_docs")
     )
+
+    @Test
+    fun toolDefinitionFingerprintChangesWhenInputSchemaChanges() {
+        val firstSchema = ToolSchema(
+            properties = Json.parseToJsonElement(
+                """{"query":{"type":"string","maxLength":100}}"""
+            ) as JsonObject,
+            required = listOf("query")
+        )
+        val changedSchema = ToolSchema(
+            properties = Json.parseToJsonElement(
+                """{"query":{"type":"string","maxLength":200}}"""
+            ) as JsonObject,
+            required = listOf("query")
+        )
+        val first = McpToolDefinitionFingerprint.compute(
+            "search_docs", "Search documentation", firstSchema, "sdk-tool-v1"
+        )
+        val changed = McpToolDefinitionFingerprint.compute(
+            "search_docs", "Search documentation", changedSchema, "sdk-tool-v1"
+        )
+        assertNotEquals(first, changed)
+    }
 
     @Test
     fun argumentDigestIsIndependentOfObjectKeyOrder() {
