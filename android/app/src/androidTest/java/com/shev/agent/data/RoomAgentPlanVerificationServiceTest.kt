@@ -67,7 +67,7 @@ class RoomAgentPlanVerificationServiceTest {
         )
 
         assertEquals(PlanVerificationStatus.VERIFIED, outcome.status)
-        val token = outcome.completionEvidenceToken
+        val token = outcome.completionEvidenceToken ?: error("Trusted verifier did not issue completion evidence")
         assertNotNull(token)
         assertEquals(1, outcome.acceptedEvidenceRefs.size)
 
@@ -85,7 +85,7 @@ class RoomAgentPlanVerificationServiceTest {
         assertTrue(completed is AgentTaskRepositoryResult.Applied)
         assertEquals(AgentPhase.COMPLETED.name, dao.getTask(TASK_ID)!!.phase)
 
-        val digest = ApprovalEvidenceToken.digest(token!!)
+        val digest = ApprovalEvidenceToken.digest(token)
         val evidenceRow = dao.getApprovalEvidence(digest)
         assertNotNull(evidenceRow)
         assertEquals("COMPLETE", evidenceRow!!.operation)
