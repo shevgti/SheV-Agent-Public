@@ -93,6 +93,28 @@ class AgentPlanToolValidatorTest {
         )
     }
 
+    
+    @Test fun specialistLanePolicyIsAppliedBeforePlanAcceptance() {
+        val lane = com.shev.agent.core.AgentSpecialistLanePolicy(
+            id = "research",
+            allowedToolIds = setOf("local.search"),
+            maxRisk = ToolRisk.READ_ONLY,
+            budget = com.shev.agent.core.TaskBudget()
+        )
+        val assignment = com.shev.agent.core.AgentSpecialistAssignment(
+            specialistId = "worker.research",
+            laneId = "research",
+            goal = "Поиск",
+            budget = com.shev.agent.core.TaskBudget()
+        )
+        assertTrue(AgentPlanToolValidator.validate(plan(), registry(), assignment, lane).accepted)
+        assertFalse(
+            AgentPlanToolValidator.validate(
+                plan(toolId = "remote.unknown"), registry(), assignment, lane
+            ).accepted
+        )
+    }
+
     @Test fun modelCannotUnderstateRiskOfRemoteOperation() {
         assertFalse(
             AgentPlanToolValidator.validate(
