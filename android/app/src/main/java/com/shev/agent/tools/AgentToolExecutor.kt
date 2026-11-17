@@ -40,7 +40,9 @@ data class AgentToolExecutionContext(
     val persistentGrants: List<ScopedCapabilityGrant> = emptyList(),
     val nowMillis: Long = System.currentTimeMillis(),
     /** Set only by the trusted task executor from persisted plan/step state. */
-    val mcpInvocationContext: McpInvocationExecutionContext? = null
+    val mcpInvocationContext: McpInvocationExecutionContext? = null,
+    /** Persist the step as DISPATCHED after approval consumption and before network I/O. */
+    val beforeMcpNetworkCall: (suspend (McpInvocationExecutionContext) -> Boolean)? = null
 )
 
 enum class AgentToolExecutionStatus {
