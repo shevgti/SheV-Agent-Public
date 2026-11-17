@@ -70,7 +70,7 @@ class McpConnectionManager(
             for (toolId in registration.registeredToolIds) {
                 val handler = registration.contextualSuspendingHandlers[toolId]
                     ?: error("MCP_HANDLER_MISSING")
-                check(executor.registerContextualSuspendingHandler(toolId, handler)) {
+                check(executor.registerMcpHandler(toolId, handler)) {
                     "MCP_HANDLER_REGISTRATION_CONFLICT"
                 }
                 installedHandlers += toolId
@@ -87,12 +87,12 @@ class McpConnectionManager(
                 registration.rejectedToolNames
             )
         } catch (cancelled: CancellationException) {
-            installedHandlers.forEach(executor::unregisterContextualSuspendingHandler)
+            installedHandlers.forEach(executor::unregisterMcpHandler)
             registry.list().filter { it.id !in beforeIds }.forEach { registry.unregister(it.id) }
             runCatching { client.disconnect() }
             throw cancelled
         } catch (failure: Exception) {
-            installedHandlers.forEach(executor::unregisterContextualSuspendingHandler)
+            installedHandlers.forEach(executor::unregisterMcpHandler)
             registry.list().filter { it.id !in beforeIds }.forEach { registry.unregister(it.id) }
             runCatching { client.disconnect() }
             McpConnectionResult(
@@ -109,7 +109,7 @@ class McpConnectionManager(
     suspend fun disconnect(profileId: String): Boolean = mutex.withLock {
         val connection = active.remove(profileId) ?: return@withLock false
         connection.toolIds.forEach { toolId ->
-            executor.unregisterContextualSuspendingHandler(toolId)
+            executor.unregisterMcpHandler(toolId)
             registry.unregister(toolId)
         }
         connection.client.disconnect()
@@ -121,7 +121,7 @@ class McpConnectionManager(
         active.clear()
         connections.forEach { connection ->
             connection.toolIds.forEach { toolId ->
-                executor.unregisterContextualSuspendingHandler(toolId)
+                executor.unregisterMcpHandler(toolId)
                 registry.unregister(toolId)
             }
             runCatching { connection.client.disconnect() }
