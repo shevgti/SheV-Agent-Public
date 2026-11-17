@@ -236,15 +236,15 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 when (currentTask?.phase) {
                     AgentPhase.RUNNING.name -> {
                         val cancelled = if (engine != null) {
-                            engine.cancelTask(taskId, currentTask.revision, now)
+                            engine.cancelTask(taskId, expectedRevision, now)
                         } else {
-                            RoomAgentPlanExecutionRepository(database).cancelTask(taskId, currentTask.revision, now)
+                            RoomAgentPlanExecutionRepository(database).cancelTask(taskId, expectedRevision, now)
                         }
                         if (cancelled) "Поручение остановлено. Неотправленные шаги отменены; отправленные с неизвестным результатом не будут повторены."
                         else "Не удалось остановить поручение: состояние изменилось или отмена уже невозможна."
                     }
                     AgentPhase.APPROVED.name -> {
-                        val cancelled = engine?.cancelTask(taskId, currentTask.revision, now)
+                        val cancelled = engine?.cancelTask(taskId, expectedRevision, now)
                         if (cancelled == true) "Подтверждённое поручение остановлено."
                         else if (cancelled == false) "Не удалось остановить поручение: состояние изменилось."
                         else "Не удалось остановить поручение: исполнитель ещё не подключён."
