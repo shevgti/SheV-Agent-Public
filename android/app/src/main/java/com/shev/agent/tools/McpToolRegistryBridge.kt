@@ -4,7 +4,6 @@ import com.shev.agent.AgentCapability
 import com.shev.agent.core.McpInvocationAuthorizationProvider
 import com.shev.agent.core.McpInvocationAuthorizationVerifier
 import com.shev.agent.core.McpInvocationBinding
-import com.shev.agent.core.McpInvocationExecutionContext
 import com.shev.agent.core.McpServerProfile
 import com.shev.agent.core.RemoteMcpClient
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
