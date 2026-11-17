@@ -6,6 +6,8 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.shev.agent.core.AgentPlan
 import com.shev.agent.core.PlanStep
+import com.shev.agent.core.McpInvocationExecutionContext
+import com.shev.agent.AgentPhase
 import java.util.UUID
 
 enum class AgentPlanSaveResult {
@@ -114,6 +116,35 @@ class RoomAgentPlanRepository(
                 )
             )
             AgentPlanSaveResult.STORED
+        }
+    }
+
+    /**
+     * Creates an execution context only from the current persisted RUNNING task,
+     * canonical plan and exact step revision. Model arguments cannot supply these IDs.
+     */
+    suspend fun createExecutionContext(
+        taskId: String,
+        stepId: String,
+        invocationId: String
+    ): McpInvocationExecutionContext? {
+        if (taskId.isBlank() || stepId.isBlank()) return null
+        return database.withTransaction {
+            val dao = database.agentDao()
+            val task = dao.getTask(taskId) ?: return@withTransaction null
+            if (task.phase != AgentPhase.RUNNING.name) return@withTransaction null
+            val persisted = loadPlan(taskId) ?: return@withTransaction null
+            val stepRevision = persisted.stepRevisions[stepId] ?: return@withTransaction null
+            runCatching {
+                McpInvocationExecutionContext(
+                    invocationId = invocationId,
+                    taskId = taskId,
+                    taskRevision = task.revision,
+                    planRevision = persisted.plan.revision,
+                    stepId = stepId,
+                    stepRevision = stepRevision
+                )
+            }.getOrNull()
         }
     }
 
