@@ -3,6 +3,8 @@ package com.shev.agent.data
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.json.JSONArray
+import org.json.JSONObject
 import com.shev.agent.core.CuratedMcpProfiles
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -62,6 +64,29 @@ class McpServerProfileStoreTest {
         val profile = CuratedMcpProfiles.entries.first { it.id == "context7" }.copy(enabled = true)
         assertFalse(store.saveProfile(profile, explicitlyApprovedByUser = true))
         assertFalse(store.getProfile("context7")!!.enabled)
+    }
+
+
+    @Test fun corruptEnabledProfileWithEmptyAllowlistFailsClosedToCuratedDefaults() {
+        val invalid = JSONObject()
+            .put("id", "context7")
+            .put("displayName", "Context7")
+            .put("endpoint", "https://mcp.context7.com/mcp")
+            .put("transport", "STREAMABLE_HTTP")
+            .put("authentication", "BEARER_TOKEN")
+            .put("trust", "OFFICIAL")
+            .put("enabled", true)
+            .put("approvedToolNames", JSONArray())
+            .put("notes", "invalid stored state")
+        val raw = JSONObject()
+            .put("version", 1)
+            .put("profiles", JSONArray().put(invalid))
+        context.getSharedPreferences(McpServerProfileStore.PREFERENCES_NAME, Context.MODE_PRIVATE)
+            .edit().putString("profiles_v1", raw.toString()).commit()
+
+        val profile = McpServerProfileStore(context).getProfile("context7")!!
+        assertFalse(profile.enabled)
+        assertTrue(profile.approvedToolNames.isEmpty())
     }
 
     @Test fun profileMetadataPersistsAcrossStoreInstances() {
