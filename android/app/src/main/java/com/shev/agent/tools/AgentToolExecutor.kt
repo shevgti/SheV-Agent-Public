@@ -42,7 +42,9 @@ data class AgentToolExecutionContext(
     /** Set only by the trusted task executor from persisted plan/step state. */
     val mcpInvocationContext: McpInvocationExecutionContext? = null,
     /** Persist the step as DISPATCHED after approval consumption and before network I/O. */
-    val beforeMcpNetworkCall: (suspend (McpInvocationExecutionContext) -> Boolean)? = null
+    val beforeMcpNetworkCall: (suspend (McpInvocationExecutionContext) -> Boolean)? = null,
+    /** Persist a non-MCP step as DISPATCHED after policy/schema checks and before its handler runs. */
+    val beforeToolDispatch: (suspend () -> Boolean)? = null
 )
 
 enum class AgentToolExecutionStatus {
@@ -187,6 +189,16 @@ class AgentToolExecutor(
         val synchronousHandler = handlers[request.toolId]
         if (contextualHandler == null && handler == null && synchronousHandler == null) {
             return AgentToolExecutionResult(AgentToolExecutionStatus.HANDLER_NOT_REGISTERED)
+        }
+
+        if (request.capability != AgentCapability.REMOTE_MCP_OPERATION &&
+            context.beforeToolDispatch != null &&
+            !context.beforeToolDispatch.invoke()
+        ) {
+            return AgentToolExecutionResult(
+                AgentToolExecutionStatus.HANDLER_FAILED,
+                AgentToolResult(false, "Не удалось сохранить состояние шага перед запуском", "STEP_DISPATCH_NOT_PERSISTED")
+            )
         }
 
         return try {
