@@ -2,7 +2,7 @@ package com.shev.agent.core
 
 /** Model-authored statements are never sufficient proof of task completion. */
 enum class AgentVerificationEvidenceKind {
-    LOCAL_STATE_SNAPSHOT, TEST_RESULT, FILE_HASH, REMOTE_RECEIPT, SIGNED_RECEIPT, MODEL_ASSERTION
+    LOCAL_STATE_SNAPSHOT, TEST_RESULT, KERNEL_EXECUTION_RECEIPT, FILE_HASH, REMOTE_RECEIPT, SIGNED_RECEIPT, MODEL_ASSERTION
 }
 
 data class AgentVerificationEvidence(
@@ -71,7 +71,8 @@ object AgentVerificationPolicy {
             val requiredKinds = when (step.risk) {
                 ToolRisk.READ_ONLY -> setOf(
                     AgentVerificationEvidenceKind.LOCAL_STATE_SNAPSHOT,
-                    AgentVerificationEvidenceKind.TEST_RESULT
+                    AgentVerificationEvidenceKind.TEST_RESULT,
+                    AgentVerificationEvidenceKind.KERNEL_EXECUTION_RECEIPT
                 )
                 ToolRisk.REVERSIBLE_WRITE -> setOf(
                     AgentVerificationEvidenceKind.FILE_HASH,
