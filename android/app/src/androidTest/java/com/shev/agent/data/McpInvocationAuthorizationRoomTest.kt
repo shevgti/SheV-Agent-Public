@@ -4,8 +4,11 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.shev.agent.core.AgentPlan
 import com.shev.agent.core.McpInvocationAuthorization
 import com.shev.agent.core.McpInvocationBinding
+import com.shev.agent.core.PlanStep
+import com.shev.agent.core.ToolRisk
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertFalse
@@ -29,6 +32,38 @@ class McpInvocationAuthorizationRoomTest {
             .allowMainThreadQueries()
             .build()
         dao = database.agentDao()
+        runBlocking {
+            dao.insertTask(
+                AgentTaskEntity(
+                    id = TASK_ID,
+                    title = "Проверка MCP-подтверждения",
+                    phase = "WAITING_APPROVAL",
+                    requiresApproval = true,
+                    createdAtEpochMillis = NOW,
+                    updatedAtEpochMillis = NOW,
+                    revision = TASK_REVISION
+                )
+            )
+            val persisted = RoomAgentPlanRepository(database).saveValidatedPlan(
+                AgentPlan(
+                    taskId = TASK_ID,
+                    revision = TASK_REVISION,
+                    summary = "План для проверки точного подтверждения",
+                    steps = listOf(
+                        PlanStep(
+                            id = STEP_ID,
+                            toolId = "memory.search",
+                            argumentsJson = """{"query":"test"}""",
+                            risk = ToolRisk.READ_ONLY,
+                            purpose = "Проверить привязку подтверждения",
+                            expectedOutcome = "Подтверждение связано с текущим шагом"
+                        )
+                    )
+                ),
+                NOW + 1
+            )
+            check(persisted == AgentPlanSaveResult.STORED)
+        }
     }
 
     @After
@@ -91,10 +126,10 @@ class McpInvocationAuthorizationRoomTest {
 
     private fun authorization(binding: McpInvocationBinding) = McpInvocationAuthorization(
         invocationId = "invocation-000001",
-        taskId = "task-1",
-        taskRevision = 4,
-        stepId = "step-1",
-        stepRevision = 2,
+        taskId = TASK_ID,
+        taskRevision = TASK_REVISION,
+        stepId = STEP_ID,
+        stepRevision = 0L,
         binding = binding,
         issuedAtEpochMillis = NOW,
         expiresAtEpochMillis = NOW + 60_000,
@@ -122,6 +157,9 @@ class McpInvocationAuthorizationRoomTest {
     )
 
     private companion object {
+        const val TASK_ID = "task-1"
+        const val STEP_ID = "step-1"
+        const val TASK_REVISION = 4L
         const val NOW = 10_000L
     }
 }
