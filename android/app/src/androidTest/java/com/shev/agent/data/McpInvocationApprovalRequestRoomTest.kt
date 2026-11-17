@@ -156,6 +156,18 @@ class McpInvocationApprovalRequestRoomTest {
     }
 
     @Test
+    fun approvedButExpiredRequestClearsItsEncryptedNonce() = runBlocking {
+        assertEquals(McpInvocationApprovalResult.CREATED, repository.createPending(draft()))
+        assertEquals(McpInvocationApprovalResult.APPROVED, repository.approve(INVOCATION_ID, NOW + 10))
+        val approved = dao.getMcpInvocationApprovalRequest(INVOCATION_ID)!!
+        assertTrue(approved.authorizationNonceCiphertext != null)
+        dao.expireApprovedMcpInvocationApprovalRequests(approved.expiresAtEpochMillis)
+        val expired = dao.getMcpInvocationApprovalRequest(INVOCATION_ID)!!
+        assertEquals(McpInvocationApprovalRequestEntity.STATUS_EXPIRED, expired.status)
+        assertEquals(null, expired.authorizationNonceCiphertext)
+    }
+
+    @Test
     fun expiredRequestCannotBeApproved() = runBlocking {
         assertEquals(McpInvocationApprovalResult.CREATED, repository.createPending(draft()))
         assertEquals(McpInvocationApprovalResult.EXPIRED, repository.approve(INVOCATION_ID, NOW + 10_000))
