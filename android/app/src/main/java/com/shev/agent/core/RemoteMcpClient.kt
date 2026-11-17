@@ -26,7 +26,8 @@ class RemoteMcpClient(
         val name: String,
         val description: String,
         val inputSchema: ToolSchema,
-        val definitionSha256: String = McpToolDefinitionFingerprint.compute(name, description, inputSchema)
+        val definitionSha256: String = McpToolDefinitionFingerprint.compute(name, description, inputSchema),
+        val definitionJson: String = ""
     )
 
     private val mutex = Mutex()
@@ -81,7 +82,8 @@ class RemoteMcpClient(
                     name = tool.name,
                     description = fullDescription.take(1_000),
                     inputSchema = tool.inputSchema,
-                    definitionSha256 = McpToolDefinitionFingerprint.computeSdkTool(tool)
+                    definitionSha256 = McpToolDefinitionFingerprint.computeSdkTool(tool),
+                    definitionJson = McpToolDefinitionFingerprint.canonicalSdkToolJson(tool)
                 )
             }.take(MAX_DISCOVERED_TOOLS)
             httpClient = engine
