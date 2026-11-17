@@ -45,8 +45,8 @@ class McpConnectionManager(
         if (!profile.enabled) return@withLock McpConnectionResult(McpConnectionStatus.PROFILE_DISABLED)
         if (profile.id in active) return@withLock McpConnectionResult(McpConnectionStatus.ALREADY_CONNECTED)
 
-        val beforeIds = registry.list().map { it.id }.toSet()
         val installedHandlers = mutableListOf<String>()
+        var registeredToolIds: List<String> = emptyList()
         val client = RemoteMcpClient(profile) { requestedProfile ->
             credentials.get(requestedProfile)
         }
@@ -58,6 +58,7 @@ class McpConnectionManager(
                 authorizationProvider = authorizationProvider,
                 authorizationVerifier = authorizationVerifier
             ).register(discovered, registry)
+            registeredToolIds = registration.registeredToolIds
 
             if (registration.registeredToolIds.isEmpty()) {
                 client.disconnect()
@@ -88,12 +89,12 @@ class McpConnectionManager(
             )
         } catch (cancelled: CancellationException) {
             installedHandlers.forEach(executor::unregisterMcpHandler)
-            registry.list().filter { it.id !in beforeIds }.forEach { registry.unregister(it.id) }
+            registeredToolIds.forEach(registry::unregister)
             runCatching { client.disconnect() }
             throw cancelled
         } catch (failure: Exception) {
             installedHandlers.forEach(executor::unregisterMcpHandler)
-            registry.list().filter { it.id !in beforeIds }.forEach { registry.unregister(it.id) }
+            registeredToolIds.forEach(registry::unregister)
             runCatching { client.disconnect() }
             McpConnectionResult(
                 McpConnectionStatus.CONNECTION_FAILED,
