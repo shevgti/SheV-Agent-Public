@@ -70,6 +70,18 @@ class AgentPluginRegistryTest {
         assertEquals(1, tools.list().size)
     }
 
+
+    @Test fun rejectsMalformedSemanticVersions() {
+        listOf("0", "01.0.0", "1.0", "1.0.0.1").forEach { version ->
+            try {
+                contribution().copy(version = version)
+                fail("Malformed version should be rejected: $version")
+            } catch (_: IllegalArgumentException) {
+                // expected
+            }
+        }
+    }
+
     @Test fun rejectsToolOutsidePluginNamespace() {
         try {
             AgentPluginContribution(
