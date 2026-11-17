@@ -37,6 +37,9 @@ class AgentToolRegistry {
         tools[descriptor.id] = descriptor
     }
 
+    /** Removes a descriptor so disabled plugins cannot be resolved for execution. */
+    fun unregister(id: String): Boolean = tools.remove(id) != null
+
     fun find(id: String): AgentToolDescriptor? = tools[id]
 
     fun list(): List<AgentToolDescriptor> = tools.values.toList()
