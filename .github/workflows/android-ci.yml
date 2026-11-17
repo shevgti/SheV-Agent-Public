@@ -40,6 +40,10 @@ jobs:
         working-directory: android
         run: gradle --no-daemon testDebugUnitTest
 
+      - name: Compile Android instrumentation tests
+        working-directory: android
+        run: gradle --no-daemon compileDebugAndroidTestKotlin
+
       - name: Assemble debug APK
         working-directory: android
         run: gradle --no-daemon assembleDebug
