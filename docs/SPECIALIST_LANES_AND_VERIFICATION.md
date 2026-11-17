@@ -58,3 +58,12 @@ Added a validated hierarchical goal graph:
 - per-task and aggregate step/time/model-call budgets are bounded before scheduling.
 
 This is a pure Kotlin validation contract with unit tests. Durable goal/task-board persistence, milestone state transitions, WorkManager scheduling and UI are still separate integration stages; no background work is launched by this model.
+
+## Kernel-owned MCP connection lifecycle
+
+- Added a connection manager that accepts only an already-enabled server profile and uses the Keystore-backed credential provider.
+- It discovers remote tools, applies the profile's exact tool allowlist through McpToolRegistryBridge, and installs only contextual handlers that require the persisted task/step context and one-use approval.
+- Tool descriptors and handlers are installed together; partial registration is rolled back on failure.
+- Disconnect removes dynamic handlers and descriptors before closing the remote client. The executor uses concurrent handler maps so active connections can be added/removed without rebuilding the whole executor.
+- Dynamic contextual handlers can only be attached to descriptors declaring REMOTE_MCP_OPERATION; synchronous remote execution remains denied.
+- Current limit: the manager is not yet instantiated by the Android settings UI/runtime, and active connections are process-local. User pairing UI, profile persistence, reconnect policy and device-level network/DNS pinning remain open. A successful manager connection is not implied by the existence of the class.
