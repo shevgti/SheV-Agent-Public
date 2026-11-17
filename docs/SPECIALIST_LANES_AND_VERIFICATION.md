@@ -67,3 +67,5 @@ This is a pure Kotlin validation contract with unit tests. Durable goal/task-boa
 - Disconnect removes dynamic handlers and descriptors before closing the remote client. The executor uses concurrent handler maps so active connections can be added/removed without rebuilding the whole executor.
 - Dynamic contextual handlers can only be attached to descriptors declaring REMOTE_MCP_OPERATION; synchronous remote execution remains denied.
 - Current limit: the manager is not yet instantiated by the Android settings UI/runtime, and active connections are process-local. User pairing UI, profile persistence, reconnect policy and device-level network/DNS pinning remain open. A successful manager connection is not implied by the existence of the class.
+
+- Remote handler registration uses an internal authorization wrapper produced by the native MCP bridge. The executor accepts only this wrapper and only for descriptors whose capability set is exactly REMOTE_MCP_OPERATION; generic app/plugin handlers cannot attach themselves as remote MCP executors.
