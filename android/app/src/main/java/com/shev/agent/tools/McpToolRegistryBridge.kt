@@ -1,6 +1,9 @@
 package com.shev.agent.tools
 
 import com.shev.agent.AgentCapability
+import com.shev.agent.core.McpInvocationAuthorizationProvider
+import com.shev.agent.core.McpInvocationAuthorizationVerifier
+import com.shev.agent.core.McpInvocationBinding
 import com.shev.agent.core.McpServerProfile
 import com.shev.agent.core.RemoteMcpClient
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
@@ -90,7 +93,9 @@ private fun JsonElement.toNativeValue(): Any? = when (this) {
  */
 class McpToolRegistryBridge(
     private val profile: McpServerProfile,
-    private val remoteClient: RemoteMcpClient
+    private val remoteClient: RemoteMcpClient,
+    private val authorizationProvider: McpInvocationAuthorizationProvider,
+    private val authorizationVerifier: McpInvocationAuthorizationVerifier
 ) {
     data class Registration(
         val registeredToolIds: List<String>,
@@ -136,12 +141,20 @@ class McpToolRegistryBridge(
                 val parsed = Json.parseToJsonElement(input) as? JsonObject
                     ?: error("Validated MCP input must be a JSON object")
                 val args = parsed.entries.associate { (key, value) -> key to value.toNativeValue() }
+                val binding = McpInvocationBinding.create(
+                    profile = profile,
+                    nativeToolId = id,
+                    toolName = tool.name,
+                    arguments = args
+                )
+                val authorization = authorizationProvider.issue(binding)
+                    ?: error("Для этого удалённого вызова нет отдельного подтверждения пользователя")
                 val output = remoteClient.callApprovedTool(
+                    nativeToolId = id,
                     toolName = tool.name,
                     arguments = args,
-                    // AgentToolExecutor has already enforced the capability grant
-                    // and explicit per-action approval before invoking this handler.
-                    authorizeThroughKernel = { _, _ -> true }
+                    authorization = authorization,
+                    authorizationVerifier = authorizationVerifier
                 )
                 AgentToolResult(true, output)
             }
