@@ -509,8 +509,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                                     "id", "toolId", "argumentsJson", "dependsOn", "risk",
                                     "purpose", "expectedOutcome", "timeoutMillis"
                                 ) }) { "Unknown plan step field" }
-                                val dependencies = step.get("dependsOn")?.takeIf { it.isJsonArray }
-                                    ?.asJsonArray?.map { it.asString }?.toSet().orEmpty()
+                                val dependencyValue = step.get("dependsOn")
+                                require(dependencyValue == null || dependencyValue.isJsonArray) {
+                                    "dependsOn must be a JSON array"
+                                }
+                                val dependencies = dependencyValue?.asJsonArray
+                                    ?.map { it.asString }?.toSet().orEmpty()
                                 PlanStep(
                                     id = step.get("id").asString,
                                     toolId = step.get("toolId").asString,
