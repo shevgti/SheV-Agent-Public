@@ -4,6 +4,7 @@ import com.shev.agent.AgentCapability
 import com.shev.agent.core.McpInvocationAuthorizationProvider
 import com.shev.agent.core.McpInvocationAuthorizationVerifier
 import com.shev.agent.core.McpInvocationBinding
+import com.shev.agent.core.McpInvocationExecutionContext
 import com.shev.agent.core.McpServerProfile
 import com.shev.agent.core.RemoteMcpClient
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
@@ -100,7 +101,7 @@ class McpToolRegistryBridge(
     data class Registration(
         val registeredToolIds: List<String>,
         val rejectedToolNames: List<String>,
-        val suspendingHandlers: Map<String, SuspendingAgentTool>
+        val contextualSuspendingHandlers: Map<String, ContextualSuspendingAgentTool>
     )
 
     fun register(
@@ -108,7 +109,7 @@ class McpToolRegistryBridge(
         registry: AgentToolRegistry
     ): Registration {
         require(profile.enabled) { "MCP profile is disabled" }
-        val handlers = linkedMapOf<String, SuspendingAgentTool>()
+        val handlers = linkedMapOf<String, ContextualSuspendingAgentTool>()
         val registered = mutableListOf<String>()
         val rejected = mutableListOf<String>()
 
@@ -137,7 +138,7 @@ class McpToolRegistryBridge(
                     inputSchema = schema
                 )
             )
-            handlers[id] = SuspendingAgentTool { input ->
+            handlers[id] = ContextualSuspendingAgentTool { input, executionContext ->
                 val parsed = Json.parseToJsonElement(input) as? JsonObject
                     ?: error("Validated MCP input must be a JSON object")
                 val args = parsed.entries.associate { (key, value) -> key to value.toNativeValue() }
@@ -147,14 +148,17 @@ class McpToolRegistryBridge(
                     toolName = tool.name,
                     arguments = args
                 )
-                val authorization = authorizationProvider.issue(binding)
+                val invocationContext = executionContext.mcpInvocationContext
+                    ?: error("Для MCP-вызова отсутствует доверенный контекст задачи и шага")
+                val authorization = authorizationProvider.issue(binding, invocationContext)
                     ?: error("Для этого удалённого вызова нет отдельного подтверждения пользователя")
                 val output = remoteClient.callApprovedTool(
                     nativeToolId = id,
                     toolName = tool.name,
                     arguments = args,
                     authorization = authorization,
-                    authorizationVerifier = authorizationVerifier
+                    authorizationVerifier = authorizationVerifier,
+                    executionContext = invocationContext
                 )
                 AgentToolResult(true, output)
             }
