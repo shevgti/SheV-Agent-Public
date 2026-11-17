@@ -97,6 +97,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var lastSpokenMessageIndex by remember { mutableStateOf(-1) }
     var showVoicePicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showTaskInbox by remember { mutableStateOf(false) }
     val agentTeamPrefs = remember(context) { context.getSharedPreferences("shev_agent_team", android.content.Context.MODE_PRIVATE) }
     var enabledAgentRoles by remember { mutableStateOf(agentTeamPrefs.getStringSet("enabled_roles", null)?.toSet() ?: setOf("shev_researcher", "shev_planner", "shev_engineer", "shev_reviewer")) }
     var enabledAgentSkills by remember { mutableStateOf(agentTeamPrefs.getStringSet("enabled_skills", null)?.toSet() ?: SheVAgentModelFactory.DEFAULT_SKILLS) }
@@ -835,11 +836,26 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF16834A), contentColor = Color.White)
                 ) { Text("Обновить") }
             }
+            if (state.pendingTaskApprovals.isNotEmpty() || state.taskActionMessage != null) {
+                TextButton(onClick = { showTaskInbox = !showTaskInbox }) {
+                    Text("Поручения ${state.pendingTaskApprovals.size}")
+                }
+            }
             IconButton(onClick = { showSettings = true }) {
                 Text("⚙", style = MaterialTheme.typography.titleLarge)
             }
         }
 
+        if (showTaskInbox) {
+            TaskApprovalInbox(
+                tasks = state.pendingTaskApprovals,
+                busyTaskId = state.taskActionBusyId,
+                message = state.taskActionMessage,
+                onApprove = viewModel::approveTask,
+                onCancel = viewModel::cancelTask,
+                onClose = { showTaskInbox = false }
+            )
+        }
 
         if (!state.ready && !state.useOmniRoute && !state.useOpenAI && !state.useGemini && !state.useOpenRouter) {
             Card(
@@ -1006,4 +1022,118 @@ private fun cleanTextForSpeech(source: String): String {
         .replace(Regex("https?://\\S+"), "")
         .replace(Regex("\\s+"), " ")
         .trim()
+}
+
+
+@Composable
+private fun TaskApprovalInbox(
+    tasks: List<PendingTaskApproval>,
+    busyTaskId: String?,
+    message: String?,
+    onApprove: (String, Long) -> Unit,
+    onCancel: (String, Long) -> Unit,
+    onClose: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Поручения на подтверждение",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                TextButton(onClick = onClose) { Text("Свернуть") }
+            }
+            if (tasks.isEmpty()) {
+                Text("Новых поручений на подтверждение нет.", style = MaterialTheme.typography.bodySmall)
+            }
+            tasks.forEach { item ->
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(item.task.title, fontWeight = FontWeight.SemiBold)
+                    val plan = item.plan
+                    if (plan == null) {
+                        Text(
+                            "План действий ещё не сохранён. Подтверждение пока недоступно.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Text(plan.plan.summary, style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            "Версия плана: ${plan.plan.revision} · ревизия поручения: ${item.task.revision}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        plan.plan.steps.forEachIndexed { index, step ->
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(start = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                val riskLabel = when (step.risk) {
+                                    com.shev.agent.core.ToolRisk.READ_ONLY -> "только чтение"
+                                    com.shev.agent.core.ToolRisk.REVERSIBLE_WRITE -> "обратимое изменение"
+                                    com.shev.agent.core.ToolRisk.EXTERNAL_SIDE_EFFECT -> "внешнее действие"
+                                    com.shev.agent.core.ToolRisk.CRITICAL -> "критическое действие"
+                                }
+                                Text(
+                                    "${index + 1}. ${step.toolId} · ${riskLabel}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(step.purpose, style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    "Аргументы: ${step.argumentsJson}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    "Ожидаемый результат: ${step.expectedOutcome}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (step.dependsOn.isNotEmpty()) {
+                                    Text(
+                                        "После шагов: ${step.dependsOn.sorted().joinToString()}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            "Подтверждение разрешает план к следующему этапу, но не запускает его. Удалённые MCP-вызовы должны отдельно показывать сервер, адрес, инструмент и аргументы и получать отдельное подтверждение.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            enabled = plan != null && busyTaskId == null,
+                            onClick = { onApprove(item.task.id, item.task.revision) }
+                        ) {
+                            Text(if (busyTaskId == item.task.id) "Обрабатываю…" else "Подтвердить план")
+                        }
+                        TextButton(
+                            enabled = busyTaskId == null,
+                            onClick = { onCancel(item.task.id, item.task.revision) }
+                        ) { Text("Отклонить") }
+                    }
+                }
+                if (item != tasks.last()) {
+                    androidx.compose.material3.HorizontalDivider()
+                }
+            }
+            message?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            }
+        }
+    }
 }
