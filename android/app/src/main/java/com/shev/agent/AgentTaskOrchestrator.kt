@@ -15,6 +15,7 @@ data class AgentWorkflowState(
 enum class AgentWorkflowCommand {
     REQUEST_START,
     APPROVE,
+    START_EXECUTION,
     BEGIN_VERIFICATION,
     COMPLETE,
     FAIL,
@@ -75,6 +76,10 @@ object AgentTaskOrchestrator {
             }
             AgentWorkflowCommand.APPROVE ->
                 if (state.task.phase == AgentPhase.WAITING_APPROVAL) accept(AgentPhase.APPROVED)
+                else reject(AgentWorkflowRejection.INVALID_PHASE)
+
+            AgentWorkflowCommand.START_EXECUTION ->
+                if (state.task.phase == AgentPhase.APPROVED) accept(AgentPhase.RUNNING)
                 else reject(AgentWorkflowRejection.INVALID_PHASE)
 
             AgentWorkflowCommand.BEGIN_VERIFICATION ->
