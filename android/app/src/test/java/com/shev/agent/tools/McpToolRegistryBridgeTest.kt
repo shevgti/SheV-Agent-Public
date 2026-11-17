@@ -64,7 +64,7 @@ class McpToolRegistryBridgeTest {
         val registration = Mc.shevBridge(profile, client, AgentToolRegistry(), schema)
         try {
             registration.contextualSuspendingHandlers.getValue("test-server.search_docs")
-                .execute(
+                .delegate.execute(
                     """{"query":"kotlin"}""",
                     AgentToolExecutionContext(
                         grantedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
@@ -105,7 +105,7 @@ class McpToolRegistryBridgeTest {
         val registration = Mc.shevBridge(profile, client, AgentToolRegistry(), schema)
         try {
             registration.contextualSuspendingHandlers.getValue("test-server.search_docs")
-                .execute(
+                .delegate.execute(
                     """{"query":"kotlin"}""",
                     AgentToolExecutionContext(
                         grantedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
