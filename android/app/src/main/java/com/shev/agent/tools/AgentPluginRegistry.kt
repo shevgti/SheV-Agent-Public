@@ -11,7 +11,7 @@ data class AgentPluginContribution(
 ) {
     init {
         require(id.matches(Regex("[a-z][a-z0-9-]{1,31}")))
-        require(version.matches(Regex("0|[1-9][0-9]*\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[A-Za-z0-9.-]+)?")))
+        require(version.matches(Regex("(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[A-Za-z0-9.-]+)?")))
         require(tools.isNotEmpty() && tools.size <= 64)
         require(tools.map { it.id }.distinct().size == tools.size)
         require(tools.all { it.id.startsWith("$id.") }) {
