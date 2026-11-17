@@ -54,6 +54,17 @@ class AgentPlanMigrationTest {
             val db = helper.writableDatabase
             MIGRATION_10_11.migrate(db)
             MIGRATION_11_12.migrate(db)
+            val plainPlan = """{"taskId":"task-1","revision":0}"""
+            val plainStep = """{"id":"step-1","argumentsJson":"{}"}"""
+            db.execSQL(
+                "INSERT INTO agent_plans (taskId, planRevision, canonicalPlanJson, savedAtEpochMillis) VALUES (?, 0, ?, 100)",
+                arrayOf("task-1", plainPlan)
+            )
+            db.execSQL(
+                "INSERT INTO agent_plan_steps (taskId, stepId, planRevision, stepRevision, canonicalStepJson) VALUES (?, ?, 0, 0, ?)",
+                arrayOf("task-1", "step-1", plainStep)
+            )
+            MIGRATION_12_13.migrate(db)
 
             val tables = db.query(
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
@@ -70,6 +81,19 @@ class AgentPlanMigrationTest {
             ).use { cursor ->
                 assertTrue(cursor.moveToFirst())
                 assertEquals(0L, cursor.getLong(0))
+            }
+
+            db.query("SELECT canonicalPlanJson FROM agent_plans WHERE taskId = 'task-1'").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                val encrypted = cursor.getString(0)
+                assertTrue(encrypted.startsWith("enc:v1:"))
+                assertEquals(plainPlan, LocalPlanCipher.decrypt(encrypted))
+            }
+            db.query("SELECT canonicalStepJson FROM agent_plan_steps WHERE taskId = 'task-1' AND stepId = 'step-1'").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                val encrypted = cursor.getString(0)
+                assertTrue(encrypted.startsWith("enc:v1:"))
+                assertEquals(plainStep, LocalPlanCipher.decrypt(encrypted))
             }
 
             val stepColumns = db.query("PRAGMA table_info(agent_plan_steps)").use { cursor ->
