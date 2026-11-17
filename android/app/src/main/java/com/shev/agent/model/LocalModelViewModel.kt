@@ -130,7 +130,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             val planRepository = RoomAgentPlanRepository(database)
             dao.observeTasks().collect { tasks ->
                 val pending = tasks
-                    .filter { it.phase == AgentPhase.WAITING_APPROVAL.name }
+                    .filter { it.phase in setOf(
+                        AgentPhase.WAITING_APPROVAL.name,
+                        AgentPhase.APPROVED.name,
+                        AgentPhase.RUNNING.name,
+                        AgentPhase.VERIFYING.name
+                    ) }
                     .map { task -> PendingTaskApproval(task, planRepository.loadPlan(task.id)) }
                 mutableState.update { it.copy(pendingTaskApprovals = pending) }
             }
