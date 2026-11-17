@@ -25,7 +25,8 @@ class RemoteMcpClient(
     data class DiscoveredTool(
         val name: String,
         val description: String,
-        val inputSchema: ToolSchema
+        val inputSchema: ToolSchema,
+        val definitionSha256: String = McpToolDefinitionFingerprint.compute(name, description, inputSchema)
     )
 
     private val mutex = Mutex()
@@ -75,10 +76,17 @@ class RemoteMcpClient(
             )
             client.connect(transport)
             val discovered = client.listTools().tools.map { tool ->
+                val fullDescription = tool.description.orEmpty()
                 DiscoveredTool(
                     name = tool.name,
-                    description = tool.description.orEmpty().take(1_000),
-                    inputSchema = tool.inputSchema
+                    description = fullDescription.take(1_000),
+                    inputSchema = tool.inputSchema,
+                    definitionSha256 = McpToolDefinitionFingerprint.compute(
+                        name = tool.name,
+                        description = fullDescription,
+                        inputSchema = tool.inputSchema,
+                        additionalMetadata = tool.toString()
+                    )
                 )
             }.take(MAX_DISCOVERED_TOOLS)
             httpClient = engine
@@ -108,10 +116,19 @@ class RemoteMcpClient(
         }
         require(arguments.size <= MAX_ARGUMENTS) { "Too many MCP tool arguments" }
         val client = checkNotNull(mcpClient) { "MCP server is not connected" }
+        val liveTool = client.listTools().tools.firstOrNull { it.name == toolName }
+            ?: error("MCP tool disappeared or is no longer advertised")
+        val currentDefinitionSha256 = McpToolDefinitionFingerprint.compute(
+            name = liveTool.name,
+            description = liveTool.description.orEmpty(),
+            inputSchema = liveTool.inputSchema,
+            additionalMetadata = liveTool.toString()
+        )
         val expectedBinding = McpInvocationBinding.create(
             profile = profile,
             nativeToolId = nativeToolId,
             toolName = toolName,
+            toolDefinitionSha256 = currentDefinitionSha256,
             arguments = arguments
         )
         require(authorization.binding == expectedBinding) {
