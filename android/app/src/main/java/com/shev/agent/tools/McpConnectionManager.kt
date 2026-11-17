@@ -4,7 +4,7 @@ import com.shev.agent.core.McpInvocationAuthorizationProvider
 import com.shev.agent.core.McpInvocationAuthorizationVerifier
 import com.shev.agent.core.McpServerProfile
 import com.shev.agent.core.RemoteMcpClient
-import com.shev.agent.security.KeystoreMcpCredentialProvider
+import com.shev.agent.security.McpCredentialSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -28,7 +28,7 @@ data class McpConnectionResult(
 class McpConnectionManager(
     private val registry: AgentToolRegistry,
     private val executor: AgentToolExecutor,
-    private val credentials: KeystoreMcpCredentialProvider,
+    private val credentials: McpCredentialSource,
     private val authorizationProvider: McpInvocationAuthorizationProvider,
     private val authorizationVerifier: McpInvocationAuthorizationVerifier
 ) {
