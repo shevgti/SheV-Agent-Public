@@ -1069,7 +1069,7 @@ private fun TaskApprovalInbox(
                 TextButton(onClick = onClose) { Text("Свернуть") }
             }
             if (tasks.isEmpty()) {
-                Text("Новых поручений на подтверждение нет.", style = MaterialTheme.typography.bodySmall)
+                Text("Активных поручений сейчас нет.", style = MaterialTheme.typography.bodySmall)
             }
             tasks.forEach { item ->
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1130,17 +1130,40 @@ private fun TaskApprovalInbox(
                             color = MaterialTheme.colorScheme.secondary
                         )
                     }
+                    val waitingForApproval = item.task.phase == com.shev.agent.AgentPhase.WAITING_APPROVAL.name
+                    val active = item.task.phase in setOf(
+                        com.shev.agent.AgentPhase.APPROVED.name,
+                        com.shev.agent.AgentPhase.RUNNING.name,
+                        com.shev.agent.AgentPhase.VERIFYING.name
+                    )
+                    Text(
+                        when (item.task.phase) {
+                            com.shev.agent.AgentPhase.APPROVED.name -> "Подтверждено · ожидает запуска"
+                            com.shev.agent.AgentPhase.RUNNING.name -> "Выполняется"
+                            com.shev.agent.AgentPhase.VERIFYING.name -> "Проверка результата"
+                            else -> "Ожидает подтверждения"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            enabled = plan != null && busyTaskId == null,
-                            onClick = { onApprove(item.task.id, item.task.revision) }
-                        ) {
-                            Text(if (busyTaskId == item.task.id) "Обрабатываю…" else "Подтвердить план")
+                        if (waitingForApproval) {
+                            Button(
+                                enabled = plan != null && busyTaskId == null,
+                                onClick = { onApprove(item.task.id, item.task.revision) }
+                            ) {
+                                Text(if (busyTaskId == item.task.id) "Обрабатываю…" else "Подтвердить план")
+                            }
+                            TextButton(
+                                enabled = busyTaskId == null,
+                                onClick = { onCancel(item.task.id, item.task.revision) }
+                            ) { Text("Отклонить") }
+                        } else if (active) {
+                            TextButton(
+                                enabled = busyTaskId == null,
+                                onClick = { onCancel(item.task.id, item.task.revision) }
+                            ) { Text(if (busyTaskId == item.task.id) "Останавливаю…" else "Остановить") }
                         }
-                        TextButton(
-                            enabled = busyTaskId == null,
-                            onClick = { onCancel(item.task.id, item.task.revision) }
-                        ) { Text("Отклонить") }
                     }
                 }
                 if (item != tasks.last()) {
