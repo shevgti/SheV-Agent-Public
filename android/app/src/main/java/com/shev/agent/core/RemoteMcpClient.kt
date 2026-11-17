@@ -2,6 +2,7 @@ package com.shev.agent.core
 
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.header
 import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.client.StreamableHttpClientTransport
@@ -34,6 +35,7 @@ class RemoteMcpClient(
     suspend fun connectAndDiscover(): List<DiscoveredTool> = mutex.withLock {
         check(profile.enabled) { "MCP server profile is disabled" }
         closeLocked()
+        McpEndpointPolicy.validate(profile)
 
         val credential = credentialProvider(profile)
         when (profile.authentication) {
@@ -48,6 +50,12 @@ class RemoteMcpClient(
 
         val engine = HttpClient(CIO) {
             expectSuccess = false
+            followRedirects = false
+            install(HttpTimeout) {
+                connectTimeoutMillis = CONNECT_TIMEOUT_MILLIS
+                requestTimeoutMillis = REQUEST_TIMEOUT_MILLIS
+                socketTimeoutMillis = SOCKET_TIMEOUT_MILLIS
+            }
         }
         val client = Client(
             clientInfo = Implementation(
@@ -138,5 +146,8 @@ class RemoteMcpClient(
         const val MAX_DISCOVERED_TOOLS = 200
         const val MAX_ARGUMENTS = 64
         const val MAX_RESULT_CHARS = 24_000
+        const val CONNECT_TIMEOUT_MILLIS = 10_000L
+        const val REQUEST_TIMEOUT_MILLIS = 30_000L
+        const val SOCKET_TIMEOUT_MILLIS = 30_000L
     }
 }
