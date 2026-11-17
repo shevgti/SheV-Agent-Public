@@ -15,7 +15,7 @@ class AgentToolExecutorTest {
         registry.register(
             AgentToolDescriptor(
                 "local.echo", "Тестовый инструмент", "Возвращает входные данные",
-                setOf(AgentCapability.ANALYZE_DATA, AgentCapability.WRITE_PROJECT_FILES, AgentCapability.DELETE_OR_OVERWRITE_DATA),
+                setOf(AgentCapability.ANALYZE_DATA, AgentCapability.WRITE_PROJECT_FILES, AgentCapability.DELETE_OR_OVERWRITE_DATA, AgentCapability.REMOTE_MCP_OPERATION),
                 ToolInputSchema(listOf(ToolInputField("text", ToolInputType.STRING, maxLength = 128)))
             )
         )
@@ -46,6 +46,29 @@ class AgentToolExecutorTest {
         val result = setup().execute(
             AgentToolRequest("local.echo", AgentCapability.WRITE_PROJECT_FILES, """{"text":"change"}"""),
             AgentToolExecutionContext(setOf(AgentCapability.WRITE_PROJECT_FILES))
+        )
+        assertEquals(AgentToolExecutionStatus.APPROVAL_REQUIRED, result.status)
+    }
+
+    @Test fun persistentReadGrantCannotApproveRemoteMcpInvocation() {
+        val grant = ScopedCapabilityGrant(
+            grantId = "mcp-read-grant",
+            capability = AgentCapability.REMOTE_MCP_OPERATION,
+            scopeType = GrantScopeType.RESOURCE,
+            scopeValue = "mcp:context7",
+            createdAtMillis = 1_000,
+            expiresAtMillis = 20_000
+        )
+        val result = setup().execute(
+            AgentToolRequest(
+                "local.echo", AgentCapability.REMOTE_MCP_OPERATION,
+                """{"text":"call remote tool"}""", resourceTarget = "mcp:context7"
+            ),
+            AgentToolExecutionContext(
+                grantedCapabilities = emptySet(),
+                persistentGrants = listOf(grant),
+                nowMillis = 5_000
+            )
         )
         assertEquals(AgentToolExecutionStatus.APPROVAL_REQUIRED, result.status)
     }
