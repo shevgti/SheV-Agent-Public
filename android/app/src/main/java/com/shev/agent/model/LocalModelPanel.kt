@@ -1187,8 +1187,9 @@ private fun McpInvocationApprovalInbox(
                     Text("Сервер: ${request.profileId}", style = MaterialTheme.typography.bodySmall)
                     Text("Адрес: ${request.endpoint}", style = MaterialTheme.typography.bodySmall)
                     Text("Инструмент: ${request.remoteToolName}", style = MaterialTheme.typography.bodySmall)
+                    Text("Внутренний ID: ${request.nativeToolId}", style = MaterialTheme.typography.bodySmall)
                     Text(
-                        "Риск: ${request.risk} · требуется отдельное подтверждение",
+                        "Риск по политике SheV: ВНЕШНЕЕ ДЕЙСТВИЕ · требуется отдельное подтверждение",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.SemiBold
