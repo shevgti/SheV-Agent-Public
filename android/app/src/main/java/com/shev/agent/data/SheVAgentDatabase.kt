@@ -5,7 +5,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [AgentTaskEntity::class, AgentEventEntity::class, ImprovementEntity::class, CapabilityGrantEntity::class, WorkspaceLayoutEntity::class, ConversationMessageEntity::class, ApprovalEvidenceEntity::class, ConversationStateEntity::class, McpInvocationAuthorizationEntity::class, AgentPlanEntity::class, AgentPlanStepEntity::class],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 abstract class SheVAgentDatabase : RoomDatabase() {
@@ -91,6 +91,40 @@ internal val MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12
     }
 }
 
+internal val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        val plans = mutableListOf<Pair<String, String>>()
+        db.query("SELECT taskId, canonicalPlanJson FROM agent_plans").use { cursor ->
+            while (cursor.moveToNext()) {
+                plans += cursor.getString(0) to cursor.getString(1)
+            }
+        }
+        plans.forEach { (taskId, value) ->
+            if (!value.startsWith("enc:v1:")) {
+                db.execSQL(
+                    "UPDATE agent_plans SET canonicalPlanJson = ? WHERE taskId = ?",
+                    arrayOf(LocalPlanCipher.encrypt(value), taskId)
+                )
+            }
+        }
+
+        val steps = mutableListOf<Triple<String, String, String>>()
+        db.query("SELECT taskId, stepId, canonicalStepJson FROM agent_plan_steps").use { cursor ->
+            while (cursor.moveToNext()) {
+                steps += Triple(cursor.getString(0), cursor.getString(1), cursor.getString(2))
+            }
+        }
+        steps.forEach { (taskId, stepId, value) ->
+            if (!value.startsWith("enc:v1:")) {
+                db.execSQL(
+                    "UPDATE agent_plan_steps SET canonicalStepJson = ? WHERE taskId = ? AND stepId = ?",
+                    arrayOf(LocalPlanCipher.encrypt(value), taskId, stepId)
+                )
+            }
+        }
+    }
+}
+
 object SheVAgentDatabaseProvider {
     @Volatile
     private var instance: SheVAgentDatabase? = null
@@ -112,7 +146,8 @@ object SheVAgentDatabaseProvider {
                 MIGRATION_8_9,
                 MIGRATION_9_10,
                 MIGRATION_10_11,
-                MIGRATION_11_12
+                MIGRATION_11_12,
+                MIGRATION_12_13
             ).build().also { instance = it }
         }
 }
