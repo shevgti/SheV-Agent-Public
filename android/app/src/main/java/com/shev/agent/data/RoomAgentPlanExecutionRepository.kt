@@ -401,6 +401,84 @@ class RoomAgentPlanExecutionRepository(
         }
     }
 
+    suspend fun cancelTask(
+        taskId: String,
+        expectedTaskRevision: Long,
+        nowMillis: Long
+    ): Boolean {
+        if (taskId.isBlank() || expectedTaskRevision < 0L || nowMillis <= 0L) return false
+        return database.withTransaction {
+            val dao = database.agentDao()
+            val idempotencyKey = "plan-execution:$taskId:cancel:$expectedTaskRevision"
+            val previous = dao.findEventByIdempotencyKey(idempotencyKey)
+            if (previous != null) {
+                return@withTransaction dao.getTask(taskId)?.phase == AgentPhase.CANCELLED.name
+            }
+            val task = dao.getTask(taskId) ?: return@withTransaction false
+            if (task.revision != expectedTaskRevision) return@withTransaction false
+            val currentState = AgentWorkflowState(
+                task = AgentTask(
+                    id = task.id,
+                    title = task.title,
+                    phase = AgentPhase.valueOf(task.phase),
+                    requiresApproval = task.requiresApproval
+                ),
+                resumePhase = task.resumePhase?.let(AgentPhase::valueOf),
+                revision = task.revision
+            )
+            val transition = AgentTaskOrchestrator.transition(
+                currentState,
+                AgentWorkflowCommand.CANCEL,
+                expectedRevision = expectedTaskRevision
+            )
+            if (!transition.accepted) return@withTransaction false
+
+            val before = dao.getAgentPlanStepExecutions(taskId)
+            dao.saveTask(
+                task.copy(
+                    phase = AgentPhase.CANCELLED.name,
+                    revision = transition.state.revision,
+                    resumePhase = null,
+                    updatedAtEpochMillis = nowMillis
+                )
+            )
+            dao.cancelUndispatchedPlanStepExecutions(taskId, nowMillis)
+            dao.markUncertainPlanStepExecutions(taskId, nowMillis)
+            dao.invalidateMcpInvocationApprovalRequestsForTask(taskId, nowMillis)
+
+            before.forEach { execution ->
+                val dispatched = execution.status in setOf(
+                    AgentPlanStepExecutionEntity.DISPATCHING,
+                    AgentPlanStepExecutionEntity.DISPATCHED
+                )
+                val eventType = if (dispatched) "STEP_OUTCOME_UNKNOWN" else "STEP_CANCELLED"
+                dao.appendEvent(
+                    AgentEventEntity(
+                        id = UUID.randomUUID().toString(),
+                        taskId = taskId,
+                        eventType = eventType,
+                        message = "task cancelled; step=${execution.stepId} invocation=${execution.invocationId}",
+                        createdAtEpochMillis = nowMillis,
+                        revision = transition.state.revision,
+                        idempotencyKey = "step:$taskId:${execution.stepId}:${execution.invocationId}:cancelled"
+                    )
+                )
+            }
+            dao.appendEvent(
+                AgentEventEntity(
+                    id = UUID.randomUUID().toString(),
+                    taskId = taskId,
+                    eventType = AgentWorkflowCommand.CANCEL.name,
+                    message = "${currentState.task.phase.name}->CANCELLED",
+                    createdAtEpochMillis = nowMillis,
+                    revision = transition.state.revision,
+                    idempotencyKey = idempotencyKey
+                )
+            )
+            true
+        }
+    }
+
     private companion object {
         const val MAX_STEP_OUTPUT_CHARS = 12_000
     }
