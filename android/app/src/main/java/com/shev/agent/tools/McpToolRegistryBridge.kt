@@ -103,7 +103,7 @@ class McpToolRegistryBridge(
     data class Registration(
         val registeredToolIds: List<String>,
         val rejectedToolNames: List<String>,
-        val contextualSuspendingHandlers: Map<String, ContextualSuspendingAgentTool>
+        val contextualSuspendingHandlers: Map<String, McpAuthorizedContextualSuspendingTool>
     )
 
     fun register(
@@ -111,7 +111,7 @@ class McpToolRegistryBridge(
         registry: AgentToolRegistry
     ): Registration {
         require(profile.enabled) { "MCP profile is disabled" }
-        val handlers = linkedMapOf<String, ContextualSuspendingAgentTool>()
+        val handlers = linkedMapOf<String, McpAuthorizedContextualSuspendingTool>()
         val registered = mutableListOf<String>()
         val rejected = mutableListOf<String>()
 
@@ -141,7 +141,7 @@ class McpToolRegistryBridge(
                     planExecutable = true
                 )
             )
-            handlers[id] = ContextualSuspendingAgentTool { input, executionContext ->
+            handlers[id] = McpAuthorizedContextualSuspendingTool(ContextualSuspendingAgentTool { input, executionContext ->
                 val parsed = Json.parseToJsonElement(input) as? JsonObject
                     ?: error("Validated MCP input must be a JSON object")
                 val args = parsed.entries.associate { (key, value) -> key to value.toNativeValue() }
@@ -199,7 +199,7 @@ class McpToolRegistryBridge(
                     }
                 )
                 AgentToolResult(true, output)
-            }
+            })
             registered += id
         }
         return Registration(registered, rejected, handlers)
