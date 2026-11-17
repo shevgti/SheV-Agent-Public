@@ -3,6 +3,7 @@ package com.shev.agent.tools
 import com.shev.agent.AgentCapability
 import com.shev.agent.GrantScopeType
 import com.shev.agent.ScopedCapabilityGrant
+import com.shev.agent.core.McpInvocationExecutionContext
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -305,6 +306,54 @@ class AgentToolExecutorTest {
         )
         assertEquals(AgentToolExecutionStatus.COMPLETED, result.status)
         assertTrue(called)
+    }
+
+    @Test fun contextualSuspendingHandlerReceivesTrustedPersistedStepContext() = kotlinx.coroutines.runBlocking {
+        val registry = AgentToolRegistry()
+        registry.register(
+            AgentToolDescriptor(
+                "remote.search",
+                "Удалённый поиск",
+                "Тестирует передачу доверенного контекста",
+                setOf(AgentCapability.REMOTE_MCP_OPERATION),
+                ToolInputSchema(listOf(ToolInputField("query", ToolInputType.STRING)))
+            )
+        )
+        val expectedContext = McpInvocationExecutionContext(
+            invocationId = "invocation-000001",
+            taskId = "task-1",
+            taskRevision = 3L,
+            planRevision = 1L,
+            stepId = "step-1",
+            stepRevision = 2L
+        )
+        var receivedContext: McpInvocationExecutionContext? = null
+        val executor = AgentToolExecutor(
+            registry = registry,
+            handlers = emptyMap(),
+            contextualSuspendingHandlers = mapOf(
+                "remote.search" to ContextualSuspendingAgentTool { input, executionContext ->
+                    receivedContext = executionContext.mcpInvocationContext
+                    AgentToolResult(true, input)
+                }
+            )
+        )
+
+        val result = executor.executeSuspending(
+            AgentToolRequest(
+                "remote.search",
+                AgentCapability.REMOTE_MCP_OPERATION,
+                """{"query":"docs"}"""
+            ),
+            AgentToolExecutionContext(
+                grantedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
+                explicitlyApprovedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
+                mcpInvocationContext = expectedContext
+            )
+        )
+
+        assertEquals(AgentToolExecutionStatus.COMPLETED, result.status)
+        assertEquals(expectedContext, receivedContext)
     }
 
     @Test fun suspendingHandlerCannotRunWithoutCapabilityGrant() = kotlinx.coroutines.runBlocking {
