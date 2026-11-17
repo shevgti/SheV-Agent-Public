@@ -55,6 +55,7 @@ class RoomAgentPlanExecutionRepository(
                 return@withTransaction if (
                     previous.taskId == taskId &&
                     previous.eventType == AgentWorkflowCommand.START_EXECUTION.name &&
+                    previous.revision == expectedTaskRevision + 1L &&
                     rows.isNotEmpty()
                 ) StartPlanExecutionResult.ALREADY_STARTED else StartPlanExecutionResult.CONFLICT
             }
@@ -160,7 +161,11 @@ class RoomAgentPlanExecutionRepository(
                 return@withTransaction ClaimPlanStepResult(ClaimPlanStepStatus.ALREADY_CLAIMED)
             }
 
-            val executions = dao.getAgentPlanStepExecutions(taskId).associateBy { it.stepId }
+            val executionRows = dao.getAgentPlanStepExecutions(taskId)
+            if (executionRows.isNotEmpty() && executionRows.all { it.status == AgentPlanStepExecutionEntity.SUCCEEDED }) {
+                return@withTransaction ClaimPlanStepResult(ClaimPlanStepStatus.ALL_STEPS_COMPLETE)
+            }
+            val executions = executionRows.associateBy { it.stepId }
             if (step.dependsOn.any { dependency ->
                     executions[dependency]?.status != AgentPlanStepExecutionEntity.SUCCEEDED
                 }
@@ -219,6 +224,12 @@ class RoomAgentPlanExecutionRepository(
             val dao = database.agentDao()
             val current = dao.getAgentPlanStepExecution(taskId, stepId) ?: return@withTransaction false
             if (current.invocationId != invocationId) return@withTransaction false
+            if (current.status == AgentPlanStepExecutionEntity.DISPATCHED) return@withTransaction true
+            if (current.status !in setOf(
+                    AgentPlanStepExecutionEntity.WAITING_APPROVAL,
+                    AgentPlanStepExecutionEntity.DISPATCHING
+                )
+            ) return@withTransaction false
             val updated = dao.transitionAgentPlanStepExecution(
                 taskId = taskId,
                 stepId = stepId,
@@ -306,6 +317,12 @@ class RoomAgentPlanExecutionRepository(
             val dao = database.agentDao()
             val current = dao.getAgentPlanStepExecution(taskId, stepId) ?: return@withTransaction false
             if (current.invocationId != invocationId) return@withTransaction false
+            if (current.status !in setOf(
+                    AgentPlanStepExecutionEntity.WAITING_APPROVAL,
+                    AgentPlanStepExecutionEntity.DISPATCHING,
+                    AgentPlanStepExecutionEntity.DISPATCHED
+                )
+            ) return@withTransaction false
             val terminal = if (mayHaveSideEffect &&
                 current.status in setOf(
                     AgentPlanStepExecutionEntity.DISPATCHING,
