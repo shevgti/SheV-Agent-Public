@@ -6,6 +6,7 @@ import io.ktor.client.request.header
 import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.client.StreamableHttpClientTransport
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
+import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -22,7 +23,8 @@ class RemoteMcpClient(
 ) {
     data class DiscoveredTool(
         val name: String,
-        val description: String
+        val description: String,
+        val inputSchema: ToolSchema
     )
 
     private val mutex = Mutex()
@@ -67,7 +69,8 @@ class RemoteMcpClient(
             val discovered = client.listTools().tools.map { tool ->
                 DiscoveredTool(
                     name = tool.name,
-                    description = tool.description.orEmpty().take(1_000)
+                    description = tool.description.orEmpty().take(1_000),
+                    inputSchema = tool.inputSchema
                 )
             }.take(MAX_DISCOVERED_TOOLS)
             httpClient = engine
