@@ -35,7 +35,7 @@ class McpToolRegistryBridgeTest {
         assertEquals(listOf("delete_everything"), result.rejectedToolNames)
         val descriptor = registry.find("test-server.search_docs")
         assertNotNull(descriptor)
-        assertEquals(setOf(AgentCapability.READ_REMOTE_DATA), descriptor!!.capabilities)
+        assertEquals(setOf(AgentCapability.REMOTE_MCP_OPERATION), descriptor!!.capabilities)
         assertTrue(result.suspendingHandlers.containsKey("test-server.search_docs"))
     }
 
