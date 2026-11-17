@@ -63,6 +63,9 @@ jobs:
         env:
           GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
         run: gradle testDebugUnitTest --stacktrace
+      - name: Compile Android instrumentation tests
+        working-directory: android
+        run: gradle compileDebugAndroidTestKotlin --stacktrace
       - name: Assemble debug APK with injected versionCode
         working-directory: android
         env:
