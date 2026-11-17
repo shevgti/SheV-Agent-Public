@@ -25,11 +25,11 @@ class AgentToolExecutorDynamicHandlerTest {
             "invocation-000001", "task-1", 1, 0, "step-1", 0
         )
         var called = false
-        val handler = ContextualSuspendingAgentTool { input, context ->
+        val handler = McpAuthorizedContextualSuspendingTool(ContextualSuspendingAgentTool { input, context ->
             called = context.mcpInvocationContext == expected
             AgentToolResult(true, input)
-        }
-        assertTrue(executor.registerContextualSuspendingHandler("mcp.context7.search", handler))
+        })
+        assertTrue(executor.registerMcpHandler("mcp.context7.search", handler))
         val result = executor.executeSuspending(
             AgentToolRequest(
                 "mcp.context7.search",
@@ -56,9 +56,9 @@ class AgentToolExecutorDynamicHandlerTest {
             )
         )
         val executor = AgentToolExecutor(registry, emptyMap())
-        val handler = ContextualSuspendingAgentTool { input, _ -> AgentToolResult(true, input) }
-        assertTrue(executor.registerContextualSuspendingHandler("mcp.context7.search", handler))
-        assertFalse(executor.registerContextualSuspendingHandler("mcp.context7.search", handler))
+        val handler = McpAuthorizedContextualSuspendingTool(ContextualSuspendingAgentTool { input, _ -> AgentToolResult(true, input) }
+        assertTrue(executor.registerMcpHandler("mcp.context7.search", handler))
+        assertFalse(executor.registerMcpHandler("mcp.context7.search", handler))
     }
 
     @Test fun deactivationRemovesDynamicHandlerAndFailsClosed() = runBlocking {
@@ -71,9 +71,9 @@ class AgentToolExecutorDynamicHandlerTest {
             )
         )
         val executor = AgentToolExecutor(registry, emptyMap())
-        val handler = ContextualSuspendingAgentTool { input, _ -> AgentToolResult(true, input) }
-        executor.registerContextualSuspendingHandler("mcp.context7.search", handler)
-        assertTrue(executor.unregisterContextualSuspendingHandler("mcp.context7.search"))
+        val handler = McpAuthorizedContextualSuspendingTool(ContextualSuspendingAgentTool { input, _ -> AgentToolResult(true, input) }
+        executor.registerMcpHandler("mcp.context7.search", handler)
+        assertTrue(executor.unregisterMcpHandler("mcp.context7.search"))
         val context = McpInvocationExecutionContext("invocation-000001", "task-1", 1, 0, "step-1", 0)
         val result = executor.executeSuspending(
             AgentToolRequest("mcp.context7.search", AgentCapability.REMOTE_MCP_OPERATION, """{"query":"x"}"""),
@@ -96,7 +96,7 @@ class AgentToolExecutorDynamicHandlerTest {
             )
         )
         val executor = AgentToolExecutor(registry, emptyMap())
-        assertFalse(executor.registerContextualSuspendingHandler(
+        assertFalse(executor.registerMcpHandler(
             "local.search",
             ContextualSuspendingAgentTool { input, _ -> AgentToolResult(true, input) }
         ))
