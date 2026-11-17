@@ -67,6 +67,80 @@ interface AgentDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertAgentPlanSteps(steps: List<AgentPlanStepEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAgentPlanStepExecutions(executions: List<AgentPlanStepExecutionEntity>)
+
+    @Query("SELECT * FROM agent_plan_step_executions WHERE taskId = :taskId ORDER BY createdAtEpochMillis, stepId")
+    suspend fun getAgentPlanStepExecutions(taskId: String): List<AgentPlanStepExecutionEntity>
+
+    @Query("SELECT * FROM agent_plan_step_executions WHERE taskId = :taskId AND stepId = :stepId LIMIT 1")
+    suspend fun getAgentPlanStepExecution(taskId: String, stepId: String): AgentPlanStepExecutionEntity?
+
+    @Query("SELECT * FROM agent_plan_step_executions WHERE taskId = :taskId ORDER BY createdAtEpochMillis, stepId")
+    fun observeAgentPlanStepExecutions(taskId: String): Flow<List<AgentPlanStepExecutionEntity>>
+
+    @Query("""
+        UPDATE agent_plan_step_executions
+        SET status = :newStatus,
+            updatedAtEpochMillis = :nowMillis,
+            dispatchStartedAtEpochMillis = COALESCE(:dispatchStartedAtMillis, dispatchStartedAtEpochMillis),
+            dispatchedAtEpochMillis = COALESCE(:dispatchedAtMillis, dispatchedAtEpochMillis),
+            completedAtEpochMillis = COALESCE(:completedAtMillis, completedAtEpochMillis),
+            resultCiphertext = COALESCE(:resultCiphertext, resultCiphertext),
+            errorCode = COALESCE(:errorCode, errorCode)
+        WHERE taskId = :taskId AND stepId = :stepId
+          AND invocationId = :invocationId
+          AND taskRevision = :taskRevision
+          AND planRevision = :planRevision AND stepRevision = :stepRevision
+          AND status = :expectedStatus
+          AND EXISTS (
+              SELECT 1 FROM agent_tasks t
+              WHERE t.id = :taskId AND t.revision = :taskRevision AND t.phase = 'RUNNING'
+          )
+          AND EXISTS (
+              SELECT 1 FROM agent_plans p
+              WHERE p.taskId = :taskId AND p.planRevision = :planRevision
+          )
+          AND EXISTS (
+              SELECT 1 FROM agent_plan_steps s
+              WHERE s.taskId = :taskId AND s.stepId = :stepId
+                AND s.planRevision = :planRevision AND s.stepRevision = :stepRevision
+          )
+    """)
+    suspend fun transitionAgentPlanStepExecution(
+        taskId: String,
+        stepId: String,
+        invocationId: String,
+        taskRevision: Long,
+        planRevision: Long,
+        stepRevision: Long,
+        expectedStatus: String,
+        newStatus: String,
+        nowMillis: Long,
+        dispatchStartedAtMillis: Long? = null,
+        dispatchedAtMillis: Long? = null,
+        completedAtMillis: Long? = null,
+        resultCiphertext: String? = null,
+        errorCode: String? = null
+    ): Int
+
+    @Query("""
+        UPDATE agent_plan_step_executions
+        SET status = 'OUTCOME_UNKNOWN',
+            updatedAtEpochMillis = :nowMillis,
+            errorCode = 'PROCESS_RESTART_DURING_DISPATCH'
+        WHERE taskId = :taskId AND status IN ('DISPATCHING', 'DISPATCHED')
+    """)
+    suspend fun markUncertainPlanStepExecutions(taskId: String, nowMillis: Long): Int
+
+    @Query("""
+        UPDATE agent_plan_step_executions
+        SET status = 'CANCELLED', updatedAtEpochMillis = :nowMillis,
+            completedAtEpochMillis = :nowMillis, errorCode = 'TASK_CANCELLED'
+        WHERE taskId = :taskId AND status IN ('PENDING', 'WAITING_APPROVAL')
+    """)
+    suspend fun cancelUndispatchedPlanStepExecutions(taskId: String, nowMillis: Long): Int
+
     @Query("""
         UPDATE agent_tasks
         SET revision = :newRevision, updatedAtEpochMillis = :updatedAtEpochMillis
