@@ -1,5 +1,7 @@
 package com.shev.agent.core
 
+import io.modelcontextprotocol.kotlin.sdk.types.Tool
+import io.modelcontextprotocol.kotlin.sdk.types.ToolAnnotations
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -69,6 +71,35 @@ class McpInvocationAuthorizationTest {
             mapOf("query" to "android")
         )
         assertNotEquals(first.argumentsSha256, changed.argumentsSha256)
+    }
+
+    @Test
+    fun sdkFingerprintIncludesOutputSchemaAndAnnotations() {
+        val inputSchema = ToolSchema(
+            properties = Json.parseToJsonElement("""{"query":{"type":"string"}}""") as JsonObject,
+            required = listOf("query")
+        )
+        val outputA = ToolSchema(
+            properties = Json.parseToJsonElement("""{"count":{"type":"integer"}}""") as JsonObject
+        )
+        val outputB = ToolSchema(
+            properties = Json.parseToJsonElement("""{"items":{"type":"array"}}""") as JsonObject
+        )
+        val original = Tool(
+            name = "search_docs",
+            inputSchema = inputSchema,
+            description = "Search docs",
+            outputSchema = outputA,
+            annotations = ToolAnnotations(readOnlyHint = true)
+        )
+        val changed = original.copy(
+            outputSchema = outputB,
+            annotations = ToolAnnotations(readOnlyHint = false, destructiveHint = true)
+        )
+        assertNotEquals(
+            McpToolDefinitionFingerprint.computeSdkTool(original),
+            McpToolDefinitionFingerprint.computeSdkTool(changed)
+        )
     }
 
     @Test
