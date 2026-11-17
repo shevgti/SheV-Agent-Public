@@ -505,6 +505,10 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                             val array = JsonParser.parseString(stepsJson).asJsonArray
                             array.map { element ->
                                 val step = element.asJsonObject
+                                require(step.keySet().all { it in setOf(
+                                    "id", "toolId", "argumentsJson", "dependsOn", "risk",
+                                    "purpose", "expectedOutcome", "timeoutMillis"
+                                ) }) { "Unknown plan step field" }
                                 val dependencies = step.get("dependsOn")?.takeIf { it.isJsonArray }
                                     ?.asJsonArray?.map { it.asString }?.toSet().orEmpty()
                                 PlanStep(
