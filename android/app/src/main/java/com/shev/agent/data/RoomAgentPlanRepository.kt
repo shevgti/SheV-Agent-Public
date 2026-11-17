@@ -11,6 +11,7 @@ import java.util.UUID
 enum class AgentPlanSaveResult {
     STORED,
     TASK_NOT_FOUND,
+    INVALID_TASK_PHASE,
     STALE_REVISION,
     INVALID_TIMESTAMP
 }
@@ -43,6 +44,9 @@ class RoomAgentPlanRepository(
             val dao = database.agentDao()
             val task = dao.getTask(plan.taskId)
                 ?: return@withTransaction AgentPlanSaveResult.TASK_NOT_FOUND
+            if (task.phase !in setOf("PLANNING", "WAITING_APPROVAL")) {
+                return@withTransaction AgentPlanSaveResult.INVALID_TASK_PHASE
+            }
             val previousPlan = dao.getAgentPlan(plan.taskId)
             val expectedPlanRevision = if (previousPlan == null) {
                 0L
