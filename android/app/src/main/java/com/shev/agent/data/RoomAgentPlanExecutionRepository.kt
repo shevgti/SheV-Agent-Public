@@ -446,7 +446,14 @@ class RoomAgentPlanExecutionRepository(
             dao.markUncertainPlanStepExecutions(taskId, nowMillis)
             dao.invalidateMcpInvocationApprovalRequestsForTask(taskId, nowMillis)
 
-            before.forEach { execution ->
+            before.filter { execution ->
+                execution.status in setOf(
+                    AgentPlanStepExecutionEntity.PENDING,
+                    AgentPlanStepExecutionEntity.WAITING_APPROVAL,
+                    AgentPlanStepExecutionEntity.DISPATCHING,
+                    AgentPlanStepExecutionEntity.DISPATCHED
+                )
+            }.forEach { execution ->
                 val dispatched = execution.status in setOf(
                     AgentPlanStepExecutionEntity.DISPATCHING,
                     AgentPlanStepExecutionEntity.DISPATCHED
