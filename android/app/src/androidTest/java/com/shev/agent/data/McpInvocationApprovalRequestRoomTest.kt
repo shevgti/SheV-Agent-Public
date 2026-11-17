@@ -112,7 +112,7 @@ class McpInvocationApprovalRequestRoomTest {
             expiresAtEpochMillis = approved.expiresAtEpochMillis,
             nonce = nonce
         )
-        val verifier = RoomMcpInvocationAuthorizationVerifier(dao)
+        val verifier = RoomMcpInvocationAuthorizationVerifier(database)
         assertTrue(verifier.consume(authorization, binding(), NOW + 11))
         assertFalse(verifier.consume(authorization, binding(), NOW + 12))
     }
