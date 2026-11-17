@@ -34,6 +34,7 @@ class RoomMcpInvocationAuthorizationVerifier(
             invocationId = authorization.invocationId,
             taskId = authorization.taskId,
             taskRevision = authorization.taskRevision,
+            planRevision = authorization.planRevision,
             stepId = authorization.stepId,
             stepRevision = authorization.stepRevision,
             profileId = binding.profileId,
