@@ -19,11 +19,13 @@ data class McpInvocationBinding(
     val endpoint: String,
     val nativeToolId: String,
     val toolName: String,
+    val toolDefinitionSha256: String,
     val argumentsSha256: String
 ) {
     init {
         require(profileId.isNotBlank() && endpoint.isNotBlank())
         require(nativeToolId.isNotBlank() && toolName.isNotBlank())
+        require(toolDefinitionSha256.matches(Regex("[0-9a-f]{64}")))
         require(argumentsSha256.matches(Regex("[0-9a-f]{64}")))
     }
 
@@ -32,12 +34,14 @@ data class McpInvocationBinding(
             profile: McpServerProfile,
             nativeToolId: String,
             toolName: String,
+            toolDefinitionSha256: String,
             arguments: Map<String, Any?>
         ): McpInvocationBinding = McpInvocationBinding(
             profileId = profile.id,
             endpoint = profile.endpoint,
             nativeToolId = nativeToolId,
             toolName = toolName,
+            toolDefinitionSha256 = toolDefinitionSha256,
             argumentsSha256 = sha256(canonicalJson(arguments))
         )
 
