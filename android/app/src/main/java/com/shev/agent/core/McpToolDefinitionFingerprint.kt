@@ -4,7 +4,6 @@ import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import java.security.MessageDigest
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -46,7 +45,6 @@ object McpToolDefinitionFingerprint {
             value.entries.sortedBy { it.key }.associate { (key, nested) -> key to normalize(nested) }
         )
         is JsonArray -> JsonArray(value.map(::normalize))
-        is JsonNull -> JsonNull
         else -> value
     }
 }
