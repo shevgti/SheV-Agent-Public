@@ -1,18 +1,17 @@
 package com.shev.agent.data
 
+import androidx.room.withTransaction
 import com.shev.agent.core.McpInvocationAuthorization
 import com.shev.agent.core.McpInvocationAuthorizationVerifier
 import com.shev.agent.core.McpInvocationBinding
 
 /**
- * Consumes one exact MCP approval with a single conditional Room UPDATE.
- *
- * This verifier is intentionally not a token issuer. A trusted approval UI/kernel
- * flow must persist the evidence row after the user approves the rendered action.
- * Until that issuer and UI are connected, the MCP bridge remains fail-closed.
+ * Consumes one exact MCP approval and closes its review request in the same
+ * Room transaction. The nonce digest is the only unencrypted authorization
+ * material retained after consumption.
  */
 class RoomMcpInvocationAuthorizationVerifier(
-    private val dao: AgentDao
+    private val database: SheVAgentDatabase
 ) : McpInvocationAuthorizationVerifier {
     override suspend fun consume(
         authorization: McpInvocationAuthorization,
@@ -29,23 +28,34 @@ class RoomMcpInvocationAuthorizationVerifier(
         }.getOrNull() ?: return false
 
         val binding = authorization.binding
-        return dao.consumeMcpInvocationAuthorization(
-            nonceDigest = nonceDigest,
-            invocationId = authorization.invocationId,
-            taskId = authorization.taskId,
-            taskRevision = authorization.taskRevision,
-            planRevision = authorization.planRevision,
-            stepId = authorization.stepId,
-            stepRevision = authorization.stepRevision,
-            profileId = binding.profileId,
-            endpoint = binding.endpoint,
-            nativeToolId = binding.nativeToolId,
-            remoteToolName = binding.toolName,
-            toolDefinitionSha256 = binding.toolDefinitionSha256,
-            argumentsSha256 = binding.argumentsSha256,
-            issuedAtEpochMillis = authorization.issuedAtEpochMillis,
-            expiresAtEpochMillis = authorization.expiresAtEpochMillis,
-            nowMillis = nowMillis
-        ) == 1
+        return database.withTransaction {
+            val dao = database.agentDao()
+            val consumed = dao.consumeMcpInvocationAuthorization(
+                nonceDigest = nonceDigest,
+                invocationId = authorization.invocationId,
+                taskId = authorization.taskId,
+                taskRevision = authorization.taskRevision,
+                planRevision = authorization.planRevision,
+                stepId = authorization.stepId,
+                stepRevision = authorization.stepRevision,
+                profileId = binding.profileId,
+                endpoint = binding.endpoint,
+                nativeToolId = binding.nativeToolId,
+                remoteToolName = binding.toolName,
+                toolDefinitionSha256 = binding.toolDefinitionSha256,
+                argumentsSha256 = binding.argumentsSha256,
+                issuedAtEpochMillis = authorization.issuedAtEpochMillis,
+                expiresAtEpochMillis = authorization.expiresAtEpochMillis,
+                nowMillis = nowMillis
+            )
+            if (consumed != 1) return@withTransaction false
+            check(
+                dao.markMcpInvocationApprovalRequestConsumed(
+                    invocationId = authorization.invocationId,
+                    nowMillis = nowMillis
+                ) == 1
+            ) { "MCP authorization was consumed without its approval request." }
+            true
+        }
     }
 }
