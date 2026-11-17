@@ -18,7 +18,7 @@ class McpServerProfileStore(context: Context) {
 
     @Synchronized
     fun listProfiles(): List<McpServerProfile> {
-        val saved = readSavedProfiles() ?: return emptyList()
+        val saved = readSavedProfiles() ?: return CuratedMcpProfiles.entries
         return (CuratedMcpProfiles.entries.associateBy { it.id } + saved).values.toList()
     }
 
@@ -29,6 +29,7 @@ class McpServerProfileStore(context: Context) {
     @Synchronized
     fun saveProfile(profile: McpServerProfile, explicitlyApprovedByUser: Boolean): Boolean {
         if (!explicitlyApprovedByUser) return false
+        if (profile.enabled && profile.approvedToolNames.isEmpty()) return false
         val saved = readSavedProfiles() ?: return false
         saved[profile.id] = profile
         return writeSavedProfiles(saved)
@@ -83,6 +84,7 @@ class McpServerProfileStore(context: Context) {
     }
 
     private fun writeSavedProfiles(profiles: Map<String, McpServerProfile>): Boolean {
+        if (profiles.size > MAX_PROFILES) return false
         val array = JSONArray()
         profiles.values.sortedBy { it.id }.forEach { profile ->
             array.put(
@@ -110,5 +112,6 @@ class McpServerProfileStore(context: Context) {
         const val PREFERENCES_NAME = "shev_agent_mcp_profiles"
         private const val KEY_PROFILES = "profiles_v1"
         private const val FORMAT_VERSION = 1
+        private const val MAX_PROFILES = 50
     }
 }
