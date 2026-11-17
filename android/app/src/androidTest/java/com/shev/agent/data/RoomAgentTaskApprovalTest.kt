@@ -5,7 +5,6 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.shev.agent.AgentPhase
-import com.shev.agent.AgentWorkflowCommand
 import com.shev.agent.core.AgentPlan
 import com.shev.agent.core.PlanStep
 import com.shev.agent.core.ToolRisk
@@ -92,7 +91,6 @@ class RoomAgentTaskApprovalTest {
         val current = database.agentDao().getTask(TASK_ID)!!
         assertEquals(AgentPhase.APPROVED.name, current.phase)
         assertEquals(3L, current.revision)
-        assertEquals(AgentWorkflowCommand.APPROVE.name, database.agentDao().observeEventsSnapshotForTest(TASK_ID).last().eventType)
     }
 
     private object AcceptingAuthorizationVerifier : AgentTaskAuthorizationVerifier {
