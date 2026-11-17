@@ -5,11 +5,15 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.adk.kt.events.Event
+import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.shev.agent.AgentCapability
 import com.shev.agent.AgentPhase
 import com.shev.agent.AgentWorkflowCommand
+import com.shev.agent.core.AgentPlan
+import com.shev.agent.core.PlanStep
+import com.shev.agent.core.ToolRisk
 import com.shev.agent.data.ConversationMessageEntity
 import com.shev.agent.data.ConversationStateRepository
 import com.shev.agent.data.ConversationSummaryRead
@@ -20,11 +24,13 @@ import com.shev.agent.data.AgentTaskRepositoryResult
 import com.shev.agent.data.AgentTaskRepositoryRejection
 import com.shev.agent.data.AgentTaskTransitionRequest
 import com.shev.agent.data.PersistedAgentPlan
+import com.shev.agent.data.AgentPlanSaveResult
 import com.shev.agent.data.RoomAgentPlanRepository
 import com.shev.agent.data.RoomAgentTaskAuthorizationVerifier
 import com.shev.agent.data.RoomAgentTaskRepository
 import com.shev.agent.data.LocalMessageCipher
 import com.shev.agent.data.SheVAgentDatabaseProvider
+import com.shev.agent.tools.AgentPlanToolValidator
 import com.shev.agent.tools.AgentTool
 import com.shev.agent.tools.LocalTimeTool
 import com.shev.agent.tools.SuspendingAgentTool
@@ -89,6 +95,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private var runtime: SheVAgentRuntime? = null
     private var downloadJob: Job? = null
     private var responseJob: Job? = null
+    @Volatile private var pendingPlanTaskId: String? = null
 
     init {
         val gatewayPreferences = application.getSharedPreferences("shev_omniroute", Application.MODE_PRIVATE)
@@ -398,6 +405,21 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     )
                     register(
                         AgentToolDescriptor(
+                            id = SheVAgentAdkTools.CREATE_TASK_PLAN_ID,
+                            title = "Сохранить план поручения",
+                            description = "Проверяет и сохраняет план для последнего созданного черновика; ничего не запускает",
+                            capabilities = setOf(AgentCapability.CREATE_DRAFT),
+                            inputSchema = ToolInputSchema(
+                                listOf(
+                                    ToolInputField("task_id", ToolInputType.STRING, required = true, maxLength = 64),
+                                    ToolInputField("summary", ToolInputType.STRING, required = true, maxLength = 2_000),
+                                    ToolInputField("steps_json", ToolInputType.STRING, required = true, maxLength = 6_000)
+                                )
+                            )
+                        )
+                    )
+                    register(
+                        AgentToolDescriptor(
                             id = SheVAgentAdkTools.CURRENT_TIME_TOOL_ID,
                             title = "Текущее местное время",
                             description = "Возвращает фактические дату, время и часовой пояс устройства",
@@ -447,17 +469,97 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                                 occurredAtEpochMillis = now
                             )
                         )) {
-                            is AgentTaskDraftResult.Created -> AgentToolResult(
-                                true,
-                                "Черновик поручения «${result.state.task.title}» сохранён. Он ожидает подтверждения в разделе «Поручения». Никакое действие не запускалось."
-                            )
-                            is AgentTaskDraftResult.Replayed -> AgentToolResult(
-                                true,
-                                "Это поручение уже сохранено и ожидает подтверждения в разделе «Поручения». Повторная запись не создана."
-                            )
+                            is AgentTaskDraftResult.Created -> {
+                                pendingPlanTaskId = taskId
+                                AgentToolResult(
+                                    true,
+                                    "Черновик поручения «${result.state.task.title}» сохранён. ID поручения: $taskId. Теперь подготовь и сохрани план через save_task_plan. Никакое действие не запускалось."
+                                )
+                            }
+                            is AgentTaskDraftResult.Replayed -> {
+                                pendingPlanTaskId = taskId
+                                AgentToolResult(
+                                    true,
+                                    "Это поручение уже сохранено. ID поручения: $taskId. Подготовь и сохрани план через save_task_plan. Повторная запись не создана."
+                                )
+                            }
                             AgentTaskDraftResult.InvalidRequest -> AgentToolResult(false, "Поручение не сохранено: некорректный запрос.", "INVALID_REQUEST")
                             AgentTaskDraftResult.Conflict -> AgentToolResult(false, "Поручение не сохранено: обнаружен конфликт записи.", "CONFLICT")
                             AgentTaskDraftResult.NotFound -> AgentToolResult(false, "Поручение не найдено после записи.", "NOT_FOUND")
+                        }
+                    }
+                }
+                val taskPlanHandler = SuspendingAgentTool { input ->
+                    val payload = runCatching { JsonParser.parseString(input).asJsonObject }.getOrNull()
+                    val taskId = payload?.get("task_id")?.takeIf { it.isJsonPrimitive }?.asString
+                    val summary = payload?.get("summary")?.takeIf { it.isJsonPrimitive }?.asString
+                    val stepsJson = payload?.get("steps_json")?.takeIf { it.isJsonPrimitive }?.asString
+                    if (taskId.isNullOrBlank() || summary.isNullOrBlank() || stepsJson.isNullOrBlank()) {
+                        AgentToolResult(false, "План не сохранён: отсутствуют обязательные поля.", "INVALID_PLAN_REQUEST")
+                    } else if (taskId != pendingPlanTaskId) {
+                        AgentToolResult(false, "План можно сохранить только для последнего черновика, созданного в этом сеансе.", "TASK_DRAFT_MISMATCH")
+                    } else {
+                        val steps = runCatching {
+                            val array = JsonParser.parseString(stepsJson).asJsonArray
+                            array.map { element ->
+                                val step = element.asJsonObject
+                                val dependencies = step.get("dependsOn")?.takeIf { it.isJsonArray }
+                                    ?.asJsonArray?.map { it.asString }?.toSet().orEmpty()
+                                PlanStep(
+                                    id = step.get("id").asString,
+                                    toolId = step.get("toolId").asString,
+                                    argumentsJson = step.get("argumentsJson").asString,
+                                    dependsOn = dependencies,
+                                    risk = ToolRisk.valueOf(step.get("risk").asString),
+                                    purpose = step.get("purpose").asString,
+                                    expectedOutcome = step.get("expectedOutcome").asString,
+                                    timeoutMillis = step.get("timeoutMillis")?.asLong ?: 30_000L
+                                )
+                            }
+                        }.getOrNull()
+                        if (steps.isNullOrEmpty()) {
+                            AgentToolResult(false, "План не сохранён: список шагов пуст или имеет неверный формат.", "INVALID_PLAN")
+                        } else {
+                            val previousPlan = dao.getAgentPlan(taskId)
+                            val nextRevision = if (previousPlan == null) 0L else {
+                                if (previousPlan.planRevision == Long.MAX_VALUE) Long.MAX_VALUE
+                                else previousPlan.planRevision + 1L
+                            }
+                            val plan = runCatching {
+                                AgentPlan(
+                                    taskId = taskId,
+                                    revision = nextRevision,
+                                    summary = summary,
+                                    steps = steps
+                                )
+                            }.getOrNull()
+                            if (plan == null || nextRevision == Long.MAX_VALUE) {
+                                AgentToolResult(false, "План не сохранён: нарушена структура плана или исчерпана ревизия.", "INVALID_PLAN")
+                            } else {
+                                val validation = AgentPlanToolValidator.validate(plan, registry)
+                                if (!validation.accepted) {
+                                    AgentToolResult(
+                                        false,
+                                        "${validation.reason ?: "Проверка плана не пройдена."} Шаг: ${validation.stepId ?: "неизвестен"}.",
+                                        "PLAN_VALIDATION_FAILED"
+                                    )
+                                } else {
+                                    when (val saved = RoomAgentPlanRepository(database).saveValidatedPlan(plan, System.currentTimeMillis())) {
+                                        AgentPlanSaveResult.STORED -> {
+                                            pendingPlanTaskId = null
+                                            val currentTask = dao.getTask(taskId)
+                                            AgentToolResult(
+                                                true,
+                                                "План сохранён и проверен. Ревизия плана: ${plan.revision}; ревизия поручения: ${currentTask?.revision ?: "неизвестна"}. Покажи пользователю план в разделе «Поручения» и дождись его подтверждения. Никакие инструменты не запускались."
+                                            )
+                                        }
+                                        AgentPlanSaveResult.TASK_NOT_FOUND -> AgentToolResult(false, "План не сохранён: поручение не найдено.", "TASK_NOT_FOUND")
+                                        AgentPlanSaveResult.INVALID_TASK_PHASE -> AgentToolResult(false, "План не сохранён: поручение уже не находится на этапе планирования или ожидания подтверждения.", "INVALID_TASK_PHASE")
+                                        AgentPlanSaveResult.STALE_REVISION -> AgentToolResult(false, "План не сохранён: его ревизия устарела. Перечитай поручение и подготовь новый план.", "STALE_PLAN_REVISION")
+                                        AgentPlanSaveResult.INVALID_TIMESTAMP -> AgentToolResult(false, "План не сохранён: некорректное время.", "INVALID_TIMESTAMP")
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -473,7 +575,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to currentTimeHandler
                     ),
                     suspendingHandlers = mapOf(
-                        SheVAgentAdkTools.CREATE_TASK_DRAFT_ID to taskDraftHandler
+                        SheVAgentAdkTools.CREATE_TASK_DRAFT_ID to taskDraftHandler,
+                        SheVAgentAdkTools.CREATE_TASK_PLAN_ID to taskPlanHandler
                     )
                 )
                 val tools = SheVAgentAdkTools(
