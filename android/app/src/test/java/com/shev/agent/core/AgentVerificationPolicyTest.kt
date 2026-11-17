@@ -25,6 +25,24 @@ class AgentVerificationPolicyTest {
             listOf(evidence(AgentVerificationEvidenceKind.TEST_RESULT)), trusted, 200).passed)
     }
 
+    @Test fun trustedKernelExecutionReceiptVerifiesReadOnlyStepOnly() {
+        val readOnly = AgentVerificationPolicy.evaluate(
+            plan(ToolRisk.READ_ONLY),
+            listOf(evidence(AgentVerificationEvidenceKind.KERNEL_EXECUTION_RECEIPT)),
+            trusted,
+            200
+        )
+        assertTrue(readOnly.passed)
+
+        val write = AgentVerificationPolicy.evaluate(
+            plan(ToolRisk.REVERSIBLE_WRITE),
+            listOf(evidence(AgentVerificationEvidenceKind.KERNEL_EXECUTION_RECEIPT)),
+            trusted,
+            200
+        )
+        assertEquals(AgentVerificationFailure.INSUFFICIENT_EVIDENCE, write.failure)
+    }
+
     @Test fun modelAssertionCannotVerifyTask() {
         val result = AgentVerificationPolicy.evaluate(plan(ToolRisk.READ_ONLY),
             listOf(evidence(AgentVerificationEvidenceKind.MODEL_ASSERTION)), trusted, 200)
