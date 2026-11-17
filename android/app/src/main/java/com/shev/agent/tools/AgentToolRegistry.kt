@@ -30,6 +30,7 @@ data class AgentToolDescriptor(
 class AgentToolRegistry {
     private val tools = linkedMapOf<String, AgentToolDescriptor>()
 
+    @Synchronized
     fun register(descriptor: AgentToolDescriptor) {
         require(!tools.containsKey(descriptor.id)) {
             "Инструмент с идентификатором '${descriptor.id}' уже зарегистрирован"
@@ -38,12 +39,16 @@ class AgentToolRegistry {
     }
 
     /** Removes a descriptor so disabled plugins cannot be resolved for execution. */
+    @Synchronized
     fun unregister(id: String): Boolean = tools.remove(id) != null
 
+    @Synchronized
     fun find(id: String): AgentToolDescriptor? = tools[id]
 
+    @Synchronized
     fun list(): List<AgentToolDescriptor> = tools.values.toList()
 
+    @Synchronized
     fun findSupporting(capability: AgentCapability): List<AgentToolDescriptor> =
         tools.values.filter { capability in it.capabilities }
 }
