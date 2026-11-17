@@ -166,6 +166,17 @@ interface AgentDao {
     @Query("UPDATE mcp_invocation_approval_requests SET status = 'EXPIRED', decidedAtEpochMillis = :nowMillis WHERE status = 'PENDING' AND expiresAtEpochMillis <= :nowMillis")
     suspend fun expireMcpInvocationApprovalRequests(nowMillis: Long): Int
 
+    @Query("""
+        UPDATE mcp_invocation_approval_requests
+        SET status = 'CONSUMED',
+            decidedAtEpochMillis = :nowMillis,
+            authorizationNonceCiphertext = NULL
+        WHERE invocationId = :invocationId
+          AND status = 'APPROVED'
+          AND authorizationNonceCiphertext IS NOT NULL
+    """)
+    suspend fun markMcpInvocationApprovalRequestConsumed(invocationId: String, nowMillis: Long): Int
+
 
     /**
      * One conditional UPDATE is the atomic one-use claim. Every persisted binding
