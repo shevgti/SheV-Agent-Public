@@ -32,6 +32,7 @@ enum class AgentPluginActivationResult {
 class AgentPluginRegistry(private val toolRegistry: AgentToolRegistry) {
     private val activePlugins = linkedMapOf<String, List<String>>()
 
+    @Synchronized
     fun activate(
         contribution: AgentPluginContribution,
         explicitlyApprovedByUser: Boolean
@@ -56,13 +57,16 @@ class AgentPluginRegistry(private val toolRegistry: AgentToolRegistry) {
         }
     }
 
+    @Synchronized
     fun deactivate(pluginId: String): Boolean {
         val toolIds = activePlugins.remove(pluginId) ?: return false
         toolIds.forEach(toolRegistry::unregister)
         return true
     }
 
+    @Synchronized
     fun isActive(pluginId: String): Boolean = pluginId in activePlugins
 
+    @Synchronized
     fun activePluginIds(): Set<String> = activePlugins.keys.toSet()
 }
