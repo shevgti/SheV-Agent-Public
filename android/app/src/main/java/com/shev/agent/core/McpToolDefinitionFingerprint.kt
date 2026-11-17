@@ -1,7 +1,9 @@
 package com.shev.agent.core
 
+import io.modelcontextprotocol.kotlin.sdk.types.Tool
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import java.security.MessageDigest
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -13,6 +15,14 @@ import kotlinx.serialization.json.JsonPrimitive
  * input-schema subset also force re-approval where the SDK exposes them.
  */
 object McpToolDefinitionFingerprint {
+    private val sdkJson = Json { encodeDefaults = true }
+
+    /** Uses the SDK's generated serializer so output schema, annotations, icons, execution and _meta are included. */
+    fun computeSdkTool(tool: Tool): String {
+        val serialized = sdkJson.encodeToJsonElement(Tool.serializer(), tool)
+        return sha256(normalize(serialized).toString())
+    }
+
     fun compute(
         name: String,
         description: String,
@@ -35,10 +45,13 @@ object McpToolDefinitionFingerprint {
             )
         )
         val canonical = normalize(definition).toString()
-        return MessageDigest.getInstance("SHA-256")
-            .digest(canonical.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        return sha256(canonical)
     }
+
+    private fun sha256(value: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
     private fun normalize(value: JsonElement): JsonElement = when (value) {
         is JsonObject -> JsonObject(
