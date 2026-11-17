@@ -115,92 +115,97 @@ class McpToolRegistryBridge(
         val registered = mutableListOf<String>()
         val rejected = mutableListOf<String>()
 
-        discovered.take(RemoteMcpClient.MAX_DISCOVERED_TOOLS).forEach { tool ->
-            if (!tool.name.matches(Regex("[A-Za-z][A-Za-z0-9_.-]{0,127}")) ||
-                tool.name !in profile.approvedToolNames) {
-                rejected += tool.name
-                return@forEach
-            }
-            val schema = McpToolSchemaAdapter.adapt(tool.inputSchema)
-            if (schema == null) {
-                rejected += tool.name
-                return@forEach
-            }
-            val id = "${profile.id}.${tool.name.lowercase().replace(Regex("[^a-z0-9_.-]"), "-")}"
-            if (registry.find(id) != null) {
-                rejected += tool.name
-                return@forEach
-            }
-            registry.register(
-                AgentToolDescriptor(
-                    id = id,
-                    title = tool.name.take(100),
-                    description = tool.description.ifBlank { "Remote MCP tool: ${tool.name}" }.take(1_000),
-                    capabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
-                    inputSchema = schema,
-                    planExecutable = true
-                )
-            )
-            handlers[id] = McpAuthorizedContextualSuspendingTool(ContextualSuspendingAgentTool { input, executionContext ->
-                val parsed = Json.parseToJsonElement(input) as? JsonObject
-                    ?: error("Validated MCP input must be a JSON object")
-                val args = parsed.entries.associate { (key, value) -> key to value.toNativeValue() }
-                val binding = McpInvocationBinding.create(
-                    profile = profile,
-                    nativeToolId = id,
-                    toolName = tool.name,
-                    toolDefinitionSha256 = tool.definitionSha256,
-                    arguments = args
-                )
-                val invocationContext = executionContext.mcpInvocationContext
-                    ?: error("Для MCP-вызова отсутствует доверенный контекст задачи и шага")
-                val nowMillis = System.currentTimeMillis()
-                val definitionJson = tool.definitionJson.ifBlank {
-                    JsonObject(
-                        mapOf(
-                            "name" to JsonPrimitive(tool.name),
-                            "description" to JsonPrimitive(tool.description),
-                            "inputSchema" to Json.parseToJsonElement(
-                                kotlinx.serialization.json.Json.encodeToString(
-                                    ToolSchema.serializer(),
-                                    tool.inputSchema
-                                )
-                            ),
-                            "definitionSha256" to JsonPrimitive(tool.definitionSha256)
-                        )
-                    ).toString()
+        try {
+            discovered.take(RemoteMcpClient.MAX_DISCOVERED_TOOLS).forEach { tool ->
+                if (!tool.name.matches(Regex("[A-Za-z][A-Za-z0-9_.-]{0,127}")) ||
+                    tool.name !in profile.approvedToolNames) {
+                    rejected += tool.name
+                    return@forEach
                 }
-                val authorization = authorizationProvider.issue(
-                    McpInvocationApprovalPrompt(
-                        binding = binding,
-                        context = invocationContext,
-                        toolTitle = tool.name,
-                        toolDescription = tool.description,
-                        risk = ToolRisk.EXTERNAL_SIDE_EFFECT.name,
-                        toolDefinitionJson = definitionJson,
-                        argumentsJson = input,
-                        createdAtEpochMillis = nowMillis,
-                        expiresAtEpochMillis = nowMillis + 120_000L
+                val schema = McpToolSchemaAdapter.adapt(tool.inputSchema)
+                if (schema == null) {
+                    rejected += tool.name
+                    return@forEach
+                }
+                val id = "${profile.id}.${tool.name.lowercase().replace(Regex("[^a-z0-9_.-]"), "-")}"
+                if (registry.find(id) != null) {
+                    rejected += tool.name
+                    return@forEach
+                }
+                registry.register(
+                    AgentToolDescriptor(
+                        id = id,
+                        title = tool.name.take(100),
+                        description = tool.description.ifBlank { "Remote MCP tool: ${tool.name}" }.take(1_000),
+                        capabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
+                        inputSchema = schema,
+                        planExecutable = true
                     )
-                ) ?: error("Для этого удалённого вызова нет отдельного подтверждения пользователя")
-                val beforeNetworkCall = executionContext.beforeMcpNetworkCall
-                    ?: error("Для MCP-вызова отсутствует долговечная отметка начала сетевого действия")
-                val output = remoteClient.callApprovedTool(
-                    nativeToolId = id,
-                    toolName = tool.name,
-                    arguments = args,
-                    authorization = authorization,
-                    authorizationVerifier = authorizationVerifier,
-                    executionContext = invocationContext,
-                    beforeNetworkCall = {
-                        check(beforeNetworkCall(invocationContext)) {
-                            "Не удалось зафиксировать начало MCP-вызова в журнале исполнения"
-                        }
-                    }
                 )
-                AgentToolResult(true, output)
-            })
-            registered += id
+                handlers[id] = McpAuthorizedContextualSuspendingTool(ContextualSuspendingAgentTool { input, executionContext ->
+                    val parsed = Json.parseToJsonElement(input) as? JsonObject
+                        ?: error("Validated MCP input must be a JSON object")
+                    val args = parsed.entries.associate { (key, value) -> key to value.toNativeValue() }
+                    val binding = McpInvocationBinding.create(
+                        profile = profile,
+                        nativeToolId = id,
+                        toolName = tool.name,
+                        toolDefinitionSha256 = tool.definitionSha256,
+                        arguments = args
+                    )
+                    val invocationContext = executionContext.mcpInvocationContext
+                        ?: error("Для MCP-вызова отсутствует доверенный контекст задачи и шага")
+                    val nowMillis = System.currentTimeMillis()
+                    val definitionJson = tool.definitionJson.ifBlank {
+                        JsonObject(
+                            mapOf(
+                                "name" to JsonPrimitive(tool.name),
+                                "description" to JsonPrimitive(tool.description),
+                                "inputSchema" to Json.parseToJsonElement(
+                                    kotlinx.serialization.json.Json.encodeToString(
+                                        ToolSchema.serializer(),
+                                        tool.inputSchema
+                                    )
+                                ),
+                                "definitionSha256" to JsonPrimitive(tool.definitionSha256)
+                            )
+                        ).toString()
+                    }
+                    val authorization = authorizationProvider.issue(
+                        McpInvocationApprovalPrompt(
+                            binding = binding,
+                            context = invocationContext,
+                            toolTitle = tool.name,
+                            toolDescription = tool.description,
+                            risk = ToolRisk.EXTERNAL_SIDE_EFFECT.name,
+                            toolDefinitionJson = definitionJson,
+                            argumentsJson = input,
+                            createdAtEpochMillis = nowMillis,
+                            expiresAtEpochMillis = nowMillis + 120_000L
+                        )
+                    ) ?: error("Для этого удалённого вызова нет отдельного подтверждения пользователя")
+                    val beforeNetworkCall = executionContext.beforeMcpNetworkCall
+                        ?: error("Для MCP-вызова отсутствует долговечная отметка начала сетевого действия")
+                    val output = remoteClient.callApprovedTool(
+                        nativeToolId = id,
+                        toolName = tool.name,
+                        arguments = args,
+                        authorization = authorization,
+                        authorizationVerifier = authorizationVerifier,
+                        executionContext = invocationContext,
+                        beforeNetworkCall = {
+                            check(beforeNetworkCall(invocationContext)) {
+                                "Не удалось зафиксировать начало MCP-вызова в журнале исполнения"
+                            }
+                        }
+                    )
+                    AgentToolResult(true, output)
+                })
+                registered += id
+            }
+            } catch (failure: Exception) {
+            registered.forEach(registry::unregister)
+            throw failure
         }
         return Registration(registered, rejected, handlers)
     }
