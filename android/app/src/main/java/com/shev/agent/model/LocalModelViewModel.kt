@@ -24,6 +24,9 @@ import com.shev.agent.data.AgentTaskRepositoryRejection
 import com.shev.agent.data.AgentTaskTransitionRequest
 import com.shev.agent.data.PersistedAgentPlan
 import com.shev.agent.data.AgentPlanSaveResult
+import com.shev.agent.data.McpInvocationApprovalRequestEntity
+import com.shev.agent.data.McpInvocationApprovalResult
+import com.shev.agent.data.RoomMcpInvocationApprovalRepository
 import com.shev.agent.data.RoomAgentPlanRepository
 import com.shev.agent.data.RoomAgentTaskAuthorizationVerifier
 import com.shev.agent.data.RoomAgentTaskRepository
@@ -60,6 +63,12 @@ data class PendingTaskApproval(
     val plan: PersistedAgentPlan?
 )
 
+data class PendingMcpInvocationApproval(
+    val request: McpInvocationApprovalRequestEntity,
+    val toolDefinitionJson: String?,
+    val argumentsJson: String?
+)
+
 data class LocalModelUiState(
     val verified: Boolean = false,
     val progress: Float? = null,
@@ -76,7 +85,10 @@ data class LocalModelUiState(
     val messages: List<String> = emptyList(),
     val pendingTaskApprovals: List<PendingTaskApproval> = emptyList(),
     val taskActionBusyId: String? = null,
-    val taskActionMessage: String? = null
+    val taskActionMessage: String? = null,
+    val pendingMcpInvocationApprovals: List<PendingMcpInvocationApproval> = emptyList(),
+    val mcpInvocationActionBusyId: String? = null,
+    val mcpInvocationActionMessage: String? = null
 )
 
 /** Owns the native runtime for the Activity lifetime, not a recyclable Compose list item. */
@@ -85,6 +97,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private val database = SheVAgentDatabaseProvider.get(application.applicationContext)
     private val dao = database.agentDao()
     private val conversationStateRepository = ConversationStateRepository(database)
+    private val mcpInvocationApprovalRepository = RoomMcpInvocationApprovalRepository(database)
     private val taskRepository = RoomAgentTaskRepository(
         database,
         RoomAgentTaskAuthorizationVerifier(dao)
@@ -113,6 +126,19 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     .filter { it.phase == AgentPhase.WAITING_APPROVAL.name }
                     .map { task -> PendingTaskApproval(task, planRepository.loadPlan(task.id)) }
                 mutableState.update { it.copy(pendingTaskApprovals = pending) }
+            }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            dao.observePendingMcpInvocationApprovalRequests().collect { requests ->
+                val pending = requests.map { request ->
+                    val content = mcpInvocationApprovalRepository.readSensitiveReviewContent(request.invocationId)
+                    PendingMcpInvocationApproval(
+                        request = request,
+                        toolDefinitionJson = content?.first,
+                        argumentsJson = content?.second
+                    )
+                }
+                mutableState.update { it.copy(pendingMcpInvocationApprovals = pending) }
             }
         }
         viewModelScope.launch(Dispatchers.IO) {
@@ -213,6 +239,44 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 null -> "Не удалось отклонить поручение."
             }
             mutableState.update { it.copy(taskActionBusyId = null, taskActionMessage = message) }
+        }
+    }
+
+    /** Approves one exact remote MCP action after checking its persisted task/plan/step binding. */
+    fun approveMcpInvocation(invocationId: String) {
+        if (invocationId.isBlank() || mutableState.value.mcpInvocationActionBusyId != null) return
+        mutableState.update { it.copy(mcpInvocationActionBusyId = invocationId, mcpInvocationActionMessage = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                mcpInvocationApprovalRepository.approve(invocationId, System.currentTimeMillis())
+            }.getOrElse { McpInvocationApprovalResult.CONFLICT }
+            val message = when (result) {
+                McpInvocationApprovalResult.APPROVED -> "Удалённый вызов подтверждён. Он продолжится только в рамках этого точного разрешения."
+                McpInvocationApprovalResult.EXPIRED -> "Срок запроса истёк. Нужно запросить новое подтверждение."
+                McpInvocationApprovalResult.STALE -> "Задача или шаг изменились. Старое подтверждение недействительно."
+                McpInvocationApprovalResult.NOT_FOUND -> "Запрос подтверждения больше не найден."
+                else -> "Не удалось подтвердить удалённый вызов: ${result.name}."
+            }
+            mutableState.update { it.copy(mcpInvocationActionBusyId = null, mcpInvocationActionMessage = message) }
+        }
+    }
+
+    /** Rejects one exact remote MCP action; no remote call is dispatched. */
+    fun rejectMcpInvocation(invocationId: String) {
+        if (invocationId.isBlank() || mutableState.value.mcpInvocationActionBusyId != null) return
+        mutableState.update { it.copy(mcpInvocationActionBusyId = invocationId, mcpInvocationActionMessage = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                mcpInvocationApprovalRepository.reject(invocationId, System.currentTimeMillis())
+            }.getOrElse { McpInvocationApprovalResult.CONFLICT }
+            val message = when (result) {
+                McpInvocationApprovalResult.REJECTED -> "Удалённый вызов отклонён. Инструмент не запускался."
+                McpInvocationApprovalResult.EXPIRED -> "Срок запроса уже истёк."
+                McpInvocationApprovalResult.STALE -> "Задача или шаг изменились. Запрос больше нельзя отклонить как актуальный."
+                McpInvocationApprovalResult.NOT_FOUND -> "Запрос подтверждения больше не найден."
+                else -> "Не удалось отклонить удалённый вызов: ${result.name}."
+            }
+            mutableState.update { it.copy(mcpInvocationActionBusyId = null, mcpInvocationActionMessage = message) }
         }
     }
 
