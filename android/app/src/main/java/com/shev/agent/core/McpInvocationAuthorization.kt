@@ -85,6 +85,7 @@ data class McpInvocationAuthorization(
     val invocationId: String,
     val taskId: String,
     val taskRevision: Long,
+    val planRevision: Long,
     val stepId: String,
     val stepRevision: Long,
     val binding: McpInvocationBinding,
@@ -94,7 +95,7 @@ data class McpInvocationAuthorization(
 ) {
     init {
         require(invocationId.matches(Regex("[A-Za-z0-9_-]{16,80}")))
-        require(taskId.isNotBlank() && taskRevision >= 0L)
+        require(taskId.isNotBlank() && taskRevision >= 0L && planRevision >= 0L)
         require(stepId.matches(Regex("[A-Za-z0-9_-]{1,64}")) && stepRevision >= 0L)
         require(issuedAtEpochMillis >= 0L && expiresAtEpochMillis > issuedAtEpochMillis)
         require(expiresAtEpochMillis - issuedAtEpochMillis <= MAX_TTL_MILLIS)
