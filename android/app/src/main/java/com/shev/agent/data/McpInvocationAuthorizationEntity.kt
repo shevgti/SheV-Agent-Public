@@ -1,5 +1,6 @@
 package com.shev.agent.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -23,7 +24,7 @@ data class McpInvocationAuthorizationEntity(
     val invocationId: String,
     val taskId: String,
     val taskRevision: Long,
-    val planRevision: Long,
+    @ColumnInfo(defaultValue = "0") val planRevision: Long,
     val stepId: String,
     val stepRevision: Long,
     val profileId: String,
