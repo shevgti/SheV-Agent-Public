@@ -18,10 +18,13 @@ object McpToolDefinitionFingerprint {
     private val sdkJson = Json { encodeDefaults = true }
 
     /** Includes output schema, annotations, icons, execution and _meta when exposed by the SDK. */
-    fun computeSdkTool(tool: Tool): String {
+    fun canonicalSdkToolJson(tool: Tool): String {
         val serialized = sdkJson.encodeToJsonElement(Tool.serializer(), tool)
-        return sha256(normalize(serialized).toString())
+        return normalize(serialized).toString()
     }
+
+    fun computeSdkTool(tool: Tool): String =
+        sha256(canonicalSdkToolJson(tool))
 
     fun compute(
         name: String,
