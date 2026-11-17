@@ -168,14 +168,17 @@ class AgentToolExecutor(
 
         val contextualHandler = contextualSuspendingHandlers[request.toolId]
         val handler = suspendingHandlers[request.toolId]
-        if (contextualHandler == null && handler == null) {
+        val synchronousHandler = handlers[request.toolId]
+        if (contextualHandler == null && handler == null && synchronousHandler == null) {
             return AgentToolExecutionResult(AgentToolExecutionStatus.HANDLER_NOT_REGISTERED)
         }
 
         return try {
             AgentToolExecutionResult(
                 AgentToolExecutionStatus.COMPLETED,
-                contextualHandler?.execute(request.input, context) ?: handler!!.execute(request.input)
+                contextualHandler?.execute(request.input, context)
+                    ?: handler?.execute(request.input)
+                    ?: synchronousHandler!!.execute(request.input)
             )
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
