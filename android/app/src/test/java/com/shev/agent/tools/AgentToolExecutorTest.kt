@@ -399,6 +399,58 @@ class AgentToolExecutorTest {
         assertFalse(called)
     }
 
+    @Test fun persistentGrantCannotSatisfyRemoteMcpCapabilityGrantInSuspendingPath() = kotlinx.coroutines.runBlocking {
+        val registry = AgentToolRegistry()
+        registry.register(
+            AgentToolDescriptor(
+                "remote.search",
+                "Удалённый поиск",
+                "Тестирует запрет постоянного MCP-разрешения",
+                setOf(AgentCapability.REMOTE_MCP_OPERATION),
+                ToolInputSchema(listOf(ToolInputField("query", ToolInputType.STRING)))
+            )
+        )
+        val grant = ScopedCapabilityGrant(
+            grantId = "mcp-read-grant",
+            capability = AgentCapability.REMOTE_MCP_OPERATION,
+            scopeType = GrantScopeType.RESOURCE,
+            scopeValue = "mcp:test-server",
+            createdAtMillis = 1_000,
+            expiresAtMillis = 20_000
+        )
+        var called = false
+        val invocationContext = McpInvocationExecutionContext(
+            invocationId = "invocation-000001",
+            taskId = "task-1",
+            taskRevision = 3L,
+            planRevision = 1L,
+            stepId = "step-1",
+            stepRevision = 2L
+        )
+        val executor = AgentToolExecutor(
+            registry,
+            emptyMap(),
+            contextualSuspendingHandlers = mapOf(
+                "remote.search" to ContextualSuspendingAgentTool { input, _ ->
+                    called = true
+                    AgentToolResult(true, input)
+                }
+            )
+        )
+        val result = executor.executeSuspending(
+            AgentToolRequest("remote.search", AgentCapability.REMOTE_MCP_OPERATION, """{"query":"docs"}""", "mcp:test-server"),
+            AgentToolExecutionContext(
+                grantedCapabilities = emptySet(),
+                persistentGrants = listOf(grant),
+                nowMillis = 5_000,
+                mcpInvocationContext = invocationContext,
+                beforeMcpNetworkCall = { true }
+            )
+        )
+        assertEquals(AgentToolExecutionStatus.ACCESS_DENIED, result.status)
+        assertFalse(called)
+    }
+
     @Test fun synchronousRemoteMcpPathIsAlwaysDenied() {
         val result = setup().execute(
             AgentToolRequest("local.echo", AgentCapability.REMOTE_MCP_OPERATION, """{"text":"call"}"""),
