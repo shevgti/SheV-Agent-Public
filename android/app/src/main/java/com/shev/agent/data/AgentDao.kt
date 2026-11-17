@@ -177,6 +177,15 @@ interface AgentDao {
     """)
     suspend fun markMcpInvocationApprovalRequestConsumed(invocationId: String, nowMillis: Long): Int
 
+    @Query("""
+        UPDATE mcp_invocation_approval_requests
+        SET status = 'EXPIRED',
+            decidedAtEpochMillis = :nowMillis,
+            authorizationNonceCiphertext = NULL
+        WHERE status = 'APPROVED' AND expiresAtEpochMillis <= :nowMillis
+    """)
+    suspend fun expireApprovedMcpInvocationApprovalRequests(nowMillis: Long): Int
+
 
     /**
      * One conditional UPDATE is the atomic one-use claim. Every persisted binding
