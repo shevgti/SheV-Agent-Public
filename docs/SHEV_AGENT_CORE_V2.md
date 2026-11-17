@@ -242,10 +242,12 @@ The durable plan execution layer is now connected to the native Android runtime:
 
 - `LocalModelViewModel.launchAgent()` constructs `AgentPlanExecutor` from the same local `AgentToolRegistry` and `AgentToolExecutor` used by the ADK gateway.
 - The explicit task approval action persists APPROVED first; only then does the execution repository transition to RUNNING and create durable step rows.
-- The ViewModel pumps one ready DAG step at a time. Room remains authoritative for task/plan/step revisions, dependency state, invocation IDs, dispatch intent, dispatch confirmation, encrypted outputs and terminal step state.
+- `AgentPlanRunner` owns bounded DAG pumping, startup recovery, cancellation and the RUNNING→VERIFYING transition. The ViewModel only invokes typed runner operations and renders results. Room remains authoritative for task/plan/step revisions, dependency state, invocation IDs, dispatch intent, dispatch confirmation, encrypted outputs and terminal step state.
 - On runtime startup, APPROVED plans are started and RUNNING plans are recovered. A step found in DISPATCHING/DISPATCHED after process death is marked OUTCOME_UNKNOWN and is not automatically retried.
 - Active APPROVED/RUNNING/VERIFYING tasks remain visible in the task inbox. Cancellation uses the revision displayed by the UI and updates the execution ledger; ambiguous dispatched steps remain OUTCOME_UNKNOWN.
 - When every step succeeds, the task moves to VERIFYING. It must not be marked COMPLETED until a trusted verifier has checked expected outcomes and persisted completion evidence.
+
+- `AgentPlanRunnerTest` adds an Android instrumentation scenario for explicit approval → local read-only step execution → VERIFYING. Exact-head CI for this runner extraction is in progress; do not claim this new commit is green until both workflows finish.
 
 ### Deliberate current limits
 
