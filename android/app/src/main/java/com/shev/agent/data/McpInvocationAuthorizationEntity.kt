@@ -31,6 +31,8 @@ data class McpInvocationAuthorizationEntity(
     val endpoint: String,
     val nativeToolId: String,
     val remoteToolName: String,
+    @ColumnInfo(defaultValue = "'0000000000000000000000000000000000000000000000000000000000000000'")
+    val toolDefinitionSha256: String,
     val argumentsSha256: String,
     val issuedAtEpochMillis: Long,
     val expiresAtEpochMillis: Long,
