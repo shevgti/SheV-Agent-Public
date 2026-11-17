@@ -104,8 +104,6 @@ interface AgentDao {
           AND issuedAtEpochMillis = :issuedAtEpochMillis
           AND expiresAtEpochMillis = :expiresAtEpochMillis
           AND consumedAtEpochMillis IS NULL
-          AND issuedAtEpochMillis <= :nowMillis
-          AND consumedAtEpochMillis IS NULL
           AND EXISTS (
               SELECT 1 FROM agent_tasks current_task
               WHERE current_task.id = :taskId
