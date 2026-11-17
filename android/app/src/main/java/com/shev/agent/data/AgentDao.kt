@@ -82,6 +82,91 @@ interface AgentDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertMcpInvocationAuthorizationEvidence(evidence: McpInvocationAuthorizationEntity)
 
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertMcpInvocationApprovalRequest(request: McpInvocationApprovalRequestEntity)
+
+    @Query("SELECT * FROM mcp_invocation_approval_requests WHERE invocationId = :invocationId LIMIT 1")
+    suspend fun getMcpInvocationApprovalRequest(invocationId: String): McpInvocationApprovalRequestEntity?
+
+    @Query("SELECT * FROM mcp_invocation_approval_requests WHERE status = 'PENDING' ORDER BY createdAtEpochMillis ASC")
+    fun observePendingMcpInvocationApprovalRequests(): Flow<List<McpInvocationApprovalRequestEntity>>
+
+    @Query("""
+        UPDATE mcp_invocation_approval_requests
+        SET status = 'APPROVED',
+            decidedAtEpochMillis = :nowMillis,
+            issuedAtEpochMillis = :issuedAtMillis,
+            expiresAtEpochMillis = :authorizationExpiresAtMillis,
+            authorizationNonceCiphertext = :nonceCiphertext
+        WHERE invocationId = :invocationId
+          AND taskId = :taskId AND taskRevision = :taskRevision
+          AND planRevision = :planRevision AND stepId = :stepId
+          AND stepRevision = :stepRevision
+          AND status = 'PENDING'
+          AND expiresAtEpochMillis > :nowMillis
+          AND EXISTS (
+              SELECT 1 FROM agent_tasks t
+              WHERE t.id = :taskId AND t.revision = :taskRevision AND t.phase = 'RUNNING'
+          )
+          AND EXISTS (
+              SELECT 1 FROM agent_plans p
+              WHERE p.taskId = :taskId AND p.planRevision = :planRevision
+          )
+          AND EXISTS (
+              SELECT 1 FROM agent_plan_steps s
+              WHERE s.taskId = :taskId AND s.stepId = :stepId
+                AND s.planRevision = :planRevision AND s.stepRevision = :stepRevision
+          )
+    """)
+    suspend fun approveMcpInvocationApprovalRequest(
+        invocationId: String,
+        taskId: String,
+        taskRevision: Long,
+        planRevision: Long,
+        stepId: String,
+        stepRevision: Long,
+        nowMillis: Long,
+        issuedAtMillis: Long,
+        authorizationExpiresAtMillis: Long,
+        nonceCiphertext: String
+    ): Int
+
+    @Query("""
+        UPDATE mcp_invocation_approval_requests
+        SET status = 'REJECTED', decidedAtEpochMillis = :nowMillis
+        WHERE invocationId = :invocationId
+          AND taskId = :taskId AND taskRevision = :taskRevision
+          AND planRevision = :planRevision AND stepId = :stepId
+          AND stepRevision = :stepRevision
+          AND status = 'PENDING' AND expiresAtEpochMillis > :nowMillis
+          AND EXISTS (
+              SELECT 1 FROM agent_tasks t
+              WHERE t.id = :taskId AND t.revision = :taskRevision AND t.phase = 'RUNNING'
+          )
+          AND EXISTS (
+              SELECT 1 FROM agent_plans p
+              WHERE p.taskId = :taskId AND p.planRevision = :planRevision
+          )
+          AND EXISTS (
+              SELECT 1 FROM agent_plan_steps s
+              WHERE s.taskId = :taskId AND s.stepId = :stepId
+                AND s.planRevision = :planRevision AND s.stepRevision = :stepRevision
+          )
+    """)
+    suspend fun rejectMcpInvocationApprovalRequest(
+        invocationId: String,
+        taskId: String,
+        taskRevision: Long,
+        planRevision: Long,
+        stepId: String,
+        stepRevision: Long,
+        nowMillis: Long
+    ): Int
+
+    @Query("UPDATE mcp_invocation_approval_requests SET status = 'EXPIRED', decidedAtEpochMillis = :nowMillis WHERE status = 'PENDING' AND expiresAtEpochMillis <= :nowMillis")
+    suspend fun expireMcpInvocationApprovalRequests(nowMillis: Long): Int
+
+
     /**
      * One conditional UPDATE is the atomic one-use claim. Every persisted binding
      * field must match the presented authorization and the expected current action.
