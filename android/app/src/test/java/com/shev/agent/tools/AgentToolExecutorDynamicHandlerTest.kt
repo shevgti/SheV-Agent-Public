@@ -9,9 +9,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AgentToolExecutorDynamicHandlerTest {
-    @Test fun dynamicallyRegisteredRemoteHandlerExecutesOnlyThroughDurableGate() = runBlocking {
-        val registry = AgentToolRegistry()
-        registry.register(
+    private fun registry() = AgentToolRegistry().apply {
+        register(
             AgentToolDescriptor(
                 "mcp.context7.search",
                 "Context7 search",
@@ -20,15 +19,25 @@ class AgentToolExecutorDynamicHandlerTest {
                 ToolInputSchema(listOf(ToolInputField("query", ToolInputType.STRING)))
             )
         )
+    }
+
+    private fun context() = McpInvocationExecutionContext(
+        "invocation-000001", "task-1", 1, 0, "step-1", 0
+    )
+
+    private fun wrapper(
+        block: suspend (String, AgentToolExecutionContext) -> AgentToolResult
+    ) = McpAuthorizedContextualSuspendingTool(ContextualSuspendingAgentTool(block))
+
+    @Test fun dynamicallyRegisteredRemoteHandlerExecutesOnlyWithDurableContext() = runBlocking {
+        val registry = registry()
         val executor = AgentToolExecutor(registry, emptyMap())
-        val expected = McpInvocationExecutionContext(
-            "invocation-000001", "task-1", 1, 0, "step-1", 0
-        )
+        val expected = context()
         var called = false
-        val handler = McpAuthorizedContextualSuspendingTool(ContextualSuspendingAgentTool { input, context ->
-            called = context.mcpInvocationContext == expected
+        val handler = wrapper { input, executionContext ->
+            called = executionContext.mcpInvocationContext == expected
             AgentToolResult(true, input)
-        })
+        }
         assertTrue(executor.registerMcpHandler("mcp.context7.search", handler))
         val result = executor.executeSuspending(
             AgentToolRequest(
@@ -47,39 +56,28 @@ class AgentToolExecutorDynamicHandlerTest {
     }
 
     @Test fun duplicateDynamicHandlerRegistrationIsRejected() {
-        val registry = AgentToolRegistry()
-        registry.register(
-            AgentToolDescriptor(
-                "mcp.context7.search", "Search", "Remote",
-                setOf(AgentCapability.REMOTE_MCP_OPERATION),
-                ToolInputSchema(listOf(ToolInputField("query", ToolInputType.STRING)))
-            )
-        )
-        val executor = AgentToolExecutor(registry, emptyMap())
-        val handler = McpAuthorizedContextualSuspendingTool(ContextualSuspendingAgentTool { input, _ -> AgentToolResult(true, input) }
+        val executor = AgentToolExecutor(registry(), emptyMap())
+        val handler = wrapper { input, _ -> AgentToolResult(true, input) }
         assertTrue(executor.registerMcpHandler("mcp.context7.search", handler))
         assertFalse(executor.registerMcpHandler("mcp.context7.search", handler))
     }
 
     @Test fun deactivationRemovesDynamicHandlerAndFailsClosed() = runBlocking {
-        val registry = AgentToolRegistry()
-        registry.register(
-            AgentToolDescriptor(
-                "mcp.context7.search", "Search", "Remote",
-                setOf(AgentCapability.REMOTE_MCP_OPERATION),
-                ToolInputSchema(listOf(ToolInputField("query", ToolInputType.STRING)))
-            )
-        )
+        val registry = registry()
         val executor = AgentToolExecutor(registry, emptyMap())
-        val handler = McpAuthorizedContextualSuspendingTool(ContextualSuspendingAgentTool { input, _ -> AgentToolResult(true, input) }
-        executor.registerMcpHandler("mcp.context7.search", handler)
+        val handler = wrapper { input, _ -> AgentToolResult(true, input) }
+        assertTrue(executor.registerMcpHandler("mcp.context7.search", handler))
         assertTrue(executor.unregisterMcpHandler("mcp.context7.search"))
-        val context = McpInvocationExecutionContext("invocation-000001", "task-1", 1, 0, "step-1", 0)
+        val expected = context()
         val result = executor.executeSuspending(
-            AgentToolRequest("mcp.context7.search", AgentCapability.REMOTE_MCP_OPERATION, """{"query":"x"}"""),
+            AgentToolRequest(
+                "mcp.context7.search",
+                AgentCapability.REMOTE_MCP_OPERATION,
+                """{"query":"x"}"""
+            ),
             AgentToolExecutionContext(
                 grantedCapabilities = setOf(AgentCapability.REMOTE_MCP_OPERATION),
-                mcpInvocationContext = context,
+                mcpInvocationContext = expected,
                 beforeMcpNetworkCall = { true }
             )
         )
@@ -90,15 +88,15 @@ class AgentToolExecutorDynamicHandlerTest {
         val registry = AgentToolRegistry()
         registry.register(
             AgentToolDescriptor(
-                "local.search", "Search", "Local",
+                "local.search",
+                "Search",
+                "Local",
                 setOf(AgentCapability.ANALYZE_DATA),
                 ToolInputSchema(listOf(ToolInputField("query", ToolInputType.STRING)))
             )
         )
         val executor = AgentToolExecutor(registry, emptyMap())
-        assertFalse(executor.registerMcpHandler(
-            "local.search",
-            ContextualSuspendingAgentTool { input, _ -> AgentToolResult(true, input) }
-        ))
+        val handler = wrapper { input, _ -> AgentToolResult(true, input) }
+        assertFalse(executor.registerMcpHandler("local.search", handler))
     }
 }
