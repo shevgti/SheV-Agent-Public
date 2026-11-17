@@ -4,6 +4,7 @@ import com.shev.agent.core.McpInvocationAuthorizationProvider
 import com.shev.agent.core.McpInvocationAuthorizationVerifier
 import com.shev.agent.core.McpServerProfile
 import com.shev.agent.core.RemoteMcpClient
+import com.shev.agent.data.McpProfileSource
 import com.shev.agent.security.KeystoreMcpCredentialProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -41,8 +42,11 @@ class McpConnectionManager(
     private val mutex = Mutex()
     private val active = linkedMapOf<String, ActiveConnection>()
 
-    suspend fun connect(profile: McpServerProfile): McpConnectionResult = mutex.withLock {
+    suspend fun connect(profileId: String): McpConnectionResult = mutex.withLock {
+        val profile = profiles.getProfile(profileId)
+            ?: return@withLock McpConnectionResult(McpConnectionStatus.PROFILE_NOT_FOUND)
         if (!profile.enabled) return@withLock McpConnectionResult(McpConnectionStatus.PROFILE_DISABLED)
+        if (profile.approvedToolNames.isEmpty()) return@withLock McpConnectionResult(McpConnectionStatus.NO_APPROVED_TOOLS)
         if (profile.id in active) return@withLock McpConnectionResult(McpConnectionStatus.ALREADY_CONNECTED)
 
         val installedHandlers = mutableListOf<String>()
