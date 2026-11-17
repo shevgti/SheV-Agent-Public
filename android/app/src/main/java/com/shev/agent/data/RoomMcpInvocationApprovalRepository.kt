@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import com.shev.agent.AgentPhase
 import com.shev.agent.core.McpInvocationBinding
 import com.shev.agent.core.McpInvocationExecutionContext
+import com.shev.agent.core.ToolRisk
 import java.util.UUID
 
 data class McpInvocationApprovalDraft(
@@ -245,7 +246,7 @@ class RoomMcpInvocationApprovalRepository(
             context.planRevision >= 0L && context.stepId.isNotBlank() && context.stepRevision >= 0L &&
             binding.profileId.isNotBlank() && binding.endpoint.isNotBlank() &&
             binding.nativeToolId.isNotBlank() && binding.toolName.isNotBlank() &&
-            draft.toolTitle.isNotBlank() && draft.risk.isNotBlank() &&
+            draft.toolTitle.isNotBlank() && draft.risk == ToolRisk.EXTERNAL_SIDE_EFFECT.name &&
             draft.toolDefinitionJson.length in 1..32_000 &&
             draft.argumentsJson.length in 1..32_000 &&
             draft.createdAtEpochMillis > 0L &&
