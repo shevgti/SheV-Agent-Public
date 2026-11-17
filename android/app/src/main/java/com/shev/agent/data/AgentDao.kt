@@ -142,6 +142,15 @@ interface AgentDao {
     suspend fun cancelUndispatchedPlanStepExecutions(taskId: String, nowMillis: Long): Int
 
     @Query("""
+        UPDATE mcp_invocation_approval_requests
+        SET status = 'EXPIRED',
+            decidedAtEpochMillis = :nowMillis,
+            authorizationNonceCiphertext = NULL
+        WHERE taskId = :taskId AND status IN ('PENDING', 'APPROVED')
+    """)
+    suspend fun invalidateMcpInvocationApprovalRequestsForTask(taskId: String, nowMillis: Long): Int
+
+    @Query("""
         UPDATE agent_tasks
         SET revision = :newRevision, updatedAtEpochMillis = :updatedAtEpochMillis
         WHERE id = :taskId AND revision = :expectedRevision
