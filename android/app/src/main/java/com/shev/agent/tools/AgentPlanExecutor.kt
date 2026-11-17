@@ -42,6 +42,12 @@ class AgentPlanExecutor(
         RoomAgentPlanExecutionRepository(database),
     private val planRepository: RoomAgentPlanRepository = RoomAgentPlanRepository(database)
 ) {
+    suspend fun startPlan(
+        taskId: String,
+        expectedTaskRevision: Long,
+        nowMillis: Long = System.currentTimeMillis()
+    ) = executionRepository.startPlan(taskId, expectedTaskRevision, nowMillis)
+
     suspend fun executeNext(
         taskId: String,
         grantedCapabilities: Set<AgentCapability>,
