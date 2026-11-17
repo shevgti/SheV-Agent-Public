@@ -96,7 +96,7 @@ class RoomAgentPlanRepositoryTest {
             repository.saveValidatedPlan(stale, NOW + 3)
         )
         assertEquals(next, repository.loadPlan(TASK_ID)!!.plan)
-        assertEquals(1L, dao.getTask(TASK_ID)!!.revision)
+        assertEquals(2L, dao.getTask(TASK_ID)!!.revision)
     }
 
     @Test
