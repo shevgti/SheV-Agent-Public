@@ -52,6 +52,33 @@ interface AgentDao {
         nowMillis: Long
     ): Int
 
+    @Query("SELECT * FROM agent_plans WHERE taskId = :taskId LIMIT 1")
+    suspend fun getAgentPlan(taskId: String): AgentPlanEntity?
+
+    @Upsert
+    suspend fun saveAgentPlan(plan: AgentPlanEntity)
+
+    @Query("SELECT * FROM agent_plan_steps WHERE taskId = :taskId ORDER BY stepId ASC")
+    suspend fun getAgentPlanSteps(taskId: String): List<AgentPlanStepEntity>
+
+    @Query("DELETE FROM agent_plan_steps WHERE taskId = :taskId")
+    suspend fun deleteAgentPlanSteps(taskId: String): Int
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAgentPlanSteps(steps: List<AgentPlanStepEntity>)
+
+    @Query("""
+        UPDATE agent_tasks
+        SET revision = :newRevision, updatedAtEpochMillis = :updatedAtEpochMillis
+        WHERE id = :taskId AND revision = :expectedRevision
+    """)
+    suspend fun advanceTaskRevision(
+        taskId: String,
+        expectedRevision: Long,
+        newRevision: Long,
+        updatedAtEpochMillis: Long
+    ): Int
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertMcpInvocationAuthorizationEvidence(evidence: McpInvocationAuthorizationEntity)
 
