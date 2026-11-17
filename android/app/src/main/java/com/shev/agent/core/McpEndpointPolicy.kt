@@ -71,9 +71,9 @@ object McpEndpointPolicy {
 
         if (bytes.size == 16) {
             val first = bytes[0].toInt() and 0xff
-            if (first == 0xff || first and 0xfe == 0xfc) return false // Multicast / ULA.
+            if (first == 0xff || (first and 0xfe) == 0xfc) return false // Multicast / ULA.
             // Only global-unicast 2000::/3 is admitted; exclude documentation 2001:db8::/32.
-            if (first and 0xe0 != 0x20) return false
+            if ((first and 0xe0) != 0x20) return false
             val second = bytes[1].toInt() and 0xff
             val third = bytes[2].toInt() and 0xff
             val fourth = bytes[3].toInt() and 0xff
