@@ -365,6 +365,14 @@ interface AgentDao {
     @Query("SELECT * FROM agent_events WHERE idempotencyKey = :key LIMIT 1")
     suspend fun findEventByIdempotencyKey(key: String): AgentEventEntity?
 
+    @Query("""
+        SELECT COUNT(*) FROM agent_events
+        WHERE taskId = :taskId
+          AND eventType = 'START_EXECUTION'
+          AND revision = :taskRevision
+    """)
+    suspend fun countPlanStartEvents(taskId: String, taskRevision: Long): Int
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun appendEvent(event: AgentEventEntity)
 
