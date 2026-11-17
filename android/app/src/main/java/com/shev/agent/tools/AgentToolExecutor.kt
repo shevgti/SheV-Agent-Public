@@ -191,17 +191,16 @@ class AgentToolExecutor(
             return AgentToolExecutionResult(AgentToolExecutionStatus.HANDLER_NOT_REGISTERED)
         }
 
-        if (request.capability != AgentCapability.REMOTE_MCP_OPERATION &&
-            context.beforeToolDispatch != null &&
-            !context.beforeToolDispatch.invoke()
-        ) {
-            return AgentToolExecutionResult(
-                AgentToolExecutionStatus.HANDLER_FAILED,
-                AgentToolResult(false, "Не удалось сохранить состояние шага перед запуском", "STEP_DISPATCH_NOT_PERSISTED")
-            )
-        }
-
         return try {
+            if (request.capability != AgentCapability.REMOTE_MCP_OPERATION &&
+                context.beforeToolDispatch != null &&
+                !context.beforeToolDispatch.invoke()
+            ) {
+                return AgentToolExecutionResult(
+                    AgentToolExecutionStatus.HANDLER_FAILED,
+                    AgentToolResult(false, "Не удалось сохранить состояние шага перед запуском", "STEP_DISPATCH_NOT_PERSISTED")
+                )
+            }
             AgentToolExecutionResult(
                 AgentToolExecutionStatus.COMPLETED,
                 contextualHandler?.execute(request.input, context)
