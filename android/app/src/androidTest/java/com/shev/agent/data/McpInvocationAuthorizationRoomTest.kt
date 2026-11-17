@@ -84,7 +84,7 @@ class McpInvocationAuthorizationRoomTest {
         val authorization = authorization(binding)
         dao.insertMcpInvocationAuthorizationEvidence(authorization.toEntity())
 
-        val verifier = RoomMcpInvocationAuthorizationVerifier(dao)
+        val verifier = RoomMcpInvocationAuthorizationVerifier(database)
         val changedArguments = binding.copy(argumentsSha256 = "b".repeat(64))
 
         assertFalse(verifier.consume(authorization, changedArguments, NOW + 1))
@@ -101,7 +101,7 @@ class McpInvocationAuthorizationRoomTest {
         val staleTask = authorization.copy(taskRevision = authorization.taskRevision + 1)
         val stalePlan = authorization.copy(planRevision = authorization.planRevision + 1)
         val staleStep = authorization.copy(stepRevision = authorization.stepRevision + 1)
-        val verifier = RoomMcpInvocationAuthorizationVerifier(dao)
+        val verifier = RoomMcpInvocationAuthorizationVerifier(database)
 
         assertFalse(verifier.consume(staleTask, binding, NOW + 1))
         assertFalse(verifier.consume(stalePlan, binding, NOW + 1))
@@ -115,7 +115,7 @@ class McpInvocationAuthorizationRoomTest {
         val authorization = authorization(binding)
         dao.insertMcpInvocationAuthorizationEvidence(authorization.toEntity())
 
-        val verifier = RoomMcpInvocationAuthorizationVerifier(dao)
+        val verifier = RoomMcpInvocationAuthorizationVerifier(database)
         assertFalse(verifier.consume(authorization, binding, authorization.expiresAtEpochMillis))
     }
 
