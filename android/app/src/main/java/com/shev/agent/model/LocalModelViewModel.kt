@@ -575,6 +575,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         },
                         SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to currentTimeHandler
                     ),
+                    maxInputChars = 24_000,
                     suspendingHandlers = mapOf(
                         SheVAgentAdkTools.CREATE_TASK_DRAFT_ID to taskDraftHandler,
                         SheVAgentAdkTools.CREATE_TASK_PLAN_ID to taskPlanHandler
