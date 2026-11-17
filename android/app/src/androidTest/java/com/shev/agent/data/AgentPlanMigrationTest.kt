@@ -15,7 +15,7 @@ import java.util.UUID
 @RunWith(AndroidJUnit4::class)
 class AgentPlanMigrationTest {
     @Test
-    fun migration10To14CreatesPlanTablesAndDefaultsLegacyMcpFingerprints() {
+    fun migration10To15CreatesPlanTablesAndDurableMcpApprovalRequests() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val databaseName = "agent-plan-migration-${UUID.randomUUID()}.db"
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
@@ -66,6 +66,7 @@ class AgentPlanMigrationTest {
             )
             MIGRATION_12_13.migrate(db)
             MIGRATION_13_14.migrate(db)
+            MIGRATION_14_15.migrate(db)
 
             val tables = db.query(
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
@@ -76,6 +77,7 @@ class AgentPlanMigrationTest {
             }
             assertTrue(tables.contains("agent_plans"))
             assertTrue(tables.contains("agent_plan_steps"))
+            assertTrue(tables.contains("mcp_invocation_approval_requests"))
 
             db.query(
                 "SELECT planRevision, toolDefinitionSha256 FROM mcp_invocation_authorizations WHERE invocationId = 'invocation-00000001'"
