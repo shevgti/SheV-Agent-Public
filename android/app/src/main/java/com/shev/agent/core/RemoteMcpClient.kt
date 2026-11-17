@@ -88,10 +88,14 @@ class RemoteMcpClient(
      */
     suspend fun callApprovedTool(
         toolName: String,
-        arguments: Map<String, Any?>
+        arguments: Map<String, Any?>,
+        authorizeThroughKernel: suspend (toolName: String, arguments: Map<String, Any?>) -> Boolean
     ): String = mutex.withLock {
         require(McpToolAllowlist.isAllowed(profile, toolName)) {
             "MCP tool is not explicitly approved"
+        }
+        require(authorizeThroughKernel(toolName, arguments)) {
+            "Agent Kernel denied this MCP tool invocation"
         }
         val client = checkNotNull(mcpClient) { "MCP server is not connected" }
         require(arguments.size <= MAX_ARGUMENTS) { "Too many MCP tool arguments" }
