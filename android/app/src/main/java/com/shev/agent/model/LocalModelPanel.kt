@@ -66,6 +66,13 @@ import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.DialogProperties
 import com.shev.agent.BuildConfig
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonArray
+import com.google.gson.JsonElement
+import com.google.gson.JsonNull
+import com.google.gson.JsonObject
+import com.google.gson.JsonPrimitive
+import com.google.gson.JsonParser
 import com.shev.agent.update.AppUpdate
 import com.shev.agent.update.AppUpdater
 import com.shev.agent.update.UpdateCheckWorker
@@ -1090,7 +1097,7 @@ private fun TaskApprovalInbox(
                                 )
                                 Text(step.purpose, style = MaterialTheme.typography.bodySmall)
                                 Text(
-                                    "Аргументы: ${step.argumentsJson}",
+                                    "Аргументы: ${safePlanArgumentsPreview(step.argumentsJson)}",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -1136,4 +1143,23 @@ private fun TaskApprovalInbox(
             }
         }
     }
+}
+
+
+private fun safePlanArgumentsPreview(source: String): String {
+    val parsed = runCatching { JsonParser.parseString(source) }.getOrNull() ?: return source
+    val sensitiveKey = Regex("(?i).*(token|password|secret|api[_-]?key|authorization|credential|private[_-]?key).*")
+
+    fun redact(value: JsonElement): JsonElement = when {
+        value is JsonObject -> JsonObject().apply {
+            value.entrySet().forEach { (key, nested) ->
+                add(key, if (sensitiveKey.matches(key)) JsonPrimitive("••••••") else redact(nested))
+            }
+        }
+        value is JsonArray -> JsonArray().apply { value.forEach { add(redact(it)) } }
+        value is JsonNull -> JsonNull.INSTANCE
+        else -> value.deepCopy()
+    }
+
+    return GsonBuilder().disableHtmlEscaping().create().toJson(redact(parsed))
 }
