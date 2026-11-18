@@ -66,6 +66,13 @@ import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.DialogProperties
 import com.shev.agent.BuildConfig
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonArray
+import com.google.gson.JsonElement
+import com.google.gson.JsonNull
+import com.google.gson.JsonObject
+import com.google.gson.JsonPrimitive
+import com.google.gson.JsonParser
 import com.shev.agent.update.AppUpdate
 import com.shev.agent.update.AppUpdater
 import com.shev.agent.update.UpdateCheckWorker
@@ -97,6 +104,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var lastSpokenMessageIndex by remember { mutableStateOf(-1) }
     var showVoicePicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showTaskInbox by remember { mutableStateOf(false) }
     val agentTeamPrefs = remember(context) { context.getSharedPreferences("shev_agent_team", android.content.Context.MODE_PRIVATE) }
     var enabledAgentRoles by remember { mutableStateOf(agentTeamPrefs.getStringSet("enabled_roles", null)?.toSet() ?: setOf("shev_researcher", "shev_planner", "shev_engineer", "shev_reviewer")) }
     var enabledAgentSkills by remember { mutableStateOf(agentTeamPrefs.getStringSet("enabled_skills", null)?.toSet() ?: SheVAgentModelFactory.DEFAULT_SKILLS) }
@@ -835,11 +843,34 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF16834A), contentColor = Color.White)
                 ) { Text("Обновить") }
             }
+            if (state.pendingTaskApprovals.isNotEmpty() || state.taskActionMessage != null || state.planExecutionMessage != null) {
+                TextButton(onClick = { showTaskInbox = !showTaskInbox }) {
+                    Text("Поручения ${state.pendingTaskApprovals.size}")
+                }
+            }
             IconButton(onClick = { showSettings = true }) {
                 Text("⚙", style = MaterialTheme.typography.titleLarge)
             }
         }
 
+        if (showTaskInbox) {
+            TaskApprovalInbox(
+                tasks = state.pendingTaskApprovals,
+                busyTaskId = state.taskActionBusyId,
+                message = state.taskActionMessage,
+                executionMessage = state.planExecutionMessage,
+                onApprove = viewModel::approveTask,
+                onCancel = viewModel::cancelTask,
+                onClose = { showTaskInbox = false }
+            )
+            McpInvocationApprovalInbox(
+                requests = state.pendingMcpInvocationApprovals,
+                busyInvocationId = state.mcpInvocationActionBusyId,
+                message = state.mcpInvocationActionMessage,
+                onApprove = viewModel::approveMcpInvocation,
+                onReject = viewModel::rejectMcpInvocation
+            )
+        }
 
         if (!state.ready && !state.useOmniRoute && !state.useOpenAI && !state.useGemini && !state.useOpenRouter) {
             Card(
@@ -1006,4 +1037,254 @@ private fun cleanTextForSpeech(source: String): String {
         .replace(Regex("https?://\\S+"), "")
         .replace(Regex("\\s+"), " ")
         .trim()
+}
+
+
+@Composable
+private fun TaskApprovalInbox(
+    tasks: List<PendingTaskApproval>,
+    busyTaskId: String?,
+    message: String?,
+    executionMessage: String?,
+    onApprove: (String, Long) -> Unit,
+    onCancel: (String, Long) -> Unit,
+    onClose: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Поручения на подтверждение",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                TextButton(onClick = onClose) { Text("Свернуть") }
+            }
+            if (tasks.isEmpty()) {
+                Text("Активных поручений сейчас нет.", style = MaterialTheme.typography.bodySmall)
+            }
+            tasks.forEach { item ->
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(item.task.title, fontWeight = FontWeight.SemiBold)
+                    val plan = item.plan
+                    if (plan == null) {
+                        Text(
+                            "План действий ещё не сохранён. Подтверждение пока недоступно.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Text(plan.plan.summary, style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            "Версия плана: ${plan.plan.revision} · ревизия поручения: ${item.task.revision}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        plan.plan.steps.forEachIndexed { index, step ->
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(start = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                val riskLabel = when (step.risk) {
+                                    com.shev.agent.core.ToolRisk.READ_ONLY -> "только чтение"
+                                    com.shev.agent.core.ToolRisk.REVERSIBLE_WRITE -> "обратимое изменение"
+                                    com.shev.agent.core.ToolRisk.EXTERNAL_SIDE_EFFECT -> "внешнее действие"
+                                    com.shev.agent.core.ToolRisk.CRITICAL -> "критическое действие"
+                                }
+                                Text(
+                                    "${index + 1}. ${step.toolId} · ${riskLabel}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(step.purpose, style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    "Аргументы: ${safePlanArgumentsPreview(step.argumentsJson)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    "Ожидаемый результат: ${step.expectedOutcome}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (step.dependsOn.isNotEmpty()) {
+                                    Text(
+                                        "После шагов: ${step.dependsOn.sorted().joinToString()}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            "Подтверждение запускает только зарегистрированные и разрешённые локальные шаги. Каждый удалённый MCP-вызов требует отдельного подтверждения с показом сервера, инструмента и аргументов.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
+                    val waitingForApproval = item.task.phase == com.shev.agent.AgentPhase.WAITING_APPROVAL.name
+                    val active = item.task.phase in setOf(
+                        com.shev.agent.AgentPhase.APPROVED.name,
+                        com.shev.agent.AgentPhase.RUNNING.name,
+                        com.shev.agent.AgentPhase.VERIFYING.name
+                    )
+                    Text(
+                        when (item.task.phase) {
+                            com.shev.agent.AgentPhase.APPROVED.name -> "Подтверждено · ожидает запуска"
+                            com.shev.agent.AgentPhase.RUNNING.name -> "Выполняется"
+                            com.shev.agent.AgentPhase.VERIFYING.name -> "Проверка результата"
+                            else -> "Ожидает подтверждения"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (waitingForApproval) {
+                            Button(
+                                enabled = plan != null && busyTaskId == null,
+                                onClick = { onApprove(item.task.id, item.task.revision) }
+                            ) {
+                                Text(if (busyTaskId == item.task.id) "Обрабатываю…" else "Подтвердить план")
+                            }
+                            TextButton(
+                                enabled = busyTaskId == null,
+                                onClick = { onCancel(item.task.id, item.task.revision) }
+                            ) { Text("Отклонить") }
+                        } else if (active) {
+                            TextButton(
+                                enabled = busyTaskId == null,
+                                onClick = { onCancel(item.task.id, item.task.revision) }
+                            ) { Text(if (busyTaskId == item.task.id) "Останавливаю…" else "Остановить") }
+                        }
+                    }
+                }
+                if (item != tasks.last()) {
+                    androidx.compose.material3.HorizontalDivider()
+                }
+            }
+            message?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            }
+            executionMessage?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun McpInvocationApprovalInbox(
+    requests: List<PendingMcpInvocationApproval>,
+    busyInvocationId: String?,
+    message: String?,
+    onApprove: (String) -> Unit,
+    onReject: (String) -> Unit
+) {
+    if (requests.isEmpty() && message == null) return
+    Card(
+        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                "Удалённые вызовы MCP",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (requests.isEmpty()) {
+                Text("Нет ожидающих подтверждения удалённых вызовов.", style = MaterialTheme.typography.bodySmall)
+            }
+            requests.forEach { item ->
+                val request = item.request
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(request.toolTitle, fontWeight = FontWeight.SemiBold)
+                    Text(request.toolDescription, style = MaterialTheme.typography.bodySmall)
+                    Text("Сервер: ${request.profileId}", style = MaterialTheme.typography.bodySmall)
+                    Text("Адрес: ${request.endpoint}", style = MaterialTheme.typography.bodySmall)
+                    Text("Инструмент: ${request.remoteToolName}", style = MaterialTheme.typography.bodySmall)
+                    Text("Внутренний ID: ${request.nativeToolId}", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "Риск по политике SheV: ВНЕШНЕЕ ДЕЙСТВИЕ · требуется отдельное подтверждение",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Задача ${request.taskId} · ревизия ${request.taskRevision}",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                    Text(
+                        "План ${request.planRevision} · шаг ${request.stepId} · ревизия шага ${request.stepRevision}",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                    Text("SHA-256 определения инструмента:", style = MaterialTheme.typography.labelSmall)
+                    Text(request.toolDefinitionSha256, style = MaterialTheme.typography.labelSmall)
+                    Text("SHA-256 аргументов:", style = MaterialTheme.typography.labelSmall)
+                    Text(request.argumentsSha256, style = MaterialTheme.typography.labelSmall)
+                    Text("Аргументы (секретные поля скрыты):", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelSmall)
+                    Text(
+                        item.argumentsJson?.let(::safePlanArgumentsPreview) ?: "Не удалось безопасно расшифровать аргументы.",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                    Text("Полное определение инструмента:", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelSmall)
+                    Text(
+                        item.toolDefinitionJson?.take(6_000) ?: "Не удалось расшифровать определение.",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                    if ((item.toolDefinitionJson?.length ?: 0) > 6_000) {
+                        Text("Показаны первые 6000 символов; полный отпечаток SHA-256 приведён выше.", style = MaterialTheme.typography.labelSmall)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            enabled = busyInvocationId == null &&
+                                item.argumentsJson != null && item.toolDefinitionJson != null,
+                            onClick = { onApprove(request.invocationId) }
+                        ) {
+                            Text(if (busyInvocationId == request.invocationId) "Подтверждаю…" else "Разрешить этот вызов")
+                        }
+                        TextButton(
+                            enabled = busyInvocationId == null,
+                            onClick = { onReject(request.invocationId) }
+                        ) { Text("Отклонить") }
+                    }
+                }
+                if (item != requests.last()) androidx.compose.material3.HorizontalDivider()
+            }
+            message?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            }
+        }
+    }
+}
+
+
+private fun safePlanArgumentsPreview(source: String): String {
+    val parsed = runCatching { JsonParser.parseString(source) }.getOrNull() ?: return source
+    val sensitiveKey = Regex("(?i).*(token|password|secret|api[_-]?key|authorization|credential|private[_-]?key).*")
+
+    fun redact(value: JsonElement): JsonElement = when {
+        value is JsonObject -> JsonObject().apply {
+            value.entrySet().forEach { (key, nested) ->
+                add(key, if (sensitiveKey.matches(key)) JsonPrimitive("••••••") else redact(nested))
+            }
+        }
+        value is JsonArray -> JsonArray().apply { value.forEach { add(redact(it)) } }
+        value is JsonNull -> JsonNull.INSTANCE
+        else -> value.deepCopy()
+    }
+
+    return GsonBuilder().disableHtmlEscaping().create().toJson(redact(parsed))
 }

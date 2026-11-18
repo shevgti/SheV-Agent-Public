@@ -6,6 +6,8 @@ import com.shev.agent.CapabilityPolicy
 import com.shev.agent.ScopedCapabilityGrant
 import com.shev.agent.PersistentGrantPolicy
 import com.shev.agent.PersistentGrantDecision
+import com.shev.agent.core.McpInvocationExecutionContext
+import java.util.concurrent.ConcurrentHashMap
 
 data class AgentToolRequest(
     val toolId: String,
@@ -28,11 +30,30 @@ fun interface SuspendingAgentTool {
     suspend fun execute(input: String): AgentToolResult
 }
 
+/** Context-aware adapter for operations that must bind to a persisted task step. */
+fun interface ContextualSuspendingAgentTool {
+    suspend fun execute(input: String, context: AgentToolExecutionContext): AgentToolResult
+}
+
+/**
+ * Internal trust wrapper created by McpToolRegistryBridge only.
+ * Arbitrary app/plugin handlers cannot register themselves as authorized remote MCP handlers.
+ */
+class McpAuthorizedContextualSuspendingTool internal constructor(
+    internal val delegate: ContextualSuspendingAgentTool
+)
+
 data class AgentToolExecutionContext(
     val grantedCapabilities: Set<AgentCapability>,
     val explicitlyApprovedCapabilities: Set<AgentCapability> = emptySet(),
     val persistentGrants: List<ScopedCapabilityGrant> = emptyList(),
-    val nowMillis: Long = System.currentTimeMillis()
+    val nowMillis: Long = System.currentTimeMillis(),
+    /** Set only by the trusted task executor from persisted plan/step state. */
+    val mcpInvocationContext: McpInvocationExecutionContext? = null,
+    /** Persist the step as DISPATCHED after approval consumption and before network I/O. */
+    val beforeMcpNetworkCall: (suspend (McpInvocationExecutionContext) -> Boolean)? = null,
+    /** Persist a non-MCP step as DISPATCHED after policy/schema checks and before its handler runs. */
+    val beforeToolDispatch: (suspend () -> Boolean)? = null
 )
 
 enum class AgentToolExecutionStatus {
@@ -52,10 +73,29 @@ data class AgentToolExecutionResult(
  */
 class AgentToolExecutor(
     private val registry: AgentToolRegistry,
-    private val handlers: Map<String, AgentTool>,
+    handlers: Map<String, AgentTool>,
     private val maxInputChars: Int = DEFAULT_MAX_INPUT_CHARS,
-    private val suspendingHandlers: Map<String, SuspendingAgentTool> = emptyMap()
+    suspendingHandlers: Map<String, SuspendingAgentTool> = emptyMap(),
+    mcpHandlers: Map<String, McpAuthorizedContextualSuspendingTool> = emptyMap()
 ) {
+    private val handlers = ConcurrentHashMap<String, AgentTool>().apply { putAll(handlers) }
+    private val suspendingHandlers = ConcurrentHashMap<String, SuspendingAgentTool>().apply { putAll(suspendingHandlers) }
+    private val mcpHandlers =
+        ConcurrentHashMap<String, McpAuthorizedContextualSuspendingTool>().apply { putAll(mcpHandlers) }
+
+    /** Only the kernel's MCP bridge may attach this internal authorization wrapper. */
+    internal fun registerMcpHandler(
+        toolId: String,
+        handler: McpAuthorizedContextualSuspendingTool
+    ): Boolean {
+        val descriptor = registry.find(toolId) ?: return false
+        if (descriptor.capabilities != setOf(AgentCapability.REMOTE_MCP_OPERATION)) return false
+        return mcpHandlers.putIfAbsent(toolId, handler) == null
+    }
+
+    /** Removes the dynamic handler; callers must also unregister its descriptor. */
+    internal fun unregisterMcpHandler(toolId: String): Boolean =
+        mcpHandlers.remove(toolId) != null
     init {
         require(maxInputChars in 1..MAX_ALLOWED_INPUT_CHARS) {
             "Лимит входных данных должен быть от 1 до $MAX_ALLOWED_INPUT_CHARS символов"
@@ -69,6 +109,11 @@ class AgentToolExecutor(
         val descriptor = registry.find(request.toolId)
             ?: return AgentToolExecutionResult(AgentToolExecutionStatus.TOOL_NOT_FOUND)
 
+        // Remote MCP must use the contextual suspending bridge and its per-call durable gate.
+        if (request.capability == AgentCapability.REMOTE_MCP_OPERATION) {
+            return AgentToolExecutionResult(AgentToolExecutionStatus.ACCESS_DENIED)
+        }
+
         if (request.capability !in descriptor.capabilities) {
             return AgentToolExecutionResult(AgentToolExecutionStatus.CAPABILITY_NOT_DECLARED)
         }
@@ -78,8 +123,10 @@ class AgentToolExecutor(
                 request.capability, target, context.persistentGrants, context.nowMillis
             ) == PersistentGrantDecision.ALLOW
         } ?: false
-        val hasGrant = request.capability in context.grantedCapabilities || persistentGrantMatches
-        val approved = request.capability in context.explicitlyApprovedCapabilities || persistentGrantMatches
+        val hasGrant = request.capability in context.grantedCapabilities ||
+            (persistentGrantMatches && request.capability != AgentCapability.REMOTE_MCP_OPERATION)
+        val approved = request.capability in context.explicitlyApprovedCapabilities ||
+            (persistentGrantMatches && request.capability != AgentCapability.REMOTE_MCP_OPERATION)
         when (CapabilityPolicy.decide(request.capability, approved, hasGrant)) {
             ApprovalDecision.DENY ->
                 return AgentToolExecutionResult(AgentToolExecutionStatus.ACCESS_DENIED)
@@ -126,6 +173,15 @@ class AgentToolExecutor(
         val descriptor = registry.find(request.toolId)
             ?: return AgentToolExecutionResult(AgentToolExecutionStatus.TOOL_NOT_FOUND)
 
+        val contextualHandler = mcpHandlers[request.toolId]?.delegate
+        val hasDurableRemoteGate = request.capability == AgentCapability.REMOTE_MCP_OPERATION &&
+            contextualHandler != null &&
+            context.mcpInvocationContext != null &&
+            context.beforeMcpNetworkCall != null
+        if (request.capability == AgentCapability.REMOTE_MCP_OPERATION && !hasDurableRemoteGate) {
+            return AgentToolExecutionResult(AgentToolExecutionStatus.ACCESS_DENIED)
+        }
+
         if (request.capability !in descriptor.capabilities) {
             return AgentToolExecutionResult(AgentToolExecutionStatus.CAPABILITY_NOT_DECLARED)
         }
@@ -135,8 +191,11 @@ class AgentToolExecutor(
                 request.capability, target, context.persistentGrants, context.nowMillis
             ) == PersistentGrantDecision.ALLOW
         } ?: false
-        val hasGrant = request.capability in context.grantedCapabilities || persistentGrantMatches
-        val approved = request.capability in context.explicitlyApprovedCapabilities || persistentGrantMatches
+        val hasGrant = request.capability in context.grantedCapabilities ||
+            (persistentGrantMatches && request.capability != AgentCapability.REMOTE_MCP_OPERATION)
+        val approved = request.capability in context.explicitlyApprovedCapabilities ||
+            (persistentGrantMatches && request.capability != AgentCapability.REMOTE_MCP_OPERATION) ||
+            hasDurableRemoteGate
         when (CapabilityPolicy.decide(request.capability, approved, hasGrant)) {
             ApprovalDecision.DENY ->
                 return AgentToolExecutionResult(AgentToolExecutionStatus.ACCESS_DENIED)
@@ -156,12 +215,26 @@ class AgentToolExecutor(
         }
 
         val handler = suspendingHandlers[request.toolId]
-            ?: return AgentToolExecutionResult(AgentToolExecutionStatus.HANDLER_NOT_REGISTERED)
+        val synchronousHandler = handlers[request.toolId]
+        if (contextualHandler == null && handler == null && synchronousHandler == null) {
+            return AgentToolExecutionResult(AgentToolExecutionStatus.HANDLER_NOT_REGISTERED)
+        }
 
         return try {
+            if (request.capability != AgentCapability.REMOTE_MCP_OPERATION &&
+                context.beforeToolDispatch != null &&
+                !context.beforeToolDispatch.invoke()
+            ) {
+                return AgentToolExecutionResult(
+                    AgentToolExecutionStatus.HANDLER_FAILED,
+                    AgentToolResult(false, "Не удалось сохранить состояние шага перед запуском", "STEP_DISPATCH_NOT_PERSISTED")
+                )
+            }
             AgentToolExecutionResult(
                 AgentToolExecutionStatus.COMPLETED,
-                handler.execute(request.input)
+                contextualHandler?.execute(request.input, context)
+                    ?: handler?.execute(request.input)
+                    ?: synchronousHandler!!.execute(request.input)
             )
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled

@@ -11,7 +11,9 @@ data class AgentToolDescriptor(
     val title: String,
     val description: String,
     val capabilities: Set<AgentCapability>,
-    val inputSchema: ToolInputSchema? = null
+    val inputSchema: ToolInputSchema? = null,
+    /** False for orchestration/meta-tools that must never appear inside a task plan. */
+    val planExecutable: Boolean = false
 ) {
     init {
         require(id.matches(Regex("[a-z][a-z0-9_.-]{1,63}"))) { "Некорректный идентификатор инструмента: $id" }
@@ -28,6 +30,7 @@ data class AgentToolDescriptor(
 class AgentToolRegistry {
     private val tools = linkedMapOf<String, AgentToolDescriptor>()
 
+    @Synchronized
     fun register(descriptor: AgentToolDescriptor) {
         require(!tools.containsKey(descriptor.id)) {
             "Инструмент с идентификатором '${descriptor.id}' уже зарегистрирован"
@@ -35,10 +38,17 @@ class AgentToolRegistry {
         tools[descriptor.id] = descriptor
     }
 
+    /** Removes a descriptor so disabled plugins cannot be resolved for execution. */
+    @Synchronized
+    fun unregister(id: String): Boolean = tools.remove(id) != null
+
+    @Synchronized
     fun find(id: String): AgentToolDescriptor? = tools[id]
 
+    @Synchronized
     fun list(): List<AgentToolDescriptor> = tools.values.toList()
 
+    @Synchronized
     fun findSupporting(capability: AgentCapability): List<AgentToolDescriptor> =
         tools.values.filter { capability in it.capabilities }
 }

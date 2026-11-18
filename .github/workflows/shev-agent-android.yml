@@ -2,6 +2,7 @@ name: SheV Agent Android
 
 on:
   push:
+    branches: [main]
     paths:
       - 'android/**'
       - '.github/workflows/shev-agent-android.yml'
@@ -21,7 +22,7 @@ on:
 
 concurrency:
   group: shev-agent-android-v2-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -63,6 +64,9 @@ jobs:
         env:
           GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
         run: gradle testDebugUnitTest --stacktrace
+      - name: Compile Android instrumentation tests
+        working-directory: android
+        run: gradle compileDebugAndroidTestKotlin --stacktrace
       - name: Assemble debug APK with injected versionCode
         working-directory: android
         env:

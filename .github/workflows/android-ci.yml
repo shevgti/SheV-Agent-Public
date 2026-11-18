@@ -14,6 +14,10 @@ on:
       - ".github/workflows/android-ci.yml"
   workflow_dispatch:
 
+concurrency:
+  group: android-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -39,6 +43,10 @@ jobs:
       - name: Run unit tests
         working-directory: android
         run: gradle --no-daemon testDebugUnitTest
+
+      - name: Compile Android instrumentation tests
+        working-directory: android
+        run: gradle --no-daemon compileDebugAndroidTestKotlin
 
       - name: Assemble debug APK
         working-directory: android

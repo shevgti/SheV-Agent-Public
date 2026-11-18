@@ -8,15 +8,36 @@ import com.google.adk.kt.events.Event
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.shev.agent.AgentCapability
+import com.shev.agent.AgentPhase
+import com.shev.agent.AgentWorkflowCommand
+import com.shev.agent.core.AgentPlan
+import com.shev.agent.core.PlanStep
+import com.shev.agent.core.ToolRisk
 import com.shev.agent.data.ConversationMessageEntity
 import com.shev.agent.data.ConversationStateRepository
 import com.shev.agent.data.ConversationSummaryRead
 import com.shev.agent.data.AgentTaskDraftRequest
 import com.shev.agent.data.AgentTaskDraftResult
+import com.shev.agent.data.AgentTaskEntity
+import com.shev.agent.data.AgentTaskRepositoryResult
+import com.shev.agent.data.AgentTaskRepositoryRejection
+import com.shev.agent.data.AgentTaskTransitionRequest
+import com.shev.agent.data.PersistedAgentPlan
+import com.shev.agent.data.AgentPlanSaveResult
+import com.shev.agent.data.McpInvocationApprovalRequestEntity
+import com.shev.agent.data.McpInvocationApprovalResult
+import com.shev.agent.data.RoomMcpInvocationApprovalRepository
+import com.shev.agent.data.RoomAgentPlanRepository
+import com.shev.agent.data.RoomAgentPlanExecutionRepository
 import com.shev.agent.data.RoomAgentTaskAuthorizationVerifier
 import com.shev.agent.data.RoomAgentTaskRepository
 import com.shev.agent.data.LocalMessageCipher
 import com.shev.agent.data.SheVAgentDatabaseProvider
+import com.shev.agent.tools.AgentPlanToolValidator
+import com.shev.agent.tools.AgentPlanExecutor
+import com.shev.agent.tools.AgentPlanRunner
+import com.shev.agent.tools.AgentPlanRunResult
+import com.shev.agent.tools.AgentPlanRunStatus
 import com.shev.agent.tools.AgentTool
 import com.shev.agent.tools.LocalTimeTool
 import com.shev.agent.tools.SuspendingAgentTool
@@ -38,8 +59,20 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+data class PendingTaskApproval(
+    val task: AgentTaskEntity,
+    val plan: PersistedAgentPlan?
+)
+
+data class PendingMcpInvocationApproval(
+    val request: McpInvocationApprovalRequestEntity,
+    val toolDefinitionJson: String?,
+    val argumentsJson: String?
+)
 
 data class LocalModelUiState(
     val verified: Boolean = false,
@@ -54,7 +87,14 @@ data class LocalModelUiState(
     val backendName: String? = null,
     val deviceSummary: String = "Проверяю характеристики устройства…",
     val prompt: String = "",
-    val messages: List<String> = emptyList()
+    val messages: List<String> = emptyList(),
+    val pendingTaskApprovals: List<PendingTaskApproval> = emptyList(),
+    val taskActionBusyId: String? = null,
+    val taskActionMessage: String? = null,
+    val planExecutionMessage: String? = null,
+    val pendingMcpInvocationApprovals: List<PendingMcpInvocationApproval> = emptyList(),
+    val mcpInvocationActionBusyId: String? = null,
+    val mcpInvocationActionMessage: String? = null
 )
 
 /** Owns the native runtime for the Activity lifetime, not a recyclable Compose list item. */
@@ -63,6 +103,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private val database = SheVAgentDatabaseProvider.get(application.applicationContext)
     private val dao = database.agentDao()
     private val conversationStateRepository = ConversationStateRepository(database)
+    private val mcpInvocationApprovalRepository = RoomMcpInvocationApprovalRepository(database)
     private val taskRepository = RoomAgentTaskRepository(
         database,
         RoomAgentTaskAuthorizationVerifier(dao)
@@ -70,8 +111,10 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private val mutableState = MutableStateFlow(LocalModelUiState())
     val state: StateFlow<LocalModelUiState> = mutableState.asStateFlow()
     private var runtime: SheVAgentRuntime? = null
+    @Volatile private var planRunner: AgentPlanRunner? = null
     private var downloadJob: Job? = null
     private var responseJob: Job? = null
+    @Volatile private var pendingPlanTaskId: String? = null
 
     init {
         val gatewayPreferences = application.getSharedPreferences("shev_omniroute", Application.MODE_PRIVATE)
@@ -83,6 +126,33 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val useOpenAI = !useOpenRouter && !useGemini && openAiPreferences.getBoolean("use_for_primary_chat", false)
         val useOmniRoute = !useOpenRouter && !useGemini && !useOpenAI && gatewayPreferences.getBoolean("use_for_primary_chat", false)
         mutableState.update { it.copy(useOmniRoute = useOmniRoute, useOpenAI = useOpenAI, useGemini = useGemini, useOpenRouter = useOpenRouter) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val planRepository = RoomAgentPlanRepository(database)
+            dao.observeTasks().collect { tasks ->
+                val pending = tasks
+                    .filter { it.phase in setOf(
+                        AgentPhase.WAITING_APPROVAL.name,
+                        AgentPhase.APPROVED.name,
+                        AgentPhase.RUNNING.name,
+                        AgentPhase.VERIFYING.name
+                    ) }
+                    .map { task -> PendingTaskApproval(task, planRepository.loadPlan(task.id)) }
+                mutableState.update { it.copy(pendingTaskApprovals = pending) }
+            }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            dao.observePendingMcpInvocationApprovalRequests().collect { requests ->
+                val pending = requests.map { request ->
+                    val content = mcpInvocationApprovalRepository.readSensitiveReviewContent(request.invocationId)
+                    PendingMcpInvocationApproval(
+                        request = request,
+                        toolDefinitionJson = content?.first,
+                        argumentsJson = content?.second
+                    )
+                }
+                mutableState.update { it.copy(pendingMcpInvocationApprovals = pending) }
+            }
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val deviceSummary = DeviceDiagnostics.summary(getApplication())
             val available = store.findVerifiedModel() != null
@@ -109,6 +179,136 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 }
             }
+        }
+    }
+
+    /** Approves only a persisted task that already has a canonical validated plan. */
+    fun approveTask(taskId: String, expectedRevision: Long) {
+        if (taskId.isBlank() || expectedRevision < 0L || mutableState.value.taskActionBusyId != null) return
+        mutableState.update { it.copy(taskActionBusyId = taskId, taskActionMessage = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val message = try {
+                val plan = RoomAgentPlanRepository(database).loadPlan(taskId)
+                if (plan == null) {
+                    "Подтверждение отклонено: у поручения ещё нет сохранённого плана."
+                } else {
+                    val now = System.currentTimeMillis()
+                    val result = taskRepository.approveFromUser(
+                        taskId = taskId,
+                        expectedRevision = expectedRevision,
+                        eventId = UUID.nameUUIDFromBytes("approve:$taskId:$expectedRevision".toByteArray()).toString(),
+                        idempotencyKey = "task-approve:$taskId:$expectedRevision",
+                        occurredAtEpochMillis = now
+                    )
+                    when (result) {
+                        is AgentTaskRepositoryResult.Applied ->
+                            startAndRunApprovedPlan(taskId, result.state.revision)
+                        is AgentTaskRepositoryResult.Replayed ->
+                            "Это подтверждение уже было зарегистрировано ранее."
+                        is AgentTaskRepositoryResult.Rejected ->
+                            when (result.reason) {
+                                AgentTaskRepositoryRejection.INVALID_REVISION -> "План изменился. Обнови список и проверь его заново."
+                                AgentTaskRepositoryRejection.INVALID_PHASE -> "Это поручение уже нельзя подтвердить в текущем состоянии."
+                                AgentTaskRepositoryRejection.INVALID_APPROVAL_EVIDENCE -> "Не удалось проверить одноразовое подтверждение."
+                                AgentTaskRepositoryRejection.PLAN_REQUIRED -> "Сначала нужно сформировать и сохранить план действий."
+                                else -> "Подтверждение отклонено: ${result.reason.name}."
+                            }
+                        AgentTaskRepositoryResult.NotFound -> "Поручение больше не найдено."
+                        AgentTaskRepositoryResult.IdempotencyConflict -> "Обнаружен конфликт повторного подтверждения."
+                    }
+                }
+            } catch (failure: Exception) {
+                "Не удалось подтвердить поручение: ${failure.message ?: failure.javaClass.simpleName}"
+            }
+            mutableState.update { it.copy(taskActionBusyId = null, taskActionMessage = message) }
+        }
+    }
+
+    /** Rejects a waiting task without dispatching any tool or external action. */
+    fun cancelTask(taskId: String, expectedRevision: Long) {
+        if (taskId.isBlank() || expectedRevision < 0L || mutableState.value.taskActionBusyId != null) return
+        mutableState.update { it.copy(taskActionBusyId = taskId, taskActionMessage = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            val message = runCatching {
+                val currentTask = dao.getTask(taskId)
+                    ?: return@runCatching "Поручение больше не найдено."
+                val runner = planRunner
+                when (currentTask.phase) {
+                    AgentPhase.RUNNING.name -> {
+                        val cancelled = if (runner != null) {
+                            runner.cancelTask(taskId, expectedRevision)
+                        } else {
+                            RoomAgentPlanExecutionRepository(database).cancelTask(taskId, expectedRevision, now)
+                        }
+                        if (cancelled) "Поручение остановлено. Неотправленные шаги отменены; отправленные с неизвестным результатом не будут повторены."
+                        else "Не удалось остановить поручение: состояние изменилось или отмена уже невозможна."
+                    }
+                    AgentPhase.APPROVED.name -> {
+                        val cancelled = runner?.cancelTask(taskId, expectedRevision)
+                        if (cancelled == true) "Подтверждённое поручение остановлено."
+                        else if (cancelled == false) "Не удалось остановить поручение: состояние изменилось."
+                        else "Не удалось остановить поручение: исполнитель ещё не подключён."
+                    }
+                    else -> when (val result = taskRepository.transition(
+                        AgentTaskTransitionRequest(
+                            taskId = taskId,
+                            command = AgentWorkflowCommand.CANCEL,
+                            expectedRevision = expectedRevision,
+                            eventId = UUID.nameUUIDFromBytes("cancel:$taskId:$expectedRevision".toByteArray()).toString(),
+                            idempotencyKey = "task-cancel:$taskId:$expectedRevision",
+                            occurredAtEpochMillis = now
+                        )
+                    )) {
+                        is AgentTaskRepositoryResult.Applied -> "Поручение отклонено. Никакие действия не выполнялись."
+                        is AgentTaskRepositoryResult.Replayed -> "Отклонение этого поручения уже зарегистрировано."
+                        is AgentTaskRepositoryResult.Rejected -> "Не удалось отклонить поручение: ${result.reason.name}."
+                        AgentTaskRepositoryResult.NotFound -> "Поручение больше не найдено."
+                        AgentTaskRepositoryResult.IdempotencyConflict -> "Обнаружен конфликт отклонения поручения."
+                    }
+                }
+            }.getOrElse { failure ->
+                "Не удалось остановить поручение: ${failure.message ?: failure.javaClass.simpleName}."
+            }
+            mutableState.update { it.copy(taskActionBusyId = null, taskActionMessage = message) }
+        }
+    }
+
+    /** Approves one exact remote MCP action after checking its persisted task/plan/step binding. */
+    fun approveMcpInvocation(invocationId: String) {
+        if (invocationId.isBlank() || mutableState.value.mcpInvocationActionBusyId != null) return
+        mutableState.update { it.copy(mcpInvocationActionBusyId = invocationId, mcpInvocationActionMessage = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                mcpInvocationApprovalRepository.approve(invocationId, System.currentTimeMillis())
+            }.getOrElse { McpInvocationApprovalResult.CONFLICT }
+            val message = when (result) {
+                McpInvocationApprovalResult.APPROVED -> "Удалённый вызов подтверждён. Он продолжится только в рамках этого точного разрешения."
+                McpInvocationApprovalResult.EXPIRED -> "Срок запроса истёк. Нужно запросить новое подтверждение."
+                McpInvocationApprovalResult.STALE -> "Задача или шаг изменились. Старое подтверждение недействительно."
+                McpInvocationApprovalResult.NOT_FOUND -> "Запрос подтверждения больше не найден."
+                else -> "Не удалось подтвердить удалённый вызов: ${result.name}."
+            }
+            mutableState.update { it.copy(mcpInvocationActionBusyId = null, mcpInvocationActionMessage = message) }
+        }
+    }
+
+    /** Rejects one exact remote MCP action; no remote call is dispatched. */
+    fun rejectMcpInvocation(invocationId: String) {
+        if (invocationId.isBlank() || mutableState.value.mcpInvocationActionBusyId != null) return
+        mutableState.update { it.copy(mcpInvocationActionBusyId = invocationId, mcpInvocationActionMessage = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                mcpInvocationApprovalRepository.reject(invocationId, System.currentTimeMillis())
+            }.getOrElse { McpInvocationApprovalResult.CONFLICT }
+            val message = when (result) {
+                McpInvocationApprovalResult.REJECTED -> "Удалённый вызов отклонён. Инструмент не запускался."
+                McpInvocationApprovalResult.EXPIRED -> "Срок запроса уже истёк."
+                McpInvocationApprovalResult.STALE -> "Задача или шаг изменились. Запрос больше нельзя отклонить как актуальный."
+                McpInvocationApprovalResult.NOT_FOUND -> "Запрос подтверждения больше не найден."
+                else -> "Не удалось отклонить удалённый вызов: ${result.name}."
+            }
+            mutableState.update { it.copy(mcpInvocationActionBusyId = null, mcpInvocationActionMessage = message) }
         }
     }
 
@@ -295,7 +495,24 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                             capabilities = setOf(AgentCapability.ANALYZE_DATA),
                             inputSchema = ToolInputSchema(
                                 listOf(ToolInputField("query", ToolInputType.STRING, required = false, maxLength = 32))
-                            )
+                            ),
+                            planExecutable = false
+                        )
+                    )
+                    register(
+                        AgentToolDescriptor(
+                            id = SheVAgentAdkTools.CREATE_TASK_PLAN_ID,
+                            title = "Сохранить план поручения",
+                            description = "Проверяет и сохраняет план для последнего созданного черновика; ничего не запускает",
+                            capabilities = setOf(AgentCapability.CREATE_DRAFT),
+                            inputSchema = ToolInputSchema(
+                                listOf(
+                                    ToolInputField("task_id", ToolInputType.STRING, required = true, maxLength = 64),
+                                    ToolInputField("summary", ToolInputType.STRING, required = true, maxLength = 2_000),
+                                    ToolInputField("steps_json", ToolInputType.STRING, required = true, maxLength = 6_000)
+                                )
+                            ),
+                            planExecutable = false
                         )
                     )
                     register(
@@ -312,7 +529,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                                     maxLength = 8,
                                     allowedValues = setOf("now")
                                 ))
-                            )
+                            ),
+                            planExecutable = true
                         )
                     )
                     register(
@@ -323,7 +541,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                             capabilities = setOf(AgentCapability.CREATE_DRAFT),
                             inputSchema = ToolInputSchema(
                                 listOf(ToolInputField("title", ToolInputType.STRING, required = true, maxLength = 2_000))
-                            )
+                            ),
+                            planExecutable = false
                         )
                     )
                 }
@@ -349,17 +568,105 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                                 occurredAtEpochMillis = now
                             )
                         )) {
-                            is AgentTaskDraftResult.Created -> AgentToolResult(
-                                true,
-                                "Черновик поручения «${result.state.task.title}» сохранён. Он ожидает подтверждения во вкладке «Память». Никакое действие не запускалось."
-                            )
-                            is AgentTaskDraftResult.Replayed -> AgentToolResult(
-                                true,
-                                "Это поручение уже сохранено и ожидает подтверждения во вкладке «Память». Повторная запись не создана."
-                            )
+                            is AgentTaskDraftResult.Created -> {
+                                pendingPlanTaskId = taskId
+                                AgentToolResult(
+                                    true,
+                                    "Черновик поручения «${result.state.task.title}» сохранён. ID поручения: $taskId. Теперь подготовь и сохрани план через save_task_plan. Никакое действие не запускалось."
+                                )
+                            }
+                            is AgentTaskDraftResult.Replayed -> {
+                                pendingPlanTaskId = taskId
+                                AgentToolResult(
+                                    true,
+                                    "Это поручение уже сохранено. ID поручения: $taskId. Подготовь и сохрани план через save_task_plan. Повторная запись не создана."
+                                )
+                            }
                             AgentTaskDraftResult.InvalidRequest -> AgentToolResult(false, "Поручение не сохранено: некорректный запрос.", "INVALID_REQUEST")
                             AgentTaskDraftResult.Conflict -> AgentToolResult(false, "Поручение не сохранено: обнаружен конфликт записи.", "CONFLICT")
                             AgentTaskDraftResult.NotFound -> AgentToolResult(false, "Поручение не найдено после записи.", "NOT_FOUND")
+                        }
+                    }
+                }
+                val taskPlanHandler = SuspendingAgentTool { input ->
+                    val payload = runCatching { JsonParser.parseString(input).asJsonObject }.getOrNull()
+                    val taskId = payload?.get("task_id")?.takeIf { it.isJsonPrimitive }?.asString
+                    val summary = payload?.get("summary")?.takeIf { it.isJsonPrimitive }?.asString
+                    val stepsJson = payload?.get("steps_json")?.takeIf { it.isJsonPrimitive }?.asString
+                    if (taskId.isNullOrBlank() || summary.isNullOrBlank() || stepsJson.isNullOrBlank()) {
+                        AgentToolResult(false, "План не сохранён: отсутствуют обязательные поля.", "INVALID_PLAN_REQUEST")
+                    } else if (taskId != pendingPlanTaskId) {
+                        AgentToolResult(false, "План можно сохранить только для последнего черновика, созданного в этом сеансе.", "TASK_DRAFT_MISMATCH")
+                    } else {
+                        val steps = runCatching {
+                            val array = JsonParser.parseString(stepsJson).asJsonArray
+                            array.map { element ->
+                                val step = element.asJsonObject
+                                require(step.keySet().all { it in setOf(
+                                    "id", "toolId", "argumentsJson", "dependsOn", "risk",
+                                    "purpose", "expectedOutcome", "timeoutMillis"
+                                ) }) { "Unknown plan step field" }
+                                val dependencyValue = step.get("dependsOn")
+                                require(dependencyValue == null || dependencyValue.isJsonArray) {
+                                    "dependsOn must be a JSON array"
+                                }
+                                val dependencies = dependencyValue?.asJsonArray
+                                    ?.map { it.asString }?.toSet().orEmpty()
+                                PlanStep(
+                                    id = step.get("id").asString,
+                                    toolId = step.get("toolId").asString,
+                                    argumentsJson = step.get("argumentsJson").asString,
+                                    dependsOn = dependencies,
+                                    risk = ToolRisk.valueOf(step.get("risk").asString),
+                                    purpose = step.get("purpose").asString,
+                                    expectedOutcome = step.get("expectedOutcome").asString,
+                                    timeoutMillis = step.get("timeoutMillis")?.asLong ?: 30_000L
+                                )
+                            }
+                        }.getOrNull()
+                        if (steps.isNullOrEmpty()) {
+                            AgentToolResult(false, "План не сохранён: список шагов пуст или имеет неверный формат.", "INVALID_PLAN")
+                        } else {
+                            val previousPlan = dao.getAgentPlan(taskId)
+                            val nextRevision = if (previousPlan == null) 0L else {
+                                if (previousPlan.planRevision == Long.MAX_VALUE) Long.MAX_VALUE
+                                else previousPlan.planRevision + 1L
+                            }
+                            val plan = runCatching {
+                                AgentPlan(
+                                    taskId = taskId,
+                                    revision = nextRevision,
+                                    summary = summary,
+                                    steps = steps
+                                )
+                            }.getOrNull()
+                            if (plan == null || nextRevision == Long.MAX_VALUE) {
+                                AgentToolResult(false, "План не сохранён: нарушена структура плана или исчерпана ревизия.", "INVALID_PLAN")
+                            } else {
+                                val validation = AgentPlanToolValidator.validate(plan, registry)
+                                if (!validation.accepted) {
+                                    AgentToolResult(
+                                        false,
+                                        "${validation.reason ?: "Проверка плана не пройдена."} Шаг: ${validation.stepId ?: "неизвестен"}.",
+                                        "PLAN_VALIDATION_FAILED"
+                                    )
+                                } else {
+                                    when (val saved = RoomAgentPlanRepository(database).saveValidatedPlan(plan, System.currentTimeMillis())) {
+                                        AgentPlanSaveResult.STORED -> {
+                                            pendingPlanTaskId = null
+                                            val currentTask = dao.getTask(taskId)
+                                            AgentToolResult(
+                                                true,
+                                                "План сохранён и проверен. Ревизия плана: ${plan.revision}; ревизия поручения: ${currentTask?.revision ?: "неизвестна"}. Покажи пользователю план в разделе «Поручения» и дождись его подтверждения. Никакие инструменты не запускались."
+                                            )
+                                        }
+                                        AgentPlanSaveResult.TASK_NOT_FOUND -> AgentToolResult(false, "План не сохранён: поручение не найдено.", "TASK_NOT_FOUND")
+                                        AgentPlanSaveResult.INVALID_TASK_PHASE -> AgentToolResult(false, "План не сохранён: поручение уже не находится на этапе планирования или ожидания подтверждения.", "INVALID_TASK_PHASE")
+                                        AgentPlanSaveResult.STALE_REVISION -> AgentToolResult(false, "План не сохранён: его ревизия устарела. Перечитай поручение и подготовь новый план.", "STALE_PLAN_REVISION")
+                                        AgentPlanSaveResult.INVALID_TIMESTAMP -> AgentToolResult(false, "План не сохранён: некорректное время.", "INVALID_TIMESTAMP")
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -370,14 +677,17 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     registry,
                     mapOf(
                         SheVAgentAdkTools.TOOL_ID to AgentTool {
-                            AgentToolResult(true, registry.list().joinToString { it.id })
+                            AgentToolResult(true, registry.list().filter { it.planExecutable }.joinToString { it.id })
                         },
                         SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to currentTimeHandler
                     ),
+                    maxInputChars = 24_000,
                     suspendingHandlers = mapOf(
-                        SheVAgentAdkTools.CREATE_TASK_DRAFT_ID to taskDraftHandler
+                        SheVAgentAdkTools.CREATE_TASK_DRAFT_ID to taskDraftHandler,
+                        SheVAgentAdkTools.CREATE_TASK_PLAN_ID to taskPlanHandler
                     )
                 )
+                planRunner = AgentPlanRunner(database, AgentPlanExecutor(database, registry, executor), taskRepository)
                 val tools = SheVAgentAdkTools(
                     executor,
                     AgentToolExecutionContext(
@@ -386,6 +696,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 )
                 runtime = SheVAgentRuntime.load(getApplication(), store, tools)
                 mutableState.update { it.copy(ready = true, backendName = runtime?.backendName) }
+                viewModelScope.launch(Dispatchers.IO) { recoverAndResumePersistedPlans() }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Throwable) {
@@ -396,6 +707,48 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 mutableState.update { it.copy(busy = false) }
             }
         }
+    }
+
+
+    /** UI adapter: kernel runner returns typed state; this layer only localizes it. */
+    private suspend fun startAndRunApprovedPlan(taskId: String, approvedRevision: Long): String {
+        val runner = planRunner
+            ?: return "План подтверждён и сохранён. Запусти SheV, чтобы подключить исполнитель и продолжить."
+        return describePlanRunResult(runner.startApproved(taskId, approvedRevision))
+    }
+
+    private suspend fun recoverAndResumePersistedPlans() {
+        val runner = planRunner ?: return
+        runner.recoverAndResume().forEach { result ->
+            mutableState.update {
+                it.copy(planExecutionMessage = "Поручение «${result.taskTitle}»: ${describePlanRunResult(result)}")
+            }
+        }
+    }
+
+    private fun describePlanRunResult(result: AgentPlanRunResult): String = when (result.status) {
+        AgentPlanRunStatus.COMPLETED ->
+            "Поручение завершено: проверка подтвердила выполнение всех локальных шагов только для чтения."
+        AgentPlanRunStatus.VERIFYING ->
+            "Все шаги выполнены; поручение переведено на проверку результата, но ещё не помечено завершённым."
+        AgentPlanRunStatus.OUTCOME_UNKNOWN ->
+            "Результат шага ${result.stepId ?: "?"} неизвестен (${result.uncertainSteps} незавершённых отправок). Автоматический повтор запрещён."
+        AgentPlanRunStatus.BLOCKED ->
+            "Выполнение остановлено: следующий шаг заблокирован или ожидает отдельного разрешения."
+        AgentPlanRunStatus.TASK_NOT_RUNNING ->
+            "Выполнение остановлено: поручение больше не находится в состоянии RUNNING."
+        AgentPlanRunStatus.TOOL_NOT_AVAILABLE ->
+            "Выполнение остановлено: инструмент шага не зарегистрирован в этом запуске SheV."
+        AgentPlanRunStatus.TOOL_CONFIGURATION_INVALID ->
+            "Выполнение остановлено: инструмент не разрешён для планового запуска."
+        AgentPlanRunStatus.STEP_FAILED ->
+            "Выполнение остановлено на шаге ${result.stepId ?: "?"}: ${result.errorCode ?: "ошибка шага"}."
+        AgentPlanRunStatus.VERIFICATION_BLOCKED ->
+            "Шаги выполнены, но доказательств недостаточно для безопасного завершения поручения."
+        AgentPlanRunStatus.PUMP_LIMIT_REACHED ->
+            "Выполнение приостановлено по лимиту одного цикла; состояние шагов сохранено."
+        AgentPlanRunStatus.START_REJECTED ->
+            "Не удалось запустить план: ${result.startStatus?.name ?: "неизвестная причина"}."
     }
 
     private fun sendLocalTimeReply(message: String) {
@@ -914,6 +1267,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
 
     private companion object {
         const val HISTORY_DISPLAY_LIMIT = 80
+        const val MAX_PLAN_STEPS_PER_PUMP = 50
         const val CONTEXT_HISTORY_LIMIT = 12
     }
 }

@@ -21,10 +21,11 @@ interface AgentTaskAuthorizationVerifier {
         nowMillis: Long
     ): Boolean
 
-    suspend fun isCompletionEvidenceValid(
+    suspend fun consumeCompletionEvidence(
         taskId: String,
         expectedRevision: Long,
-        evidenceRef: String
+        evidenceRef: String,
+        nowMillis: Long
     ): Boolean
 }
 
@@ -58,6 +59,7 @@ enum class AgentTaskRepositoryRejection {
     INVALID_REQUEST,
     INVALID_REVISION,
     INVALID_PHASE,
+    PLAN_REQUIRED,
     APPROVAL_REQUIRED,
     INVALID_APPROVAL_EVIDENCE,
     VERIFICATION_EVIDENCE_REQUIRED,
@@ -215,6 +217,9 @@ class RoomAgentTaskRepository(
             if (stored.phase != AgentPhase.WAITING_APPROVAL.name) {
                 return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_PHASE)
             }
+            if (RoomAgentPlanRepository(database).loadPlan(taskId) == null) {
+                return@withTransaction AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.PLAN_REQUIRED)
+            }
 
             dao.deleteExpiredApprovalEvidence(occurredAtEpochMillis)
             val nonce = ApprovalEvidenceToken.create()
@@ -263,13 +268,19 @@ class RoomAgentTaskRepository(
         request: AgentTaskTransitionRequest
     ): AgentTaskRepositoryResult {
         val dao = database.agentDao()
-        val eventEvidenceRef = if (request.command == AgentWorkflowCommand.APPROVE) {
+        val eventEvidenceRef = if (request.command in setOf(
+                AgentWorkflowCommand.APPROVE, AgentWorkflowCommand.COMPLETE
+            )
+        ) {
             request.evidenceRef?.let { runCatching { ApprovalEvidenceToken.digest(it) }.getOrNull() }
         } else {
             request.evidenceRef
         }
         if (request.command == AgentWorkflowCommand.APPROVE && eventEvidenceRef == null) {
             return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_APPROVAL_EVIDENCE)
+        }
+        if (request.command == AgentWorkflowCommand.COMPLETE && eventEvidenceRef == null) {
+            return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.VERIFICATION_EVIDENCE_REQUIRED)
         }
 
         val previousEvent = dao.findEventByIdempotencyKey(request.idempotencyKey)
@@ -290,16 +301,6 @@ class RoomAgentTaskRepository(
 
         val stored = dao.getTask(request.taskId) ?: return AgentTaskRepositoryResult.NotFound
 
-        if (request.command == AgentWorkflowCommand.COMPLETE) {
-            val evidence = request.evidenceRef
-                ?: return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.VERIFICATION_EVIDENCE_REQUIRED)
-            if (evidence.isBlank() || !authorizationVerifier.isCompletionEvidenceValid(
-                    request.taskId, request.expectedRevision, evidence
-                )) {
-                return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_VERIFICATION_EVIDENCE)
-            }
-        }
-
         val currentState = try {
             stored.toWorkflowState()
         } catch (_: IllegalArgumentException) {
@@ -318,6 +319,16 @@ class RoomAgentTaskRepository(
                 else -> AgentTaskRepositoryRejection.INVALID_PHASE
             }
             return AgentTaskRepositoryResult.Rejected(reason)
+        }
+
+        if (request.command == AgentWorkflowCommand.COMPLETE) {
+            val evidence = request.evidenceRef
+                ?: return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.VERIFICATION_EVIDENCE_REQUIRED)
+            if (!authorizationVerifier.consumeCompletionEvidence(
+                    request.taskId, request.expectedRevision, evidence, request.occurredAtEpochMillis
+                )) {
+                return AgentTaskRepositoryResult.Rejected(AgentTaskRepositoryRejection.INVALID_VERIFICATION_EVIDENCE)
+            }
         }
 
         if (request.command == AgentWorkflowCommand.APPROVE) {

@@ -52,6 +52,301 @@ interface AgentDao {
         nowMillis: Long
     ): Int
 
+    @Query("SELECT * FROM agent_plans WHERE taskId = :taskId LIMIT 1")
+    suspend fun getAgentPlan(taskId: String): AgentPlanEntity?
+
+    @Upsert
+    suspend fun saveAgentPlan(plan: AgentPlanEntity)
+
+    @Query("SELECT * FROM agent_plan_steps WHERE taskId = :taskId ORDER BY stepId ASC")
+    suspend fun getAgentPlanSteps(taskId: String): List<AgentPlanStepEntity>
+
+    @Query("DELETE FROM agent_plan_steps WHERE taskId = :taskId")
+    suspend fun deleteAgentPlanSteps(taskId: String): Int
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAgentPlanSteps(steps: List<AgentPlanStepEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAgentPlanStepExecutions(executions: List<AgentPlanStepExecutionEntity>)
+
+    @Query("SELECT * FROM agent_plan_step_executions WHERE taskId = :taskId ORDER BY createdAtEpochMillis, stepId")
+    suspend fun getAgentPlanStepExecutions(taskId: String): List<AgentPlanStepExecutionEntity>
+
+    @Query("SELECT * FROM agent_plan_step_executions WHERE taskId = :taskId AND stepId = :stepId LIMIT 1")
+    suspend fun getAgentPlanStepExecution(taskId: String, stepId: String): AgentPlanStepExecutionEntity?
+
+    @Query("SELECT * FROM agent_plan_step_executions WHERE taskId = :taskId ORDER BY createdAtEpochMillis, stepId")
+    fun observeAgentPlanStepExecutions(taskId: String): Flow<List<AgentPlanStepExecutionEntity>>
+
+    @Query("""
+        UPDATE agent_plan_step_executions
+        SET status = :newStatus,
+            updatedAtEpochMillis = :nowMillis,
+            dispatchStartedAtEpochMillis = COALESCE(:dispatchStartedAtMillis, dispatchStartedAtEpochMillis),
+            dispatchedAtEpochMillis = COALESCE(:dispatchedAtMillis, dispatchedAtEpochMillis),
+            completedAtEpochMillis = COALESCE(:completedAtMillis, completedAtEpochMillis),
+            resultCiphertext = COALESCE(:resultCiphertext, resultCiphertext),
+            errorCode = COALESCE(:errorCode, errorCode)
+        WHERE taskId = :taskId AND stepId = :stepId
+          AND invocationId = :invocationId
+          AND taskRevision = :taskRevision
+          AND planRevision = :planRevision AND stepRevision = :stepRevision
+          AND status = :expectedStatus
+          AND EXISTS (
+              SELECT 1 FROM agent_tasks t
+              WHERE t.id = :taskId AND t.revision = :taskRevision AND t.phase = 'RUNNING'
+          )
+          AND EXISTS (
+              SELECT 1 FROM agent_plans p
+              WHERE p.taskId = :taskId AND p.planRevision = :planRevision
+          )
+          AND EXISTS (
+              SELECT 1 FROM agent_plan_steps s
+              WHERE s.taskId = :taskId AND s.stepId = :stepId
+                AND s.planRevision = :planRevision AND s.stepRevision = :stepRevision
+          )
+    """)
+    suspend fun transitionAgentPlanStepExecution(
+        taskId: String,
+        stepId: String,
+        invocationId: String,
+        taskRevision: Long,
+        planRevision: Long,
+        stepRevision: Long,
+        expectedStatus: String,
+        newStatus: String,
+        nowMillis: Long,
+        dispatchStartedAtMillis: Long? = null,
+        dispatchedAtMillis: Long? = null,
+        completedAtMillis: Long? = null,
+        resultCiphertext: String? = null,
+        errorCode: String? = null
+    ): Int
+
+    @Query("""
+        UPDATE agent_plan_step_executions
+        SET status = 'OUTCOME_UNKNOWN',
+            updatedAtEpochMillis = :nowMillis,
+            errorCode = 'PROCESS_RESTART_DURING_DISPATCH'
+        WHERE taskId = :taskId AND status IN ('DISPATCHING', 'DISPATCHED')
+    """)
+    suspend fun markUncertainPlanStepExecutions(taskId: String, nowMillis: Long): Int
+
+    @Query("""
+        UPDATE agent_plan_step_executions
+        SET status = 'CANCELLED', updatedAtEpochMillis = :nowMillis,
+            completedAtEpochMillis = :nowMillis, errorCode = 'TASK_CANCELLED'
+        WHERE taskId = :taskId AND status IN ('PENDING', 'WAITING_APPROVAL')
+    """)
+    suspend fun cancelUndispatchedPlanStepExecutions(taskId: String, nowMillis: Long): Int
+
+    @Query("""
+        UPDATE mcp_invocation_approval_requests
+        SET status = 'EXPIRED',
+            decidedAtEpochMillis = :nowMillis,
+            authorizationNonceCiphertext = NULL
+        WHERE taskId = :taskId AND status IN ('PENDING', 'APPROVED')
+    """)
+    suspend fun invalidateMcpInvocationApprovalRequestsForTask(taskId: String, nowMillis: Long): Int
+
+    @Query("""
+        UPDATE mcp_invocation_approval_requests
+        SET status = 'EXPIRED',
+            decidedAtEpochMillis = :nowMillis,
+            authorizationNonceCiphertext = NULL
+        WHERE invocationId = :invocationId AND status IN ('PENDING', 'APPROVED')
+    """)
+    suspend fun expireMcpInvocationApprovalRequest(invocationId: String, nowMillis: Long): Int
+
+    @Query("""
+        UPDATE agent_tasks
+        SET revision = :newRevision, updatedAtEpochMillis = :updatedAtEpochMillis
+        WHERE id = :taskId AND revision = :expectedRevision
+    """)
+    suspend fun advanceTaskRevision(
+        taskId: String,
+        expectedRevision: Long,
+        newRevision: Long,
+        updatedAtEpochMillis: Long
+    ): Int
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertMcpInvocationAuthorizationEvidence(evidence: McpInvocationAuthorizationEntity)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertMcpInvocationApprovalRequest(request: McpInvocationApprovalRequestEntity)
+
+    @Query("SELECT * FROM mcp_invocation_approval_requests WHERE invocationId = :invocationId LIMIT 1")
+    suspend fun getMcpInvocationApprovalRequest(invocationId: String): McpInvocationApprovalRequestEntity?
+
+    @Query("SELECT * FROM mcp_invocation_approval_requests WHERE invocationId = :invocationId LIMIT 1")
+    fun observeMcpInvocationApprovalRequest(invocationId: String): Flow<McpInvocationApprovalRequestEntity?>
+
+    @Query("SELECT * FROM mcp_invocation_approval_requests WHERE status = 'PENDING' ORDER BY createdAtEpochMillis ASC")
+    fun observePendingMcpInvocationApprovalRequests(): Flow<List<McpInvocationApprovalRequestEntity>>
+
+    @Query("""
+        UPDATE mcp_invocation_approval_requests
+        SET status = 'APPROVED',
+            decidedAtEpochMillis = :nowMillis,
+            issuedAtEpochMillis = :issuedAtMillis,
+            expiresAtEpochMillis = :authorizationExpiresAtMillis,
+            authorizationNonceCiphertext = :nonceCiphertext
+        WHERE invocationId = :invocationId
+          AND taskId = :taskId AND taskRevision = :taskRevision
+          AND planRevision = :planRevision AND stepId = :stepId
+          AND stepRevision = :stepRevision
+          AND status = 'PENDING'
+          AND expiresAtEpochMillis > :nowMillis
+          AND EXISTS (
+              SELECT 1 FROM agent_tasks t
+              WHERE t.id = :taskId AND t.revision = :taskRevision AND t.phase = 'RUNNING'
+          )
+          AND EXISTS (
+              SELECT 1 FROM agent_plans p
+              WHERE p.taskId = :taskId AND p.planRevision = :planRevision
+          )
+          AND EXISTS (
+              SELECT 1 FROM agent_plan_steps s
+              WHERE s.taskId = :taskId AND s.stepId = :stepId
+                AND s.planRevision = :planRevision AND s.stepRevision = :stepRevision
+          )
+    """)
+    suspend fun approveMcpInvocationApprovalRequest(
+        invocationId: String,
+        taskId: String,
+        taskRevision: Long,
+        planRevision: Long,
+        stepId: String,
+        stepRevision: Long,
+        nowMillis: Long,
+        issuedAtMillis: Long,
+        authorizationExpiresAtMillis: Long,
+        nonceCiphertext: String
+    ): Int
+
+    @Query("""
+        UPDATE mcp_invocation_approval_requests
+        SET status = 'REJECTED', decidedAtEpochMillis = :nowMillis
+        WHERE invocationId = :invocationId
+          AND taskId = :taskId AND taskRevision = :taskRevision
+          AND planRevision = :planRevision AND stepId = :stepId
+          AND stepRevision = :stepRevision
+          AND status = 'PENDING' AND expiresAtEpochMillis > :nowMillis
+          AND EXISTS (
+              SELECT 1 FROM agent_tasks t
+              WHERE t.id = :taskId AND t.revision = :taskRevision AND t.phase = 'RUNNING'
+          )
+          AND EXISTS (
+              SELECT 1 FROM agent_plans p
+              WHERE p.taskId = :taskId AND p.planRevision = :planRevision
+          )
+          AND EXISTS (
+              SELECT 1 FROM agent_plan_steps s
+              WHERE s.taskId = :taskId AND s.stepId = :stepId
+                AND s.planRevision = :planRevision AND s.stepRevision = :stepRevision
+          )
+    """)
+    suspend fun rejectMcpInvocationApprovalRequest(
+        invocationId: String,
+        taskId: String,
+        taskRevision: Long,
+        planRevision: Long,
+        stepId: String,
+        stepRevision: Long,
+        nowMillis: Long
+    ): Int
+
+    @Query("UPDATE mcp_invocation_approval_requests SET status = 'EXPIRED', decidedAtEpochMillis = :nowMillis WHERE status = 'PENDING' AND expiresAtEpochMillis <= :nowMillis")
+    suspend fun expireMcpInvocationApprovalRequests(nowMillis: Long): Int
+
+    @Query("""
+        UPDATE mcp_invocation_approval_requests
+        SET status = 'CONSUMED',
+            decidedAtEpochMillis = :nowMillis,
+            authorizationNonceCiphertext = NULL
+        WHERE invocationId = :invocationId
+          AND status = 'APPROVED'
+          AND authorizationNonceCiphertext IS NOT NULL
+    """)
+    suspend fun markMcpInvocationApprovalRequestConsumed(invocationId: String, nowMillis: Long): Int
+
+    @Query("""
+        UPDATE mcp_invocation_approval_requests
+        SET status = 'EXPIRED',
+            decidedAtEpochMillis = :nowMillis,
+            authorizationNonceCiphertext = NULL
+        WHERE status = 'APPROVED' AND expiresAtEpochMillis <= :nowMillis
+    """)
+    suspend fun expireApprovedMcpInvocationApprovalRequests(nowMillis: Long): Int
+
+
+    /**
+     * One conditional UPDATE is the atomic one-use claim. Every persisted binding
+     * field must match the presented authorization and the expected current action.
+     */
+    @Query("""
+        UPDATE mcp_invocation_authorizations
+        SET consumedAtEpochMillis = :nowMillis
+        WHERE nonceDigest = :nonceDigest
+          AND invocationId = :invocationId
+          AND taskId = :taskId
+          AND taskRevision = :taskRevision
+          AND planRevision = :planRevision
+          AND stepId = :stepId
+          AND stepRevision = :stepRevision
+          AND profileId = :profileId
+          AND endpoint = :endpoint
+          AND nativeToolId = :nativeToolId
+          AND remoteToolName = :remoteToolName
+          AND toolDefinitionSha256 = :toolDefinitionSha256
+          AND argumentsSha256 = :argumentsSha256
+          AND issuedAtEpochMillis = :issuedAtEpochMillis
+          AND expiresAtEpochMillis = :expiresAtEpochMillis
+          AND consumedAtEpochMillis IS NULL
+          AND EXISTS (
+              SELECT 1 FROM agent_tasks current_task
+              WHERE current_task.id = :taskId
+                AND current_task.revision = :taskRevision
+          )
+          AND EXISTS (
+              SELECT 1 FROM agent_plans current_plan
+              WHERE current_plan.taskId = :taskId
+                AND current_plan.planRevision = :planRevision
+          )
+          AND EXISTS (
+              SELECT 1 FROM agent_plan_steps current_step
+              WHERE current_step.taskId = :taskId
+                AND current_step.stepId = :stepId
+                AND current_step.planRevision = :planRevision
+                AND current_step.stepRevision = :stepRevision
+          )
+          AND issuedAtEpochMillis <= :nowMillis
+          AND expiresAtEpochMillis > :nowMillis
+    """)
+    suspend fun consumeMcpInvocationAuthorization(
+        nonceDigest: String,
+        invocationId: String,
+        taskId: String,
+        taskRevision: Long,
+        planRevision: Long,
+        stepId: String,
+        stepRevision: Long,
+        profileId: String,
+        endpoint: String,
+        nativeToolId: String,
+        remoteToolName: String,
+        toolDefinitionSha256: String,
+        argumentsSha256: String,
+        issuedAtEpochMillis: Long,
+        expiresAtEpochMillis: Long,
+        nowMillis: Long
+    ): Int
+
+    @Query("DELETE FROM mcp_invocation_authorizations WHERE expiresAtEpochMillis <= :nowMillis")
+    suspend fun deleteExpiredMcpInvocationAuthorizations(nowMillis: Long): Int
+
     @Query("DELETE FROM approval_evidence WHERE evidenceHash = :evidenceHash")
     suspend fun deleteApprovalEvidence(evidenceHash: String): Int
 
@@ -69,6 +364,14 @@ interface AgentDao {
 
     @Query("SELECT * FROM agent_events WHERE idempotencyKey = :key LIMIT 1")
     suspend fun findEventByIdempotencyKey(key: String): AgentEventEntity?
+
+    @Query("""
+        SELECT COUNT(*) FROM agent_events
+        WHERE taskId = :taskId
+          AND eventType = 'START_EXECUTION'
+          AND revision = :taskRevision
+    """)
+    suspend fun countPlanStartEvents(taskId: String, taskRevision: Long): Int
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun appendEvent(event: AgentEventEntity)

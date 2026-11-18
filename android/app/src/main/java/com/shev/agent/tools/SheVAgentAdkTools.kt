@@ -43,7 +43,7 @@ class SheVAgentAdkTools(
      */
     @Tool(
         name = "create_task_draft",
-        description = "Creates a local task draft for the user. The task remains WAITING_APPROVAL and no action is executed."
+        description = "Creates a local task draft for the user. Immediately follow with save_task_plan using the returned task_id. The task remains WAITING_APPROVAL and no action is executed."
     )
     suspend fun createTaskDraft(
         @Param("Краткое описание поручения, которое пользователь явно попросил сохранить.") title: String
@@ -64,6 +64,45 @@ class SheVAgentAdkTools(
                 "status" to "not_created",
                 "reason" to execution.status.name,
                 "message" to (result?.errorCode ?: "Поручение не сохранено.")
+            )
+        }
+    }
+
+    /**
+     * Saves a model-proposed DAG plan only after validating every step against the
+     * registered local tool schema and the minimum capability risk.
+     */
+    @Tool(
+        name = "save_task_plan",
+        description = "Saves a proposed plan for the task draft just created. Provide the exact task_id returned by create_task_draft, a concise summary, and steps_json as a JSON array of step objects: id, toolId, argumentsJson, dependsOn (array), risk (READ_ONLY, REVERSIBLE_WRITE, EXTERNAL_SIDE_EFFECT, CRITICAL), purpose, expectedOutcome, timeoutMillis. Unknown tools, invalid arguments, or understated risk are rejected. Saving a plan does not execute it."
+    )
+    suspend fun saveTaskPlan(
+        @Param("Точный идентификатор черновика, возвращённый create_task_draft.") taskId: String,
+        @Param("Краткое описание предлагаемого плана.") summary: String,
+        @Param("JSON-массив шагов с инструментами, аргументами, зависимостями и риском.") stepsJson: String
+    ): Map<String, String> {
+        val execution = executor.executeSuspending(
+            AgentToolRequest(
+                toolId = CREATE_TASK_PLAN_ID,
+                capability = AgentCapability.CREATE_DRAFT,
+                input = Gson().toJson(
+                    mapOf(
+                        "task_id" to taskId,
+                        "summary" to summary,
+                        "steps_json" to stepsJson
+                    )
+                )
+            ),
+            executionContext
+        )
+        val result = execution.result
+        return if (execution.status == AgentToolExecutionStatus.COMPLETED && result?.success == true) {
+            mapOf("status" to "plan_saved", "message" to result.output)
+        } else {
+            mapOf(
+                "status" to "plan_rejected",
+                "reason" to execution.status.name,
+                "message" to (result?.errorCode ?: "План не сохранён.")
             )
         }
     }
@@ -95,5 +134,6 @@ class SheVAgentAdkTools(
         const val TOOL_ID = "agent.inspect_tools"
         const val CURRENT_TIME_TOOL_ID = "agent.current_local_time"
         const val CREATE_TASK_DRAFT_ID = "agent.create_task_draft"
+        const val CREATE_TASK_PLAN_ID = "agent.save_task_plan"
     }
 }

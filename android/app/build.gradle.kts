@@ -72,6 +72,10 @@ dependencies {
     implementation("androidx.room:room-ktx:2.8.5")
     implementation("com.google.code.gson:gson:2.11.0")
 
+    // Official MCP Kotlin client (Streamable HTTP); Ktor engine + SSE parser.
+    implementation("io.modelcontextprotocol:kotlin-sdk-client:0.16.0")
+    implementation("io.ktor:ktor-client-cio:3.5.2")
+
     // Optional offline Russian neural TTS runtime; model weights are downloaded on demand.
     implementation("com.k2fsa:sherpa-onnx:v2.0.1@aar")
     implementation("org.apache.commons:commons-compress:1.27.1")
@@ -86,5 +90,6 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.room:room-testing:2.8.5")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

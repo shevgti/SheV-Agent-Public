@@ -1,7 +1,7 @@
 # SheV Agent — Hybrid ChatGPT + Local Executor Architecture
 
 Date: 2026-11-09
-Status: **Architecture decision accepted; implementation roadmap approved.** This document is a design contract, not evidence that a live ChatGPT-to-phone connection exists.
+Status: **SUPERSEDED on 2026-11-17 by docs/SHEV_AGENT_CORE_V2.md. Historical design only; do not implement ChatGPT-as-supervisor.** This document is a design contract, not evidence that a live ChatGPT-to-phone connection exists.
 
 ## Decision
 
