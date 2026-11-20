@@ -888,6 +888,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             ) { Text("➤") }
         }
     }
+    }
 }
 
 
