@@ -693,9 +693,9 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         }
         val details = items.joinToString("; ") { widget ->
             val title = when (widget.type) {
-                LiveWidgetType.CLOCK -> "часы"
-                LiveWidgetType.WEATHER -> "погода"
-                LiveWidgetType.BATTERY -> "заряд батареи"
+                LiveWidgetType.CLOCK -> "часы (текущее локальное время и дата)"
+                LiveWidgetType.WEATHER -> "погода (текущая температура, условия, ветер и влажность)"
+                LiveWidgetType.BATTERY -> "заряд батареи (текущий процент заряда устройства)"
             }
             val extra = if (widget.type == LiveWidgetType.WEATHER) {
                 if (widget.city.isBlank()) " (город не задан; карточка просит указать город)" else " (город: ${widget.city})"
