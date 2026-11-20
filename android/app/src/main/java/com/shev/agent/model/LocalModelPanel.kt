@@ -821,7 +821,9 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             onRemove = viewModel::removeLiveWidget,
             onResize = viewModel::resizeLiveWidget
         )
+        }
 
+        // Keep status and the message composer below the transcript viewport.
         if (state.busy) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CircularProgressIndicator(modifier = Modifier.height(18.dp))
@@ -887,7 +889,6 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                 shape = CircleShape
             ) { Text("➤") }
         }
-    }
     }
 }
 
