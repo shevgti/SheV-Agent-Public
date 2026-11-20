@@ -32,6 +32,13 @@ import com.shev.agent.creator.AgentRunPolicy
 import com.shev.agent.tools.AgentTool
 import com.shev.agent.tools.LocalTimeTool
 import com.shev.agent.tools.OpenMeteoWeatherTool
+import com.shev.agent.ui.LiveWidget
+import com.shev.agent.ui.LiveWidgetAction
+import com.shev.agent.ui.LiveWidgetCommand
+import com.shev.agent.ui.LiveWidgetIntentRouter
+import com.shev.agent.ui.LiveWidgetPolicy
+import com.shev.agent.ui.LiveWidgetRepository
+import com.shev.agent.ui.LiveWidgetType
 import com.shev.agent.tools.PublicWebSearchTool
 import com.shev.agent.tools.SuspendingAgentTool
 import com.shev.agent.tools.AgentToolDescriptor
@@ -107,6 +114,9 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private val dao = database.agentDao()
     private val skillLibrary = AgentSkillLibrary(dao)
     private val conversationStateRepository = ConversationStateRepository(database)
+    private val liveWidgetRepository = LiveWidgetRepository(application.applicationContext)
+    private val mutableLiveWidgets = MutableStateFlow(liveWidgetRepository.load())
+    val liveWidgets: StateFlow<List<LiveWidget>> = mutableLiveWidgets.asStateFlow()
     private val taskRepository = RoomAgentTaskRepository(
         database,
         RoomAgentTaskAuthorizationVerifier(dao)
@@ -646,6 +656,59 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun moveLiveWidget(id: String, x: Float, y: Float) {
+        val changed = mutableLiveWidgets.value.map { if (it.id == id) it.copy(x = x.coerceIn(0f, 1f), y = y.coerceIn(0f, 1f)) else it }
+        if (LiveWidgetPolicy.validate(changed) == null) {
+            liveWidgetRepository.save(changed)
+            mutableLiveWidgets.value = changed
+        }
+    }
+
+    fun resizeLiveWidget(id: String, scale: Float) {
+        val changed = mutableLiveWidgets.value.map { if (it.id == id) it.copy(scale = scale.coerceIn(0.75f, 1.5f)) else it }
+        if (LiveWidgetPolicy.validate(changed) == null) {
+            liveWidgetRepository.save(changed)
+            mutableLiveWidgets.value = changed
+        }
+    }
+
+    fun removeLiveWidget(id: String) {
+        val changed = mutableLiveWidgets.value.filterNot { it.id == id }
+        liveWidgetRepository.save(changed)
+        mutableLiveWidgets.value = changed
+    }
+
+    private fun sendLiveWidgetCommandReply(message: String, command: LiveWidgetCommand) {
+        val before = mutableLiveWidgets.value
+        val changed = LiveWidgetPolicy.apply(before, command)
+        val exists = before.any { it.type == command.type }
+        val success = changed != null && when (command.action) {
+            LiveWidgetAction.SHOW -> changed.any { it.type == command.type }
+            LiveWidgetAction.HIDE -> exists && changed.none { it.type == command.type }
+            LiveWidgetAction.MOVE -> exists && (command.x != null || command.y != null)
+        }
+        if (changed != null && success) {
+            liveWidgetRepository.save(changed)
+            mutableLiveWidgets.value = changed
+        }
+        val name = when (command.type) {
+            LiveWidgetType.CLOCK -> "часы"
+            LiveWidgetType.WEATHER -> "погоду"
+            LiveWidgetType.BATTERY -> "заряд батареи"
+        }
+        val answer = when {
+            changed == null -> "Не удалось изменить блок: проверь положение и лимит блоков."
+            !success && command.action == LiveWidgetAction.HIDE -> "Блок «$name» не найден."
+            !success -> "Не удалось выполнить команду с блоком «$name»."
+            command.action == LiveWidgetAction.HIDE -> "Убрал блок «$name»."
+            command.action == LiveWidgetAction.MOVE -> "Переместил блок «$name»."
+            command.type == LiveWidgetType.WEATHER && command.city.isBlank() -> "Добавил погоду. Укажи город, например: «Покажи погоду в Берлине»."
+            command.type == LiveWidgetType.WEATHER -> "Добавил погоду для города ${command.city}."
+            else -> "Добавил блок «$name» в чат."
+        }
+        mutableState.update { it.copy(prompt = "", error = null, messages = it.messages + "Вы: $message" + "SheV: $answer") }
+    }
+
     fun send() {
         val message = mutableState.value.prompt.trim()
         if (message.isEmpty() || mutableState.value.busy) return
@@ -654,6 +717,10 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             "shev_omniroute",
             Application.MODE_PRIVATE
         )
+        LiveWidgetIntentRouter.parse(message)?.let { command ->
+            sendLiveWidgetCommandReply(message, command)
+            return
+        }
         // Device-local facts must not depend on model quality or a remote provider.
         if (LocalTimeIntentRouter.isCurrentTimeRequest(message)) {
             sendLocalTimeReply(message)
