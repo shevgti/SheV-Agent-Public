@@ -685,9 +685,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
      */
     private fun liveWidgetContext(): String {
         val items = mutableLiveWidgets.value
-        if (items.isEmpty()) return "
-
-[Состояние живых блоков: сейчас в чате нет активных блоков.]"
+        if (items.isEmpty()) return "\n\n[Состояние живых блоков: сейчас в чате нет активных блоков.]"
         fun position(widget: LiveWidget): String {
             val horizontal = when { widget.x < 0.22f -> "слева"; widget.x > 0.55f -> "справа"; else -> "по центру" }
             val vertical = when { widget.y < 0.22f -> "сверху"; widget.y > 0.52f -> "снизу"; else -> "посередине" }
@@ -819,9 +817,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 // model-generated instructions are never injected into the agent prompt.
                 val verifiedSkillContext = skillLibrary.buildContext(message)
                 val promptWithSkills = if (verifiedSkillContext.isBlank()) promptWithContext
-                    else "$promptWithContext
-
-$verifiedSkillContext"
+                    else "$promptWithContext\n\n$verifiedSkillContext"
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
                         id = userMessageId,
@@ -1104,10 +1100,8 @@ $verifiedSkillContext"
                                     val detail = when (method) {
                                         "item/commandExecution/requestApproval" -> buildString {
                                             append(command.ifBlank { "Команда не указана" })
-                                            params.get("cwd")?.asString?.let { append("
-Рабочая папка: $it") }
-                                            params.get("reason")?.asString?.let { append("
-Причина: $it") }
+                                            params.get("cwd")?.asString?.let { append("\nРабочая папка: $it") }
+                                            params.get("reason")?.asString?.let { append("\nПричина: $it") }
                                         }
                                         else -> params.toString()
                                     }
@@ -1241,8 +1235,7 @@ $verifiedSkillContext"
                 )
                 val allowedPlanToolIds = registry.list().mapTo(linkedSetOf()) { it.id } - blocked
                 require(allowedPlanToolIds.isNotEmpty()) { "Нет доступных локальных инструментов для поручений." }
-                val toolCatalog = registry.list().filter { it.id in allowedPlanToolIds }.joinToString("
-") { tool ->
+                val toolCatalog = registry.list().filter { it.id in allowedPlanToolIds }.joinToString("\n") { tool ->
                     "${tool.id} | capabilities: ${tool.capabilities.joinToString { it.name }} | " +
                         "${tool.title}: ${tool.description} | input: ${tool.inputSchema?.describe() ?: "schema unavailable"}"
                 }
@@ -1257,17 +1250,10 @@ $verifiedSkillContext"
                     "План должен содержать от 1 до 8 шагов. Никаких других ключей."
                 val threadId = client.startThread(modelId, developerInstructions)
                 val basePrompt = buildString {
-                    append("Подготовь черновик поручения по явной просьбе пользователя.
-")
-                    append("Контекст диалога:
-").append(conversationContext).append("
-
-")
-                    append("Доступные локальные инструменты и точные схемы аргументов:
-")
-                    append(toolCatalog).append("
-
-")
+                    append("Подготовь черновик поручения по явной просьбе пользователя.\n")
+                    append("Контекст диалога:\n").append(conversationContext).append("\n\n")
+                    append("Доступные локальные инструменты и точные схемы аргументов:\n")
+                    append(toolCatalog).append("\n\n")
                     append("Сформируй конкретный безопасный план. Не включай инструменты, которых нет в каталоге. ")
                     append("Если просьба не может быть реализована перечисленными инструментами, верни тот же JSON-формат ")
                     append("с пустым массивом steps; не придумывай новые инструменты и не маскируй отсутствие возможности.")
@@ -1278,9 +1264,7 @@ $verifiedSkillContext"
                 var validationMessage = "Codex не вернул корректный JSON-план."
                 for (attempt in 0..1) {
                     val prompt = if (attempt == 0) basePrompt else {
-                        basePrompt + "
-
-Предыдущий ответ отклонён валидатором: " +
+                        basePrompt + "\n\nПредыдущий ответ отклонён валидатором: " +
                             validationMessage + ". Исправь JSON и верни только объект по заданной схеме."
                     }
                     val raw = runCodexTaskPlanTurn(client, threadId, prompt)
@@ -1958,8 +1942,7 @@ $verifiedSkillContext"
             registry,
             mapOf(
                 SheVAgentAdkTools.TOOL_ID to AgentTool {
-                    AgentToolResult(true, registry.list().joinToString("
-") { tool -> "${tool.id} | ${tool.title} | ${tool.capabilities.joinToString { it.name }} | ${tool.description} | input: ${tool.inputSchema?.describe() ?: "schema unavailable"}" })
+                    AgentToolResult(true, registry.list().joinToString("\n") { tool -> "${tool.id} | ${tool.title} | ${tool.capabilities.joinToString { it.name }} | ${tool.description} | input: ${tool.inputSchema?.describe() ?: "schema unavailable"}" })
                 },
                 SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to currentTimeHandler
             ),
