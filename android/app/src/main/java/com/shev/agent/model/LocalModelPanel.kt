@@ -909,7 +909,8 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             LiveWidgetsOverlay(
                 widgets = liveWidgets,
                 onMove = viewModel::moveLiveWidget,
-                onRemove = viewModel::removeLiveWidget
+                onRemove = viewModel::removeLiveWidget,
+                onResize = viewModel::resizeLiveWidget
             )
         }
 
