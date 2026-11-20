@@ -3,6 +3,10 @@ package com.shev.agent.ui
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -27,6 +31,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -48,13 +53,35 @@ fun LiveWidgetsOverlay(
             val estimatedHeight = (if (widget.type == LiveWidgetType.WEATHER) 170.dp else 120.dp) * widget.scale
             val maxX = ((maxWidth - cardWidth) / maxWidth).coerceIn(0f, 0.84f)
             val maxY = ((maxHeight - estimatedHeight) / maxHeight).coerceIn(0f, 0.82f)
+            val targetX = (widget.x.coerceIn(0f, maxX) * maxWidth.value).dp
+            val targetY = (widget.y.coerceIn(0f, maxY) * maxHeight.value).dp
+            val animatedX by animateDpAsState(
+                targetValue = targetX,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
+                label = "live-widget-x"
+            )
+            val animatedY by animateDpAsState(
+                targetValue = targetY,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
+                label = "live-widget-y"
+            )
+            val animatedScale by animateFloatAsState(
+                targetValue = widget.scale,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                label = "live-widget-scale"
+            )
             LiveWidgetCard(
                 widget = widget,
                 onRemove = { onRemove(widget.id) },
                 onResize = { delta -> onResize(widget.id, (widget.scale + delta).coerceIn(0.75f, 1.5f)) },
                 modifier = Modifier
-                    .offset(x = (widget.x.coerceIn(0f, maxX) * maxWidth.value).dp, y = (widget.y.coerceIn(0f, maxY) * maxHeight.value).dp)
+                    .offset(x = animatedX, y = animatedY)
                     .width(cardWidth)
+                    .graphicsLayer {
+                        scaleX = animatedScale
+                        scaleY = animatedScale
+                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                    }
                     .pointerInput(widget.id, widthPx, heightPx, cardWidth) {
                         // Keep an accumulated position for the whole gesture. The widget
                         // model is recomposed after every drag delta, but pointerInput is
