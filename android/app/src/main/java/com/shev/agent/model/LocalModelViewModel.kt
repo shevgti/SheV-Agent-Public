@@ -698,8 +698,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 LiveWidgetType.BATTERY -> "заряд батареи (текущий процент заряда устройства)"
             }
             val extra = if (widget.type == LiveWidgetType.WEATHER) {
-                val weatherPrefs = getApplication<Application>().getSharedPreferences("shev_weather", Application.MODE_PRIVATE)
-                val latest = weatherPrefs.getString("latest_weather", null)
+                val latest = LiveWeatherClient.latestDisplay
                 if (widget.city.isBlank()) {
                     " (город не задан; карточка просит указать город)"
                 } else {
