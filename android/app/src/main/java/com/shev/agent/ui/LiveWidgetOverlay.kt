@@ -56,11 +56,16 @@ fun LiveWidgetsOverlay(
                     .offset(x = (widget.x.coerceIn(0f, maxX) * maxWidth.value).dp, y = (widget.y.coerceIn(0f, maxY) * maxHeight.value).dp)
                     .width(cardWidth)
                     .pointerInput(widget.id, widthPx, heightPx, cardWidth) {
+                        // Keep an accumulated position for the whole gesture. The widget
+                        // model is recomposed after every drag delta, but pointerInput is
+                        // intentionally not restarted for each model update.
+                        var dragX = widget.x.coerceIn(0f, maxX)
+                        var dragY = widget.y.coerceIn(0f, maxY)
                         detectDragGestures { change, drag ->
                             change.consume()
-                            val nextX = (widget.x + drag.x / widthPx).coerceIn(0f, maxX)
-                            val nextY = (widget.y + drag.y / heightPx).coerceIn(0f, maxY)
-                            onMove(widget.id, nextX, nextY)
+                            dragX = (dragX + drag.x / widthPx).coerceIn(0f, maxX)
+                            dragY = (dragY + drag.y / heightPx).coerceIn(0f, maxY)
+                            onMove(widget.id, dragX, dragY)
                         }
                     }
             )
