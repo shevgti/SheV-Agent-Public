@@ -46,8 +46,8 @@ fun LiveWidgetsOverlay(
             val baseWidth = if (widget.type == LiveWidgetType.WEATHER) 200.dp else 150.dp
             val cardWidth = baseWidth * widget.scale
             val estimatedHeight = (if (widget.type == LiveWidgetType.WEATHER) 170.dp else 120.dp) * widget.scale
-            val maxX = ((maxWidth - cardWidth) / maxWidth).value.coerceIn(0f, 0.84f)
-            val maxY = ((maxHeight - estimatedHeight) / maxHeight).value.coerceIn(0f, 0.82f)
+            val maxX = ((maxWidth - cardWidth) / maxWidth).coerceIn(0f, 0.84f)
+            val maxY = ((maxHeight - estimatedHeight) / maxHeight).coerceIn(0f, 0.82f)
             LiveWidgetCard(
                 widget = widget,
                 onRemove = { onRemove(widget.id) },
