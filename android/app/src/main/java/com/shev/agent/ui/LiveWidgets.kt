@@ -12,7 +12,8 @@ data class LiveWidget(
     val type: LiveWidgetType,
     val x: Float = 0.44f,
     val y: Float = 0.08f,
-    val city: String = ""
+    val city: String = "",
+    val scale: Float = 1f
 )
 
 enum class LiveWidgetAction { SHOW, HIDE, MOVE }
@@ -33,6 +34,7 @@ object LiveWidgetPolicy {
         if (items.map { it.id }.toSet().size != items.size) return "Повторяется ID блока"
         if (items.any { it.x !in 0f..1f || it.y !in 0f..1f }) return "Положение блока за пределами экрана"
         if (items.any { it.city.length > 80 }) return "Слишком длинное название города"
+        if (items.any { it.scale !in 0.75f..1.5f }) return "Неверный размер блока"
         return null
     }
 
@@ -72,6 +74,10 @@ object LiveWidgetPolicy {
 
 object LiveWidgetIntentRouter {
     private val placement = listOf(
+        Triple(Regex("(?:наверх|вверх|верх)\\\\b"), 0.30f, 0.04f),
+        Triple(Regex("(?:вниз|ниж)\\\\b"), 0.30f, 0.58f),
+        Triple(Regex("(?:влево|левее)\\\\b"), 0.04f, 0.35f),
+        Triple(Regex("(?:вправо|правее)\\\\b"), 0.44f, 0.35f),
         Triple(Regex("(?:сверху|вверху|верхний).*(?:справа|правый)"), 0.68f, 0.04f),
         Triple(Regex("(?:сверху|вверху|верхний).*(?:слева|левый)"), 0.04f, 0.04f),
         Triple(Regex("(?:снизу|внизу|нижний).*(?:справа|правый)"), 0.68f, 0.58f),
@@ -82,9 +88,9 @@ object LiveWidgetIntentRouter {
     fun parse(text: String): LiveWidgetCommand? {
         val normalized = text.lowercase().trim()
         val type = when {
-            Regex("\\b(?:погод|weather)\\b").containsMatchIn(normalized) -> LiveWidgetType.WEATHER
-            Regex("\\b(?:час(?:ы|ов)?|время|clock)\\b").containsMatchIn(normalized) -> LiveWidgetType.CLOCK
-            Regex("\\b(?:батаре|заряд|battery)\\b").containsMatchIn(normalized) -> LiveWidgetType.BATTERY
+            normalized.contains("погод") || normalized.contains("weather") -> LiveWidgetType.WEATHER
+            normalized.contains("час") || normalized.contains("время") || normalized.contains("clock") -> LiveWidgetType.CLOCK
+            normalized.contains("батаре") || normalized.contains("заряд") || normalized.contains("battery") -> LiveWidgetType.BATTERY
             else -> return null
         }
         val action = when {
