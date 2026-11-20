@@ -278,7 +278,7 @@ jobs:
 
   publish-branch-update:
     name: Publish installable Codex-enabled update for device testing
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/fix/android-codex-file-locks' }}
+    if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/fix/android-codex-file-locks' || github.ref == 'refs/heads/release/0.3.2-build.39') }}
     needs:
       - build-and-unit-tests
     runs-on: ubuntu-latest
