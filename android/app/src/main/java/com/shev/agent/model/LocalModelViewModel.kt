@@ -417,6 +417,14 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun resizeLiveWidget(id: String, scale: Float) {
+        val changed = mutableLiveWidgets.value.map { if (it.id == id) it.copy(scale = scale.coerceIn(0.75f, 1.5f)) else it }
+        if (LiveWidgetPolicy.validate(changed) == null) {
+            liveWidgetRepository.save(changed)
+            mutableLiveWidgets.value = changed
+        }
+    }
+
     fun removeLiveWidget(id: String) {
         val changed = mutableLiveWidgets.value.filterNot { it.id == id }
         liveWidgetRepository.save(changed)
