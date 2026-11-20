@@ -757,6 +757,24 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             sendLiveWidgetCommandReply(message, command)
             return
         }
+        if (LiveWidgetIntentRouter.needsTargetClarification(message, mutableLiveWidgets.value)) {
+            val available = mutableLiveWidgets.value.joinToString(", ") { widget ->
+                when (widget.type) {
+                    LiveWidgetType.CLOCK -> "часы"
+                    LiveWidgetType.WEATHER -> "погоду"
+                    LiveWidgetType.BATTERY -> "заряд батареи"
+                }
+            }
+            mutableState.update {
+                it.copy(
+                    prompt = "",
+                    error = null,
+                    messages = it.messages + "Вы: $message" +
+                        "SheV: Уточни, какой блок изменить: $available. Или скажи «убери все блоки»."
+                )
+            }
+            return
+        }
         // Device-local facts must not depend on model quality or a remote provider.
         if (LocalTimeIntentRouter.isCurrentTimeRequest(message)) {
             sendLocalTimeReply(message)
