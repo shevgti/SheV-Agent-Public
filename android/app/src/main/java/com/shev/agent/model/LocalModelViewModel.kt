@@ -685,7 +685,9 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
      */
     private fun liveWidgetContext(): String {
         val items = mutableLiveWidgets.value
-        if (items.isEmpty()) return "\n\n[Состояние живых блоков: сейчас в чате нет активных блоков.]"
+        if (items.isEmpty()) return "
+
+[Состояние живых блоков: сейчас в чате нет активных блоков.]"
         fun position(widget: LiveWidget): String {
             val horizontal = when { widget.x < 0.22f -> "слева"; widget.x > 0.55f -> "справа"; else -> "по центру" }
             val vertical = when { widget.y < 0.22f -> "сверху"; widget.y > 0.52f -> "снизу"; else -> "посередине" }
@@ -698,11 +700,19 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 LiveWidgetType.BATTERY -> "заряд батареи (текущий процент заряда устройства)"
             }
             val extra = if (widget.type == LiveWidgetType.WEATHER) {
-                if (widget.city.isBlank()) " (город не задан; карточка просит указать город)" else " (город: ${widget.city})"
+                val weatherPrefs = getApplication<Application>().getSharedPreferences("shev_weather", Application.MODE_PRIVATE)
+                val latest = weatherPrefs.getString("latest_weather", null)
+                if (widget.city.isBlank()) {
+                    " (город не задан; карточка просит указать город)"
+                } else {
+                    " (город: ${widget.city}" + (latest?.let { "; сейчас на карточке: $it" } ?: "; актуальные данные ещё не загружены") + ")"
+                }
             } else ""
             "$title — ${position(widget)}$extra"
         }
-        return "\n\n[Состояние живых блоков в чате: $details. Это фактическое состояние интерфейса. Если пользователь спрашивает о блоках, отвечай по этому списку. Не утверждай, что видишь другие части экрана.]"
+        return "
+
+[Состояние живых блоков в чате: $details. Это фактическое состояние интерфейса. Если пользователь спрашивает о блоках, отвечай по этому списку. Не утверждай, что видишь другие части экрана.]"
     }
     private fun sendLiveWidgetCommandReply(message: String, command: LiveWidgetCommand) {
         val before = mutableLiveWidgets.value
@@ -811,7 +821,9 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 // model-generated instructions are never injected into the agent prompt.
                 val verifiedSkillContext = skillLibrary.buildContext(message)
                 val promptWithSkills = if (verifiedSkillContext.isBlank()) promptWithContext
-                    else "$promptWithContext\n\n$verifiedSkillContext"
+                    else "$promptWithContext
+
+$verifiedSkillContext"
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
                         id = userMessageId,
@@ -1094,8 +1106,10 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                                     val detail = when (method) {
                                         "item/commandExecution/requestApproval" -> buildString {
                                             append(command.ifBlank { "Команда не указана" })
-                                            params.get("cwd")?.asString?.let { append("\nРабочая папка: $it") }
-                                            params.get("reason")?.asString?.let { append("\nПричина: $it") }
+                                            params.get("cwd")?.asString?.let { append("
+Рабочая папка: $it") }
+                                            params.get("reason")?.asString?.let { append("
+Причина: $it") }
                                         }
                                         else -> params.toString()
                                     }
@@ -1229,7 +1243,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 )
                 val allowedPlanToolIds = registry.list().mapTo(linkedSetOf()) { it.id } - blocked
                 require(allowedPlanToolIds.isNotEmpty()) { "Нет доступных локальных инструментов для поручений." }
-                val toolCatalog = registry.list().filter { it.id in allowedPlanToolIds }.joinToString("\n") { tool ->
+                val toolCatalog = registry.list().filter { it.id in allowedPlanToolIds }.joinToString("
+") { tool ->
                     "${tool.id} | capabilities: ${tool.capabilities.joinToString { it.name }} | " +
                         "${tool.title}: ${tool.description} | input: ${tool.inputSchema?.describe() ?: "schema unavailable"}"
                 }
@@ -1244,10 +1259,17 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     "План должен содержать от 1 до 8 шагов. Никаких других ключей."
                 val threadId = client.startThread(modelId, developerInstructions)
                 val basePrompt = buildString {
-                    append("Подготовь черновик поручения по явной просьбе пользователя.\n")
-                    append("Контекст диалога:\n").append(conversationContext).append("\n\n")
-                    append("Доступные локальные инструменты и точные схемы аргументов:\n")
-                    append(toolCatalog).append("\n\n")
+                    append("Подготовь черновик поручения по явной просьбе пользователя.
+")
+                    append("Контекст диалога:
+").append(conversationContext).append("
+
+")
+                    append("Доступные локальные инструменты и точные схемы аргументов:
+")
+                    append(toolCatalog).append("
+
+")
                     append("Сформируй конкретный безопасный план. Не включай инструменты, которых нет в каталоге. ")
                     append("Если просьба не может быть реализована перечисленными инструментами, верни тот же JSON-формат ")
                     append("с пустым массивом steps; не придумывай новые инструменты и не маскируй отсутствие возможности.")
@@ -1258,7 +1280,9 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 var validationMessage = "Codex не вернул корректный JSON-план."
                 for (attempt in 0..1) {
                     val prompt = if (attempt == 0) basePrompt else {
-                        basePrompt + "\n\nПредыдущий ответ отклонён валидатором: " +
+                        basePrompt + "
+
+Предыдущий ответ отклонён валидатором: " +
                             validationMessage + ". Исправь JSON и верни только объект по заданной схеме."
                     }
                     val raw = runCodexTaskPlanTurn(client, threadId, prompt)
@@ -1936,7 +1960,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             registry,
             mapOf(
                 SheVAgentAdkTools.TOOL_ID to AgentTool {
-                    AgentToolResult(true, registry.list().joinToString("\n") { tool -> "${tool.id} | ${tool.title} | ${tool.capabilities.joinToString { it.name }} | ${tool.description} | input: ${tool.inputSchema?.describe() ?: "schema unavailable"}" })
+                    AgentToolResult(true, registry.list().joinToString("
+") { tool -> "${tool.id} | ${tool.title} | ${tool.capabilities.joinToString { it.name }} | ${tool.description} | input: ${tool.inputSchema?.describe() ?: "schema unavailable"}" })
                 },
                 SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to currentTimeHandler
             ),
@@ -1951,7 +1976,14 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         AgentToolResult(false, "Укажи город.", "CITY_REQUIRED")
                     } else {
                         try {
-                            AgentToolResult(\n                                true,\n                                LiveWeatherClient.current(\n                                    city,\n                                    getApplication<Application>().getSharedPreferences("shev_weather", Application.MODE_PRIVATE)\n                                        .getString("yandex_api_key", "").orEmpty()\n                                )\n                            )
+                            AgentToolResult(
+                                true,
+                                LiveWeatherClient.current(
+                                    city,
+                                    getApplication<Application>().getSharedPreferences("shev_weather", Application.MODE_PRIVATE)
+                                        .getString("yandex_api_key", "").orEmpty()
+                                )
+                            )
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (failure: Exception) {
