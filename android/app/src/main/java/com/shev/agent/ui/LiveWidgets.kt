@@ -125,6 +125,16 @@ object LiveWidgetIntentRouter {
         }?.coerceIn(.75f, 1.5f)
         return LiveWidgetCommand(action, type, city, p?.second, p?.third, scale)
     }
+
+    fun needsTargetClarification(text: String, activeWidgets: List<LiveWidget>): Boolean {
+        if (activeWidgets.size < 2) return false
+        val n = text.lowercase()
+        val namesBlock = Regex("""\\b(?:блок|блоки|виджет|виджеты)\\b""").containsMatchIn(n)
+        val hasType = Regex("""погод|weather|час|время|clock|батаре|заряд|battery""").containsMatchIn(n)
+        val hasControlVerb = Regex("""убери|удали|закрой|скрой|сотри|убрать|удалить|скрыть|выключи|отключи|перемести|передвинь|сдвинь|перетащи|поставь|перенеси|увеличь|уменьши""").containsMatchIn(n)
+        val hideAll = Regex("""(?:все|всё)\\s+(?:блоки|виджеты)|(?:блоки|виджеты)\\s+все""").containsMatchIn(n)
+        return namesBlock && !hasType && hasControlVerb && !hideAll
+    }
 }
 
 class LiveWidgetRepository(context: Context) {
