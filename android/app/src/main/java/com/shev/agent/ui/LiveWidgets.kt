@@ -92,10 +92,14 @@ object LiveWidgetIntentRouter {
             Regex("\\b(?:перемести|передвинь|move)\\b").containsMatchIn(normalized) -> LiveWidgetAction.MOVE
             else -> LiveWidgetAction.SHOW
         }
+        val explicitAction = Regex("\\b(?:покажи|добавь|создай|выведи|сделай|show|add|display|убери|удали|закрой|скрой|hide|remove|перемести|передвинь|move)\\b")
+        if (!explicitAction.containsMatchIn(normalized)) return null
         val position = placement.firstOrNull { it.first.containsMatchIn(normalized) }
         val city = if (type == LiveWidgetType.WEATHER) {
-            Regex("(?:погод[ау]?|weather)(?:\\s+(?:в|для)\\s+)([\\p{L} .'-]{2,80})")
-                .find(normalized)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() } ?: ""
+            Regex("(?:погод[ау]?|weather)(?:\\\\s+(?:в|для)\\\\s+)([\\\\p{L} .'-]{2,80})")
+                .find(normalized)?.groupValues?.getOrNull(1)?.trim()
+                ?.replace(Regex("\\\\s+(?:сверху|вверху|снизу|внизу|справа|слева|по центру|в центре).*$"), "")
+                ?.trim()?.takeIf { it.isNotBlank() } ?: ""
         } else ""
         return LiveWidgetCommand(action, type, city, position?.second, position?.third)
     }
