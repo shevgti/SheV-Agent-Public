@@ -16,7 +16,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -53,7 +52,7 @@ fun LiveWidgetsOverlay(
                 onRemove = { onRemove(widget.id) },
                 onResize = { delta -> onResize(widget.id, (widget.scale + delta).coerceIn(0.75f, 1.5f)) },
                 modifier = Modifier
-                    .offset(x = (widget.x * maxWidth.value).dp, y = (widget.y * maxHeight.value).dp)
+                    .offset(x = (widget.x.coerceIn(0f, maxX) * maxWidth.value).dp, y = (widget.y * maxHeight.value).dp)
                     .width(cardWidth)
                     .pointerInput(widget.id, widthPx, heightPx, cardWidth) {
                         detectDragGestures { change, drag ->
