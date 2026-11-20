@@ -13,6 +13,14 @@ import java.net.URL
  * The API key is supplied by the user and is kept only in private app preferences.
  */
 object LiveWeatherClient {
+    @Volatile
+    var latestDisplay: String? = null
+        private set
+
+    fun publishLatestDisplay(value: String?) {
+        latestDisplay = value
+    }
+
     suspend fun current(city: String, apiKey: String): String = withContext(Dispatchers.IO) {
         val normalized = city.trim()
         require(normalized.isNotEmpty()) { "Укажи город, например «погода в Амстердаме»." }
