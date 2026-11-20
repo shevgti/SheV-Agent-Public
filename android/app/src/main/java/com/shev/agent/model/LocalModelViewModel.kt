@@ -710,9 +710,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             } else ""
             "$title — ${position(widget)}$extra"
         }
-        return "
-
-[Состояние живых блоков в чате: $details. Это фактическое состояние интерфейса. Если пользователь спрашивает о блоках, отвечай по этому списку. Не утверждай, что видишь другие части экрана.]"
+        return "\n\n[Состояние живых блоков в чате: $details. Это фактическое состояние интерфейса. Если пользователь спрашивает о блоках, отвечай по этому списку. Не утверждай, что видишь другие части экрана.]"
     }
     private fun sendLiveWidgetCommandReply(message: String, command: LiveWidgetCommand) {
         val before = mutableLiveWidgets.value
