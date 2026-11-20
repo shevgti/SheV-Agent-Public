@@ -16,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -36,24 +37,28 @@ import java.util.Locale
 fun LiveWidgetsOverlay(
     widgets: List<LiveWidget>,
     onMove: (id: String, x: Float, y: Float) -> Unit,
-    onRemove: (id: String) -> Unit
+    onRemove: (id: String) -> Unit,
+    onResize: (id: String, scale: Float) -> Unit
 ) {
     val context = LocalContext.current
     BoxWithConstraints(Modifier) {
         val widthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
         val heightPx = constraints.maxHeight.toFloat().coerceAtLeast(1f)
         widgets.forEach { widget ->
-            val cardWidth = if (widget.type == LiveWidgetType.WEATHER) 200.dp else 150.dp
+            val baseWidth = if (widget.type == LiveWidgetType.WEATHER) 200.dp else 150.dp
+            val cardWidth = baseWidth * widget.scale
+            val maxX = ((maxWidth - cardWidth) / maxWidth).value.coerceIn(0f, 0.84f)
             LiveWidgetCard(
                 widget = widget,
                 onRemove = { onRemove(widget.id) },
+                onResize = { delta -> onResize(widget.id, (widget.scale + delta).coerceIn(0.75f, 1.5f)) },
                 modifier = Modifier
                     .offset(x = (widget.x * maxWidth.value).dp, y = (widget.y * maxHeight.value).dp)
                     .width(cardWidth)
-                    .pointerInput(widget.id, widthPx, heightPx) {
+                    .pointerInput(widget.id, widthPx, heightPx, cardWidth) {
                         detectDragGestures { change, drag ->
                             change.consume()
-                            val nextX = (widget.x + drag.x / widthPx).coerceIn(0f, 0.84f)
+                            val nextX = (widget.x + drag.x / widthPx).coerceIn(0f, maxX)
                             val nextY = (widget.y + drag.y / heightPx).coerceIn(0f, 0.82f)
                             onMove(widget.id, nextX, nextY)
                         }
@@ -64,7 +69,7 @@ fun LiveWidgetsOverlay(
 }
 
 @Composable
-private fun LiveWidgetCard(widget: LiveWidget, onRemove: () -> Unit, modifier: Modifier = Modifier) {
+private fun LiveWidgetCard(widget: LiveWidget, onRemove: () -> Unit, onResize: (Float) -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var currentTime by remember { mutableStateOf(System.currentTimeMillis()) }
     var weather by remember { mutableStateOf("Загрузка погоды…") }
@@ -123,9 +128,9 @@ private fun LiveWidgetCard(widget: LiveWidget, onRemove: () -> Unit, modifier: M
                     color = Color(0xFFB7C7D9),
                     modifier = Modifier.weight(1f)
                 )
-                IconButton(onClick = onRemove) {
-                    Text("×", color = Color(0xFFCAD6E4))
-                }
+                IconButton(onClick = { onResize(-0.1f) }) { Text("−", color = Color(0xFFCAD6E4)) }
+                IconButton(onClick = { onResize(0.1f) }) { Text("+", color = Color(0xFFCAD6E4)) }
+                IconButton(onClick = onRemove) { Text("×", color = Color(0xFFCAD6E4)) }
             }
             when (widget.type) {
                 LiveWidgetType.CLOCK -> {
