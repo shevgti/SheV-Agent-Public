@@ -81,10 +81,10 @@ object LiveWidgetIntentRouter {
         Triple(Regex("(?:сверху|вверху|верхний).*(?:слева|левый)"), .04f, .04f),
         Triple(Regex("(?:снизу|внизу|нижний).*(?:справа|правый)"), .44f, .58f),
         Triple(Regex("(?:снизу|внизу|нижний).*(?:слева|левый)"), .04f, .58f),
-        Triple(Regex("(?:наверх|вверх|верх|сверху|вверху)(?=\\s|$)"), .30f, .04f),
-        Triple(Regex("(?:вниз|ниж|снизу|внизу)(?=\\s|$)"), .30f, .58f),
-        Triple(Regex("(?:влево|левее|слева)(?=\\s|$)"), .04f, .35f),
-        Triple(Regex("(?:вправо|правее|справа)(?=\\s|$)"), .44f, .35f),
+        Triple(Regex("(?:наверх|вверх|верх|сверху|вверху)(?=\s|$)"), .30f, .04f),
+        Triple(Regex("(?:вниз|ниж|снизу|внизу)(?=\s|$)"), .30f, .58f),
+        Triple(Regex("(?:влево|левее|слева)(?=\s|$)"), .04f, .35f),
+        Triple(Regex("(?:вправо|правее|справа)(?=\s|$)"), .44f, .35f),
         Triple(Regex("(?:по центру|в центре|центральн)"), .30f, .35f)
     )
     fun parse(text: String, activeWidgets: List<LiveWidget> = emptyList()): LiveWidgetCommand? {
@@ -113,9 +113,9 @@ object LiveWidgetIntentRouter {
         val type = explicitType ?: activeWidgets.singleOrNull()?.type ?: if (action == LiveWidgetAction.HIDE_ALL) LiveWidgetType.CLOCK else return null
         val p = placement.firstOrNull { it.first.containsMatchIn(n) }
         val city = if (type == LiveWidgetType.WEATHER) {
-            Regex("""(?i)(?:погод\\p{L}*|weather)\\s+(?:в|для)\\s+([\\p{L} .'-]{2,80})""")
+            Regex("""(?i)(?:погод\p{L}*|weather)\s+(?:в|для)\s+([\p{L} .'-]{2,80})""")
                 .find(text)?.groupValues?.getOrNull(1)?.trim()
-                ?.replace(Regex("""(?i)\\s+(?:сверху|вверху|снизу|внизу|справа|слева|по центру|в центре).*$"""), "")
+                ?.replace(Regex("""(?i)\s+(?:сверху|вверху|снизу|внизу|справа|слева|по центру|в центре).*$"""), "")
                 ?.trim()?.takeIf { it.isNotBlank() } ?: ""
         } else ""
         val scale = when {
@@ -129,10 +129,10 @@ object LiveWidgetIntentRouter {
     fun needsTargetClarification(text: String, activeWidgets: List<LiveWidget>): Boolean {
         if (activeWidgets.size < 2) return false
         val n = text.lowercase()
-        val namesBlock = Regex("""\\b(?:блок|блоки|виджет|виджеты)\\b""").containsMatchIn(n)
+        val namesBlock = Regex("""\b(?:блок|блоки|виджет|виджеты)\b""").containsMatchIn(n)
         val hasType = Regex("""погод|weather|час|время|clock|батаре|заряд|battery""").containsMatchIn(n)
         val hasControlVerb = Regex("""убери|удали|закрой|скрой|сотри|убрать|удалить|скрыть|выключи|отключи|перемести|передвинь|сдвинь|перетащи|поставь|перенеси|увеличь|уменьши""").containsMatchIn(n)
-        val hideAll = Regex("""(?:все|всё)\\s+(?:блоки|виджеты)|(?:блоки|виджеты)\\s+все""").containsMatchIn(n)
+        val hideAll = Regex("""(?:все|всё)\s+(?:блоки|виджеты)|(?:блоки|виджеты)\s+все""").containsMatchIn(n)
         return namesBlock && !hasType && hasControlVerb && !hideAll
     }
 }
