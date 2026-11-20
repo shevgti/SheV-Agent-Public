@@ -773,13 +773,16 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     }
                 }
             }
-            LiveWidgetsOverlay(
-                widgets = liveWidgets,
-                onMove = viewModel::moveLiveWidget,
-                onRemove = viewModel::removeLiveWidget,
-                onResize = viewModel::resizeLiveWidget
-            )
         }
+
+        // Render the overlay even before the first chat message and keep it as a
+        // sibling above the scrollable transcript, so live cards remain visible.
+        LiveWidgetsOverlay(
+            widgets = liveWidgets,
+            onMove = viewModel::moveLiveWidget,
+            onRemove = viewModel::removeLiveWidget,
+            onResize = viewModel::resizeLiveWidget
+        )
 
         if (state.busy) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
