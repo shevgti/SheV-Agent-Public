@@ -11,14 +11,28 @@ object LiveWeatherClient {
     suspend fun current(city: String): String = withContext(Dispatchers.IO) {
         val normalized = city.trim()
         require(normalized.isNotEmpty()) { "Укажи город в команде, например «погода в Амстердаме»." }
-        val geocodeUrl = "https://geocoding-api.open-meteo.com/v1/search?name=${URLEncoder.encode(normalized, "UTF-8")}&count=1&language=ru&format=json"
-        val geo = request(geocodeUrl)
-        val location = JsonParser.parseString(geo).asJsonObject.getAsJsonArray("results")
-            ?.firstOrNull()?.asJsonObject ?: throw IllegalArgumentException("Город не найден: $normalized")
-        val lat = location.get("latitude").asDouble
-        val lon = location.get("longitude").asDouble
-        val name = location.get("name")?.asString ?: normalized
-        val country = location.get("country")?.asString.orEmpty()
+        val candidates = buildList {
+            add(normalized)
+            if (normalized.endsWith("е")) {
+                add(normalized.removeSuffix("е"))
+                if (normalized.endsWith("ве")) add(normalized.removeSuffix("ве") + "ва")
+                if (normalized.endsWith("ге")) add(normalized.removeSuffix("ге") + "га")
+            }
+            if (normalized.endsWith("у")) add(normalized.removeSuffix("у"))
+        }.distinct()
+        var location: com.google.gson.JsonObject? = null
+        for (candidate in candidates) {
+            val geocodeUrl = "https://geocoding-api.open-meteo.com/v1/search?name=${URLEncoder.encode(candidate, "UTF-8")}&count=1&language=ru&format=json"
+            val geo = request(geocodeUrl)
+            location = JsonParser.parseString(geo).asJsonObject.getAsJsonArray("results")
+                ?.firstOrNull()?.asJsonObject
+            if (location != null) break
+        }
+        val resolvedLocation = location ?: throw IllegalArgumentException("Город не найден: $normalized")
+        val lat = resolvedLocation.get("latitude").asDouble
+        val lon = resolvedLocation.get("longitude").asDouble
+        val name = resolvedLocation.get("name")?.asString ?: normalized
+        val country = resolvedLocation.get("country")?.asString.orEmpty()
         val weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&timezone=auto"
         val weather = JsonParser.parseString(request(weatherUrl)).asJsonObject.getAsJsonObject("current")
         val temp = weather.get("temperature_2m").asInt
