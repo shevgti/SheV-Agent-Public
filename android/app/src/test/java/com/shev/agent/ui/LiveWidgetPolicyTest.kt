@@ -88,4 +88,15 @@ class LiveWidgetPolicyTest {
         assertEquals(1.15f, resized.single().scale, .0001f)
     }
 
+    @Test fun asksWhichWidgetWhenGenericCommandIsAmbiguous() {
+        val widgets = listOf(
+            LiveWidget(type = LiveWidgetType.CLOCK),
+            LiveWidget(type = LiveWidgetType.WEATHER, city = "Berlin")
+        )
+        assertTrue(LiveWidgetIntentRouter.needsTargetClarification("Передвинь блок вправо", widgets))
+        assertTrue(LiveWidgetIntentRouter.needsTargetClarification("Убери блок с экрана", widgets))
+        assertFalse(LiveWidgetIntentRouter.needsTargetClarification("Убери все блоки", widgets))
+        assertFalse(LiveWidgetIntentRouter.needsTargetClarification("Убери часы", widgets))
+    }
+
 }
