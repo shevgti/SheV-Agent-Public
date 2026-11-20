@@ -716,7 +716,9 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val success = changed != null && when (command.action) {
             LiveWidgetAction.SHOW -> changed.any { it.type == command.type }
             LiveWidgetAction.HIDE -> exists && changed.none { it.type == command.type }
+            LiveWidgetAction.HIDE_ALL -> before.isNotEmpty() && changed.isEmpty()
             LiveWidgetAction.MOVE -> exists && (command.x != null || command.y != null)
+            LiveWidgetAction.RESIZE -> exists && changed.firstOrNull { it.type == command.type }?.scale != before.firstOrNull { it.type == command.type }?.scale
         }
         if (changed != null && success) {
             liveWidgetRepository.save(changed)
@@ -728,11 +730,14 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             LiveWidgetType.BATTERY -> "заряд батареи"
         }
         val answer = when {
+            command.action == LiveWidgetAction.HIDE_ALL && before.isEmpty() -> "На экране уже нет живых блоков."
             changed == null -> "Не удалось изменить блок: проверь положение и лимит блоков."
             !success && command.action == LiveWidgetAction.HIDE -> "Блок «$name» не найден."
             !success -> "Не удалось выполнить команду с блоком «$name»."
+            command.action == LiveWidgetAction.HIDE_ALL -> "Убрал все живые блоки с экрана."
             command.action == LiveWidgetAction.HIDE -> "Убрал блок «$name»."
             command.action == LiveWidgetAction.MOVE -> "Переместил блок «$name»."
+            command.action == LiveWidgetAction.RESIZE -> "Изменил размер блока «$name»."
             command.type == LiveWidgetType.WEATHER && command.city.isBlank() -> "Добавил погоду. Укажи город, например: «Покажи погоду в Берлине»."
             command.type == LiveWidgetType.WEATHER -> "Добавил погоду для города ${command.city}."
             else -> "Добавил блок «$name» в чат."
@@ -748,7 +753,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             "shev_omniroute",
             Application.MODE_PRIVATE
         )
-        LiveWidgetIntentRouter.parse(message)?.let { command ->
+        LiveWidgetIntentRouter.parse(message, mutableLiveWidgets.value)?.let { command ->
             sendLiveWidgetCommandReply(message, command)
             return
         }
