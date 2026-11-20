@@ -29,6 +29,13 @@ import com.shev.agent.tools.ToolInputField
 import com.shev.agent.tools.ToolInputSchema
 import com.shev.agent.tools.ToolInputType
 import com.shev.agent.tools.SheVAgentAdkTools
+import com.shev.agent.ui.LiveWidget
+import com.shev.agent.ui.LiveWidgetAction
+import com.shev.agent.ui.LiveWidgetCommand
+import com.shev.agent.ui.LiveWidgetIntentRouter
+import com.shev.agent.ui.LiveWidgetPolicy
+import com.shev.agent.ui.LiveWidgetRepository
+import com.shev.agent.ui.LiveWidgetType
 import java.util.UUID
 import com.google.gson.JsonParser
 import kotlinx.coroutines.CancellationException
@@ -54,7 +61,8 @@ data class LocalModelUiState(
     val backendName: String? = null,
     val deviceSummary: String = "Проверяю характеристики устройства…",
     val prompt: String = "",
-    val messages: List<String> = emptyList()
+    val messages: List<String> = emptyList(),
+    val liveWidgets: List<LiveWidget> = emptyList()
 )
 
 /** Owns the native runtime for the Activity lifetime, not a recyclable Compose list item. */
@@ -63,6 +71,9 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private val database = SheVAgentDatabaseProvider.get(application.applicationContext)
     private val dao = database.agentDao()
     private val conversationStateRepository = ConversationStateRepository(database)
+    private val liveWidgetRepository = LiveWidgetRepository(application.applicationContext)
+    private val mutableLiveWidgets = MutableStateFlow(liveWidgetRepository.load())
+    val liveWidgets: StateFlow<List<LiveWidget>> = mutableLiveWidgets.asStateFlow()
     private val taskRepository = RoomAgentTaskRepository(
         database,
         RoomAgentTaskAuthorizationVerifier(dao)
@@ -398,6 +409,77 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun moveLiveWidget(id: String, x: Float, y: Float) {
+        val current = mutableLiveWidgets.value
+        val changed = current.map { if (it.id == id) it.copy(x = x.coerceIn(0f, 0.84f), y = y.coerceIn(0f, 0.82f)) else it }
+        if (LiveWidgetPolicy.validate(changed) == null) {
+            liveWidgetRepository.save(changed)
+            mutableLiveWidgets.value = changed
+        }
+    }
+
+    fun removeLiveWidget(id: String) {
+        val changed = mutableLiveWidgets.value.filterNot { it.id == id }
+        liveWidgetRepository.save(changed)
+        mutableLiveWidgets.value = changed
+    }
+
+    private fun sendLiveWidgetCommandReply(message: String, command: LiveWidgetCommand) {
+        val before = mutableLiveWidgets.value
+        val changed = LiveWidgetPolicy.apply(before, command)
+        val existing = before.any { it.type == command.type }
+        val actionSucceeded = changed != null && when (command.action) {
+            LiveWidgetAction.SHOW -> changed.any { it.type == command.type }
+            LiveWidgetAction.HIDE -> !existing || changed.none { it.type == command.type }
+            LiveWidgetAction.MOVE -> existing
+        }
+        if (changed != null && actionSucceeded && changed != before) {
+            liveWidgetRepository.save(changed)
+            mutableLiveWidgets.value = changed
+        }
+        val widgetName = when (command.type) {
+            LiveWidgetType.CLOCK -> "часы"
+            LiveWidgetType.WEATHER -> "погоду"
+            LiveWidgetType.BATTERY -> "заряд батареи"
+        }
+        val answer = when {
+            changed == null -> "Не удалось изменить блок. Возможно, достигнут лимит или указано неверное положение."
+            command.action == LiveWidgetAction.HIDE && !existing -> "Блок с данными «$widgetName» не найден."
+            !actionSucceeded -> "Не удалось выполнить команду с блоком «$widgetName»."
+            command.action == LiveWidgetAction.HIDE -> "Убрал блок «$widgetName»."
+            command.action == LiveWidgetAction.MOVE -> "Переместил блок «$widgetName»."
+            command.type == LiveWidgetType.WEATHER && command.city.isBlank() -> "Добавил блок погоды. Укажи город командой «Покажи погоду в Амстердаме», и блок начнёт обновлять данные."
+            command.type == LiveWidgetType.WEATHER -> "Добавил блок погоды для города ${command.city}. Он будет обновлять данные автоматически."
+            else -> "Добавил блок «$widgetName». Он уже находится в чате и будет обновляться автоматически."
+        }
+        mutableState.update { it.copy(prompt = "", busy = true, error = null, messages = it.messages + "Вы: $message") }
+        responseJob = viewModelScope.launch(Dispatchers.IO) {
+            val userId = UUID.randomUUID().toString()
+            try {
+                val now = System.currentTimeMillis()
+                dao.appendConversationMessage(ConversationMessageEntity(
+                    id = userId, role = ConversationContextBuilder.ROLE_USER,
+                    content = LocalMessageCipher.encrypt(message), status = ConversationContextBuilder.STATUS_PENDING,
+                    createdAtEpochMillis = now
+                ))
+                dao.appendConversationMessage(ConversationMessageEntity(
+                    id = UUID.randomUUID().toString(), role = ConversationContextBuilder.ROLE_ASSISTANT,
+                    content = LocalMessageCipher.encrypt(answer), status = ConversationContextBuilder.STATUS_COMPLETE,
+                    createdAtEpochMillis = now
+                ))
+                dao.updateConversationMessageStatus(userId, ConversationContextBuilder.STATUS_COMPLETE)
+                mutableState.update { it.copy(messages = it.messages + "SheV: $answer") }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                dao.updateConversationMessageStatus(userId, ConversationContextBuilder.STATUS_FAILED)
+                mutableState.update { it.copy(error = failure.message ?: "Не удалось сохранить команду живого блока.") }
+            } finally {
+                mutableState.update { it.copy(busy = false) }
+            }
+        }
+    }
+
     private fun sendLocalTimeReply(message: String) {
         val answer = LocalTimeTool().readCurrentTime()
         mutableState.update {
@@ -450,6 +532,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     fun send() {
         val message = mutableState.value.prompt.trim()
         if (message.isEmpty() || mutableState.value.busy) return
+
+        // Widget commands are handled locally and work regardless of selected AI provider.
+        LiveWidgetIntentRouter.parse(message)?.let { command ->
+            sendLiveWidgetCommandReply(message, command)
+            return
+        }
 
         val preferences = getApplication<Application>().getSharedPreferences(
             "shev_omniroute",
