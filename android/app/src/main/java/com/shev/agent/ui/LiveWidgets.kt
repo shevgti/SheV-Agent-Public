@@ -5,6 +5,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.util.UUID
 
+// Chat-local live cards for the 0.3.2 release baseline.
 enum class LiveWidgetType { CLOCK, WEATHER, BATTERY }
 
 data class LiveWidget(
