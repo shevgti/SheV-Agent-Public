@@ -113,9 +113,9 @@ object LiveWidgetIntentRouter {
         if (!(hideVerbs + moveVerbs + showVerbs).any { normalized.startsWith(it) || normalized.contains(" $it ") }) return null
         val position = placement.firstOrNull { it.first.containsMatchIn(normalized) }
         val city = if (type == LiveWidgetType.WEATHER) {
-            Regex("""(?:погод\p{L}*|weather)\s+(?:в|для)\s+([\p{L} .'-]{2,80})""")
-                .find(normalized)?.groupValues?.getOrNull(1)?.trim()
-                ?.replace(Regex("""\s+(?:сверху|вверху|снизу|внизу|справа|слева|по центру|в центре).*$"""), "")
+            Regex("""(?i)(?:погод\p{L}*|weather)\s+(?:в|для)\s+([\p{L} .'-]{2,80})""")
+                .find(text)?.groupValues?.getOrNull(1)?.trim()
+                ?.replace(Regex("""(?i)\s+(?:сверху|вверху|снизу|внизу|справа|слева|по центру|в центре).*$"""), "")
                 ?.trim()?.takeIf { it.isNotBlank() } ?: ""
         } else ""
         return LiveWidgetCommand(action, type, city, position?.second, position?.third)
