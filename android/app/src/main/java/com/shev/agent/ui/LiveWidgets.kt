@@ -81,9 +81,13 @@ object LiveWidgetIntentRouter {
         Triple(Regex("(?:сверху|вверху|верхний).*(?:слева|левый)"), .04f, .04f),
         Triple(Regex("(?:снизу|внизу|нижний).*(?:справа|правый)"), .44f, .58f),
         Triple(Regex("(?:снизу|внизу|нижний).*(?:слева|левый)"), .04f, .58f),
-        Triple(Regex("""(?:наверх|вверх|верх|сверху|вверху)(?=\s|$)"""), .30f, .04f),
+        Triple(Regex("""(?:наверх|вверх|верх|сверху|вверху)(?:\s+(?:вправо|справа|правый))?"""), .30f, .04f),
         Triple(Regex("""(?:вниз|ниж|снизу|внизу)(?=\s|$)"""), .30f, .58f),
         Triple(Regex("""(?:влево|левее|слева)(?=\s|$)"""), .04f, .35f),
+        Triple(Regex("""(?:наверх|вверх|верх|сверху|вверху)\s+(?:вправо|справа|правый)"""), .44f, .04f),
+        Triple(Regex("""(?:наверх|вверх|верх|сверху|вверху)\s+(?:влево|слева|левый)"""), .04f, .04f),
+        Triple(Regex("""(?:вниз|ниж|снизу|внизу)\s+(?:вправо|справа|правый)"""), .44f, .58f),
+        Triple(Regex("""(?:вниз|ниж|снизу|внизу)\s+(?:влево|слева|левый)"""), .04f, .58f),
         Triple(Regex("""(?:вправо|правее|справа)(?=\s|$)"""), .44f, .35f),
         Triple(Regex("(?:по центру|в центре|центральн)"), .30f, .35f)
     )
@@ -137,7 +141,7 @@ object LiveWidgetIntentRouter {
     fun needsTargetClarification(text: String, activeWidgets: List<LiveWidget>): Boolean {
         if (activeWidgets.size < 2) return false
         val n = text.lowercase()
-        val namesBlock = Regex("""\b(?:блок|блоки|виджет|виджеты)\b""").containsMatchIn(n)
+        val namesBlock = Regex("""(?:блок|блоки|виджет|виджеты)""").containsMatchIn(n)
         val hasType = Regex("""погод|weather|час|время|clock|батаре|заряд|battery""").containsMatchIn(n)
         val hasControlVerb = Regex("""убери|удали|закрой|скрой|сотри|убрать|удалить|скрыть|выключи|отключи|перемести|передвинь|сдвинь|перетащи|поставь|перенеси|увеличь|уменьши""").containsMatchIn(n)
         val hideAll = Regex("""(?:все|всё)\s+(?:блоки|виджеты)|(?:блоки|виджеты)\s+все""").containsMatchIn(n)
