@@ -126,6 +126,14 @@ object LiveWidgetIntentRouter {
         return LiveWidgetCommand(action, type, city, p?.second, p?.third, scale)
     }
 
+    fun needsDestinationClarification(text: String, activeWidgets: List<LiveWidget>): Boolean {
+        if (activeWidgets.isEmpty()) return false
+        val n = text.lowercase()
+        val moveVerb = Regex("""перемести|передвинь|сдвинь|перетащи|поставь|перенеси|переместить|передвинуть""").containsMatchIn(n)
+        val hasDirection = placement.any { it.first.containsMatchIn(n) }
+        return moveVerb && !hasDirection
+    }
+
     fun needsTargetClarification(text: String, activeWidgets: List<LiveWidget>): Boolean {
         if (activeWidgets.size < 2) return false
         val n = text.lowercase()
