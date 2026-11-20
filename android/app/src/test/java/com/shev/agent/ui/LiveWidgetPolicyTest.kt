@@ -33,11 +33,16 @@ class LiveWidgetPolicyTest {
         val weather = LiveWidgetIntentRouter.parse("Покажи погоду в Амстердаме сверху справа")
         assertEquals(LiveWidgetType.WEATHER, weather?.type)
         assertEquals(LiveWidgetAction.SHOW, weather?.action)
-        assertEquals(.68f, weather?.x ?: -1f, .0001f)
+        assertEquals(.44f, weather?.x ?: -1f, .0001f)
         assertEquals(.04f, weather?.y ?: -1f, .0001f)
         assertEquals("Амстердаме", weather?.city)
         val remove = LiveWidgetIntentRouter.parse("Убери часы")
         assertEquals(LiveWidgetAction.HIDE, remove?.action)
         assertEquals(LiveWidgetType.CLOCK, remove?.type)
+        val move = LiveWidgetIntentRouter.parse("Перемести часы наверх")
+        assertEquals(LiveWidgetAction.MOVE, move?.action)
+        assertEquals(0.30f, move?.x ?: -1f, .0001f)
+        assertEquals(0.04f, move?.y ?: -1f, .0001f)
+        assertNull(LiveWidgetIntentRouter.parse("Какая погода сегодня?"))
     }
 }
