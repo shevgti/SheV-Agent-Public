@@ -102,7 +102,7 @@ object LiveWidgetIntentRouter {
         if (!explicitAction.containsMatchIn(normalized)) return null
         val position = placement.firstOrNull { it.first.containsMatchIn(normalized) }
         val city = if (type == LiveWidgetType.WEATHER) {
-            Regex("""(?:погод[ау]?|weather)\s+(?:в|для)\s+([\p{L} .'-]{2,80})""")
+            Regex("""(?:погод\p{L}*|weather)\s+(?:в|для)\s+([\p{L} .'-]{2,80})""")
                 .find(normalized)?.groupValues?.getOrNull(1)?.trim()
                 ?.replace(Regex("""\s+(?:сверху|вверху|снизу|внизу|справа|слева|по центру|в центре).*$"""), "")
                 ?.trim()?.takeIf { it.isNotBlank() } ?: ""
@@ -118,7 +118,9 @@ class LiveWidgetRepository(context: Context) {
 
     fun load(): List<LiveWidget> = runCatching {
         gson.fromJson<List<LiveWidget>>(prefs.getString("items", "[]"), listType).orEmpty()
-    }.getOrDefault(emptyList()).filter { LiveWidgetPolicy.validate(listOf(it)) == null }
+    }.getOrDefault(emptyList()).let { parsed ->
+        if (LiveWidgetPolicy.validate(parsed) == null) parsed else emptyList()
+    }
 
     fun save(items: List<LiveWidget>) {
         require(LiveWidgetPolicy.validate(items) == null) { "Invalid live widget layout" }
