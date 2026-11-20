@@ -38,11 +38,14 @@ object LiveWidgetPolicy {
         return null
     }
 
-    fun defaultPosition(type: LiveWidgetType, index: Int): Pair<Float, Float> = when (index % 4) {
-        0 -> 0.44f to 0.04f
-        1 -> 0.04f to 0.08f
-        2 -> 0.44f to 0.55f
-        else -> 0.04f to 0.58f
+    fun defaultPosition(type: LiveWidgetType, index: Int): Pair<Float, Float> {
+        val right = if (type == LiveWidgetType.WEATHER) 0.44f else 0.58f
+        return when (index % 4) {
+            0 -> right to 0.04f
+            1 -> 0.04f to 0.08f
+            2 -> right to 0.55f
+            else -> 0.04f to 0.58f
+        }
     }
 
     fun apply(items: List<LiveWidget>, command: LiveWidgetCommand): List<LiveWidget>? {
@@ -51,7 +54,13 @@ object LiveWidgetPolicy {
         return when (command.action) {
             LiveWidgetAction.SHOW -> {
                 if (existing != null) {
-                    items.map { if (it.id == existing.id) it.copy(city = command.city.ifBlank { it.city }) else it }
+                    items.map {
+                        if (it.id == existing.id) it.copy(
+                            city = command.city.ifBlank { it.city },
+                            x = command.x ?: it.x,
+                            y = command.y ?: it.y
+                        ) else it
+                    }
                 } else {
                     if (items.size >= MAX_WIDGETS) return null
                     val (x, y) = defaultPosition(command.type, items.size)
@@ -74,14 +83,14 @@ object LiveWidgetPolicy {
 
 object LiveWidgetIntentRouter {
     private val placement = listOf(
-        Triple(Regex("(?:наверх|вверх|верх)\\b"), 0.30f, 0.04f),
-        Triple(Regex("(?:вниз|ниж)\\b"), 0.30f, 0.58f),
-        Triple(Regex("(?:влево|левее)\\b"), 0.04f, 0.35f),
-        Triple(Regex("(?:вправо|правее)\\b"), 0.44f, 0.35f),
         Triple(Regex("(?:сверху|вверху|верхний).*(?:справа|правый)"), 0.44f, 0.04f),
         Triple(Regex("(?:сверху|вверху|верхний).*(?:слева|левый)"), 0.04f, 0.04f),
         Triple(Regex("(?:снизу|внизу|нижний).*(?:справа|правый)"), 0.44f, 0.58f),
         Triple(Regex("(?:снизу|внизу|нижний).*(?:слева|левый)"), 0.04f, 0.58f),
+        Triple(Regex("(?:наверх|вверх|верх|сверху|вверху)\\b"), 0.30f, 0.04f),
+        Triple(Regex("(?:вниз|ниж|снизу|внизу)\\b"), 0.30f, 0.58f),
+        Triple(Regex("(?:влево|левее|слева)\\b"), 0.04f, 0.35f),
+        Triple(Regex("(?:вправо|правее|справа)\\b"), 0.44f, 0.35f),
         Triple(Regex("(?:по центру|в центре|центральн)"), 0.30f, 0.35f)
     )
 
