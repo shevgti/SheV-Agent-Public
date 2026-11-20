@@ -678,6 +678,32 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         mutableLiveWidgets.value = changed
     }
 
+    /**
+     * Live cards are native Compose state, not pixels the language model can inspect.
+     * Attach a compact, read-only description to every model turn so SheV can answer
+     * questions about what is currently on screen without pretending to use vision.
+     */
+    private fun liveWidgetContext(): String {
+        val items = mutableLiveWidgets.value
+        if (items.isEmpty()) return "\\n\\n[Состояние живых блоков: сейчас в чате нет активных блоков.]"
+        fun position(widget: LiveWidget): String {
+            val horizontal = when { widget.x < 0.22f -> "слева"; widget.x > 0.55f -> "справа"; else -> "по центру" }
+            val vertical = when { widget.y < 0.22f -> "сверху"; widget.y > 0.52f -> "снизу"; else -> "посередине" }
+            return "$vertical $horizontal"
+        }
+        val details = items.joinToString("; ") { widget ->
+            val title = when (widget.type) {
+                LiveWidgetType.CLOCK -> "часы"
+                LiveWidgetType.WEATHER -> "погода"
+                LiveWidgetType.BATTERY -> "заряд батареи"
+            }
+            val extra = if (widget.type == LiveWidgetType.WEATHER) {
+                if (widget.city.isBlank()) " (город не задан; карточка просит указать город)" else " (город: ${widget.city})"
+            } else ""
+            "$title — ${position(widget)}$extra"
+        }
+        return "\\n\\n[Состояние живых блоков в чате: $details. Это фактическое состояние интерфейса. Если пользователь спрашивает о блоках, отвечай по этому списку. Не утверждай, что видишь другие части экрана.]"
+    }
     private fun sendLiveWidgetCommandReply(message: String, command: LiveWidgetCommand) {
         val before = mutableLiveWidgets.value
         val changed = LiveWidgetPolicy.apply(before, command)
@@ -777,7 +803,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val summaryCheckpoint = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
                 val promptWithContext = ConversationContextBuilder.build(
                     chronologicalHistory = history,
-                    currentMessage = message,
+                    currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint
                 )
@@ -873,7 +899,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val summaryCheckpoint = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
                 val promptWithContext = ConversationContextBuilder.build(
                     chronologicalHistory = history,
-                    currentMessage = message,
+                    currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint
                 )
@@ -997,7 +1023,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     val summaryRead = conversationStateRepository.readSummary()
                     ConversationContextBuilder.build(
                         chronologicalHistory = history,
-                        currentMessage = message,
+                        currentMessage = message + liveWidgetContext(),
                         rollingSummary = (summaryRead as? ConversationSummaryRead.Ready)?.plaintext,
                         summaryThroughMessageId = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
                     )
@@ -1180,7 +1206,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val summaryRead = conversationStateRepository.readSummary()
                 val conversationContext = ConversationContextBuilder.build(
                     chronologicalHistory = history,
-                    currentMessage = message,
+                    currentMessage = message + liveWidgetContext(),
                     rollingSummary = (summaryRead as? ConversationSummaryRead.Ready)?.plaintext,
                     summaryThroughMessageId = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
                 )
@@ -1457,7 +1483,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val summaryCheckpoint = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
                 val promptWithContext = ConversationContextBuilder.build(
                     chronologicalHistory = history,
-                    currentMessage = message,
+                    currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint
                 )
@@ -1530,7 +1556,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val summaryCheckpoint = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
                 val promptWithContext = ConversationContextBuilder.build(
                     chronologicalHistory = history,
-                    currentMessage = message,
+                    currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint
                 )
@@ -1602,7 +1628,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val summaryCheckpoint = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
                 val promptWithContext = ConversationContextBuilder.build(
                     chronologicalHistory = history,
-                    currentMessage = message,
+                    currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint
                 )
@@ -1686,7 +1712,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val summaryCheckpoint = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
                 val promptWithContext = ConversationContextBuilder.build(
                     chronologicalHistory = history,
-                    currentMessage = message,
+                    currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint
                 )
