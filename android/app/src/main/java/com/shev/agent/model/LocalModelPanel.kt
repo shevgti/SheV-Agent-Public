@@ -16,6 +16,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -69,6 +70,7 @@ import com.shev.agent.BuildConfig
 import com.shev.agent.update.AppUpdate
 import com.shev.agent.update.AppUpdater
 import com.shev.agent.update.UpdateCheckWorker
+import com.shev.agent.ui.LiveWidgetsOverlay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import java.util.Locale
@@ -76,6 +78,7 @@ import java.util.Locale
 @Composable
 fun LocalModelPanel(viewModel: LocalModelViewModel) {
     val state by viewModel.state.collectAsState()
+    val liveWidgets by viewModel.liveWidgets.collectAsState()
     val context = LocalContext.current
     var listening by remember { mutableStateOf(false) }
     var voiceConversation by remember { mutableStateOf(false) }
@@ -870,37 +873,46 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             }
         }
 
-        if (state.messages.isEmpty()) {
-            Spacer(Modifier.height(22.dp))
-            Text("Привет! Я SheV.", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Text(
-                "Напиши мне или нажми на микрофон и просто поговори. Я отвечу здесь.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            LazyColumn(
-                state = chatListState,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 10.dp)
-            ) {
-                itemsIndexed(state.messages, key = { index, _ -> index }) { _, line ->
-                    val fromUser = line.startsWith("Вы:")
-                    val message = line.substringAfter(":").trim()
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = if (fromUser) Arrangement.End else Arrangement.Start
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = if (fromUser) Color(0xFF3158C8) else MaterialTheme.colorScheme.surface,
-                            contentColor = if (fromUser) Color.White else MaterialTheme.colorScheme.onSurface
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            if (state.messages.isEmpty()) {
+                Column(Modifier.fillMaxSize().padding(top = 22.dp)) {
+                    Text("Привет! Я SheV.", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Напиши мне или нажми на микрофон и просто поговори. Я отвечу здесь.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                LazyColumn(
+                    state = chatListState,
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 10.dp)
+                ) {
+                    itemsIndexed(state.messages, key = { index, _ -> index }) { _, line ->
+                        val fromUser = line.startsWith("Вы:")
+                        val message = line.substringAfter(":").trim()
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = if (fromUser) Arrangement.End else Arrangement.Start
                         ) {
-                            Text(message, modifier = Modifier.padding(horizontal = 15.dp, vertical = 12.dp))
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = if (fromUser) Color(0xFF3158C8) else MaterialTheme.colorScheme.surface,
+                                contentColor = if (fromUser) Color.White else MaterialTheme.colorScheme.onSurface
+                            ) {
+                                Text(message, modifier = Modifier.padding(horizontal = 15.dp, vertical = 12.dp))
+                            }
                         }
                     }
                 }
             }
+            LiveWidgetsOverlay(
+                widgets = liveWidgets,
+                onMove = viewModel::moveLiveWidget,
+                onRemove = viewModel::removeLiveWidget,
+                onResize = viewModel::resizeLiveWidget
+            )
         }
 
         if (state.busy) {
