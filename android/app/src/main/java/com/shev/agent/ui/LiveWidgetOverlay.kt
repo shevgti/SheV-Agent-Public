@@ -102,7 +102,7 @@ private fun LiveWidgetCard(widget: LiveWidget, onRemove: () -> Unit, onResize: (
                     weather = "Обновляю…"
                     weatherError = null
                     try {
-                        weather = LiveWeatherClient.current(widget.city)
+                        weather = LiveWeatherClient.current(\n                            widget.city,\n                            context.getSharedPreferences("shev_weather", android.content.Context.MODE_PRIVATE)\n                                .getString("yandex_api_key", "").orEmpty()\n                        )
                     } catch (error: Exception) {
                         weatherError = error.message ?: "Погодные данные недоступны"
                         weather = "Не удалось обновить"
