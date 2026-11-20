@@ -685,7 +685,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
      */
     private fun liveWidgetContext(): String {
         val items = mutableLiveWidgets.value
-        if (items.isEmpty()) return "\\n\\n[Состояние живых блоков: сейчас в чате нет активных блоков.]"
+        if (items.isEmpty()) return "\n\n[Состояние живых блоков: сейчас в чате нет активных блоков.]"
         fun position(widget: LiveWidget): String {
             val horizontal = when { widget.x < 0.22f -> "слева"; widget.x > 0.55f -> "справа"; else -> "по центру" }
             val vertical = when { widget.y < 0.22f -> "сверху"; widget.y > 0.52f -> "снизу"; else -> "посередине" }
@@ -702,7 +702,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             } else ""
             "$title — ${position(widget)}$extra"
         }
-        return "\\n\\n[Состояние живых блоков в чате: $details. Это фактическое состояние интерфейса. Если пользователь спрашивает о блоках, отвечай по этому списку. Не утверждай, что видишь другие части экрана.]"
+        return "\n\n[Состояние живых блоков в чате: $details. Это фактическое состояние интерфейса. Если пользователь спрашивает о блоках, отвечай по этому списку. Не утверждай, что видишь другие части экрана.]"
     }
     private fun sendLiveWidgetCommandReply(message: String, command: LiveWidgetCommand) {
         val before = mutableLiveWidgets.value
