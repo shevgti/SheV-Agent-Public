@@ -103,7 +103,7 @@ object LiveWidgetIntentRouter {
         val show = Regex("""(?:покажи|добавь|создай|выведи|сделай|включи|show|add|display)""").containsMatchIn(n)
         if (!hide && !move && !resizeUp && !resizeDown && !show) return null
         val action = when {
-            hide && (allTarget || explicitType == null && (n.contains("блоки") || n.contains("виджеты"))) -> LiveWidgetAction.HIDE_ALL
+            hide && (explicitType == null && (allTarget || activeWidgets.isEmpty() && (n.contains("блок") || n.contains("виджет")))) -> LiveWidgetAction.HIDE_ALL
             hide -> LiveWidgetAction.HIDE
             move -> LiveWidgetAction.MOVE
             resizeUp -> LiveWidgetAction.RESIZE
