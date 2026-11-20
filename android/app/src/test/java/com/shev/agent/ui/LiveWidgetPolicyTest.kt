@@ -35,7 +35,7 @@ class LiveWidgetPolicyTest {
         assertEquals(LiveWidgetAction.SHOW, weather?.action)
         assertEquals(.68f, weather?.x ?: -1f, .0001f)
         assertEquals(.04f, weather?.y ?: -1f, .0001f)
-        assertEquals("Амстердам", weather?.city)
+        assertEquals("Амстердаме", weather?.city)
         val remove = LiveWidgetIntentRouter.parse("Убери часы")
         assertEquals(LiveWidgetAction.HIDE, remove?.action)
         assertEquals(LiveWidgetType.CLOCK, remove?.type)
