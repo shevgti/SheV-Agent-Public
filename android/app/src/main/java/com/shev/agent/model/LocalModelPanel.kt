@@ -99,6 +99,11 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var showCodexSettings by remember { mutableStateOf(true) }
     var showGeminiSettings by remember { mutableStateOf(false) }
     var showOpenRouterSettings by remember { mutableStateOf(false) }
+    var yandexWeatherKey by remember {
+        mutableStateOf(context.getSharedPreferences("shev_weather", android.content.Context.MODE_PRIVATE)
+            .getString("yandex_api_key", "").orEmpty())
+    }
+    var weatherKeySaved by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<AppUpdate?>(null) }
     var updateMessage by remember { mutableStateOf<String?>(null) }
     var checkingUpdate by remember { mutableStateOf(false) }
@@ -380,6 +385,39 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text(if (checkingUpdate) "Проверяю обновления…" else "Проверить обновления") }
+                        }
+                    }
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Яндекс.Погода", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Погодные блоки и ответы SheV о погоде будут получать данные напрямую из API Яндекс.Погоды. Нужен личный API-ключ.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            OutlinedTextField(
+                                value = yandexWeatherKey,
+                                onValueChange = { yandexWeatherKey = it; weatherKeySaved = false },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("API-ключ Яндекс.Погоды") },
+                                singleLine = true,
+                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
+                            )
+                            Button(
+                                onClick = {
+                                    context.getSharedPreferences("shev_weather", android.content.Context.MODE_PRIVATE)
+                                        .edit().putString("yandex_api_key", yandexWeatherKey.trim()).apply()
+                                    weatherKeySaved = true
+                                },
+                                enabled = yandexWeatherKey.isNotBlank(),
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Сохранить ключ на телефоне") }
+                            if (weatherKeySaved) {
+                                Text("Ключ сохранён. Он не добавляется в репозиторий GitHub.", style = MaterialTheme.typography.bodySmall, color = Color(0xFF16834A))
+                            }
+                            TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://yandex.ru/dev/weather/"))) }) {
+                                Text("Получить API-ключ Яндекс.Погоды")
+                            }
                         }
                     }
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
