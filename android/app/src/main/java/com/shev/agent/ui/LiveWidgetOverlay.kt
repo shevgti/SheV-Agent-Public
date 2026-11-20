@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -70,6 +71,10 @@ fun LiveWidgetsOverlay(
                 animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
                 label = "live-widget-scale"
             )
+            // Keep the pointer coroutine stable during drag recompositions, but read
+            // the latest model coordinates when a new gesture begins.
+            val latestX = rememberUpdatedState(widget.x)
+            val latestY = rememberUpdatedState(widget.y)
             LiveWidgetCard(
                 widget = widget,
                 onRemove = { onRemove(widget.id) },
@@ -86,9 +91,14 @@ fun LiveWidgetsOverlay(
                         // Keep an accumulated position for the whole gesture. The widget
                         // model is recomposed after every drag delta, but pointerInput is
                         // intentionally not restarted for each model update.
-                        var dragX = widget.x.coerceIn(0f, maxX)
-                        var dragY = widget.y.coerceIn(0f, maxY)
-                        detectDragGestures { change, drag ->
+                        var dragX = latestX.value.coerceIn(0f, maxX)
+                        var dragY = latestY.value.coerceIn(0f, maxY)
+                        detectDragGestures(
+                            onDragStart = {
+                                dragX = latestX.value.coerceIn(0f, maxX)
+                                dragY = latestY.value.coerceIn(0f, maxY)
+                            }
+                        ) { change, drag ->
                             change.consume()
                             dragX = (dragX + drag.x / widthPx).coerceIn(0f, maxX)
                             dragY = (dragY + drag.y / heightPx).coerceIn(0f, maxY)
