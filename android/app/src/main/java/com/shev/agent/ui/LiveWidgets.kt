@@ -10,7 +10,7 @@ enum class LiveWidgetType { CLOCK, WEATHER, BATTERY }
 data class LiveWidget(
     val id: String = UUID.randomUUID().toString(),
     val type: LiveWidgetType,
-    val x: Float = 0.70f,
+    val x: Float = 0.44f,
     val y: Float = 0.08f,
     val city: String = ""
 )
@@ -37,9 +37,9 @@ object LiveWidgetPolicy {
     }
 
     fun defaultPosition(type: LiveWidgetType, index: Int): Pair<Float, Float> = when (index % 4) {
-        0 -> 0.68f to 0.04f
+        0 -> 0.44f to 0.04f
         1 -> 0.04f to 0.08f
-        2 -> 0.68f to 0.55f
+        2 -> 0.44f to 0.55f
         else -> 0.04f to 0.58f
     }
 
