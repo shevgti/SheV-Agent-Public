@@ -102,13 +102,15 @@ object LiveWidgetIntentRouter {
             normalized.contains("батаре") || normalized.contains("заряд") || normalized.contains("battery") -> LiveWidgetType.BATTERY
             else -> return null
         }
+        val hideVerbs = listOf("убери", "удали", "закрой", "скрой", "hide", "remove")
+        val moveVerbs = listOf("перемести", "передвинь", "move")
+        val showVerbs = listOf("покажи", "добавь", "создай", "выведи", "сделай", "show", "add", "display")
         val action = when {
-            Regex("\\b(?:убери|удали|закрой|скрой|hide|remove)\\b").containsMatchIn(normalized) -> LiveWidgetAction.HIDE
-            Regex("\\b(?:перемести|передвинь|move)\\b").containsMatchIn(normalized) -> LiveWidgetAction.MOVE
+            hideVerbs.any { normalized.startsWith(it) || normalized.contains(" $it ") } -> LiveWidgetAction.HIDE
+            moveVerbs.any { normalized.startsWith(it) || normalized.contains(" $it ") } -> LiveWidgetAction.MOVE
             else -> LiveWidgetAction.SHOW
         }
-        val explicitAction = Regex("\\b(?:покажи|добавь|создай|выведи|сделай|show|add|display|убери|удали|закрой|скрой|hide|remove|перемести|передвинь|move)\\b")
-        if (!explicitAction.containsMatchIn(normalized)) return null
+        if (!(hideVerbs + moveVerbs + showVerbs).any { normalized.startsWith(it) || normalized.contains(" $it ") }) return null
         val position = placement.firstOrNull { it.first.containsMatchIn(normalized) }
         val city = if (type == LiveWidgetType.WEATHER) {
             Regex("""(?:погод\p{L}*|weather)\s+(?:в|для)\s+([\p{L} .'-]{2,80})""")
