@@ -39,26 +39,27 @@ fun LiveWidgetsOverlay(
     onRemove: (id: String) -> Unit,
     onResize: (id: String, scale: Float) -> Unit
 ) {
-    val context = LocalContext.current
     BoxWithConstraints(Modifier) {
         val widthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
         val heightPx = constraints.maxHeight.toFloat().coerceAtLeast(1f)
         widgets.forEach { widget ->
             val baseWidth = if (widget.type == LiveWidgetType.WEATHER) 200.dp else 150.dp
             val cardWidth = baseWidth * widget.scale
+            val estimatedHeight = (if (widget.type == LiveWidgetType.WEATHER) 170.dp else 120.dp) * widget.scale
             val maxX = ((maxWidth - cardWidth) / maxWidth).value.coerceIn(0f, 0.84f)
+            val maxY = ((maxHeight - estimatedHeight) / maxHeight).value.coerceIn(0f, 0.82f)
             LiveWidgetCard(
                 widget = widget,
                 onRemove = { onRemove(widget.id) },
                 onResize = { delta -> onResize(widget.id, (widget.scale + delta).coerceIn(0.75f, 1.5f)) },
                 modifier = Modifier
-                    .offset(x = (widget.x.coerceIn(0f, maxX) * maxWidth.value).dp, y = (widget.y * maxHeight.value).dp)
+                    .offset(x = (widget.x.coerceIn(0f, maxX) * maxWidth.value).dp, y = (widget.y.coerceIn(0f, maxY) * maxHeight.value).dp)
                     .width(cardWidth)
                     .pointerInput(widget.id, widthPx, heightPx, cardWidth) {
                         detectDragGestures { change, drag ->
                             change.consume()
                             val nextX = (widget.x + drag.x / widthPx).coerceIn(0f, maxX)
-                            val nextY = (widget.y + drag.y / heightPx).coerceIn(0f, 0.82f)
+                            val nextY = (widget.y + drag.y / heightPx).coerceIn(0f, maxY)
                             onMove(widget.id, nextX, nextY)
                         }
                     }
