@@ -15,6 +15,7 @@ import android.os.Looper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -69,6 +70,7 @@ import com.shev.agent.BuildConfig
 import com.shev.agent.update.AppUpdate
 import com.shev.agent.update.AppUpdater
 import com.shev.agent.update.UpdateCheckWorker
+import com.shev.agent.ui.LiveWidgetsOverlay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import java.util.Locale
@@ -76,6 +78,7 @@ import java.util.Locale
 @Composable
 fun LocalModelPanel(viewModel: LocalModelViewModel) {
     val state by viewModel.state.collectAsState()
+    val liveWidgets by viewModel.liveWidgets.collectAsState()
     val context = LocalContext.current
     var listening by remember { mutableStateOf(false) }
     var voiceConversation by remember { mutableStateOf(false) }
@@ -725,6 +728,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             }
         }
 
+        Box(Modifier.weight(1f).fillMaxWidth()) {
         if (state.messages.isEmpty()) {
             Spacer(Modifier.height(22.dp))
             Text("Привет! Я SheV.", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
@@ -735,7 +739,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
         } else {
             LazyColumn(
                 state = chatListState,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
+                modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 10.dp)
             ) {
@@ -769,6 +773,12 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     }
                 }
             }
+            LiveWidgetsOverlay(
+                widgets = liveWidgets,
+                onMove = viewModel::moveLiveWidget,
+                onRemove = viewModel::removeLiveWidget,
+                onResize = viewModel::resizeLiveWidget
+            )
         }
 
         if (state.busy) {
