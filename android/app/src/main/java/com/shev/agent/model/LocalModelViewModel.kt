@@ -31,7 +31,7 @@ import com.shev.agent.creator.AgentManifestParser
 import com.shev.agent.creator.AgentRunPolicy
 import com.shev.agent.tools.AgentTool
 import com.shev.agent.tools.LocalTimeTool
-import com.shev.agent.tools.OpenMeteoWeatherTool
+import com.shev.agent.ui.LiveWeatherClient
 import com.shev.agent.ui.LiveWidget
 import com.shev.agent.ui.LiveWidgetAction
 import com.shev.agent.ui.LiveWidgetCommand
@@ -1951,7 +1951,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         AgentToolResult(false, "Укажи город.", "CITY_REQUIRED")
                     } else {
                         try {
-                            AgentToolResult(true, OpenMeteoWeatherTool().currentWeather(city))
+                            AgentToolResult(\n                                true,\n                                LiveWeatherClient.current(\n                                    city,\n                                    getApplication<Application>().getSharedPreferences("shev_weather", Application.MODE_PRIVATE)\n                                        .getString("yandex_api_key", "").orEmpty()\n                                )\n                            )
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (failure: Exception) {
