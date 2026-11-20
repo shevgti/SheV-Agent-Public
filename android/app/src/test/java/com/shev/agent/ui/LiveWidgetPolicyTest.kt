@@ -58,4 +58,34 @@ class LiveWidgetPolicyTest {
         assertEquals(0.30f, center?.x ?: -1f, .0001f)
         assertEquals(0.35f, center?.y ?: -1f, .0001f)
     }
+    @Test fun genericHideAllAndSingleBlockCommandsWork() {
+        val widgets = listOf(
+            LiveWidget(type = LiveWidgetType.CLOCK),
+            LiveWidget(type = LiveWidgetType.WEATHER, city = "Berlin")
+        )
+        val all = LiveWidgetIntentRouter.parse("Убери все блоки с экрана", widgets)
+        assertEquals(LiveWidgetAction.HIDE_ALL, all?.action)
+        assertEquals(emptyList<LiveWidget>(), LiveWidgetPolicy.apply(widgets, all!!))
+
+        val one = listOf(widgets.first())
+        val hide = LiveWidgetIntentRouter.parse("Убери блок с экрана", one)
+        assertEquals(LiveWidgetAction.HIDE, hide?.action)
+        assertEquals(LiveWidgetType.CLOCK, hide?.type)
+
+        val move = LiveWidgetIntentRouter.parse("Передвинь блок наверх справа", one)
+        assertEquals(LiveWidgetAction.MOVE, move?.action)
+        assertEquals(.44f, move?.x ?: -1f, .0001f)
+        assertEquals(.04f, move?.y ?: -1f, .0001f)
+
+        assertNull(LiveWidgetIntentRouter.parse("Убери блок", widgets))
+    }
+
+    @Test fun genericResizeChangesSelectedBlockScale() {
+        val widgets = listOf(LiveWidget(type = LiveWidgetType.CLOCK))
+        val command = LiveWidgetIntentRouter.parse("Увеличь блок", widgets)!!
+        assertEquals(LiveWidgetAction.RESIZE, command.action)
+        val resized = LiveWidgetPolicy.apply(widgets, command)!!
+        assertEquals(1.15f, resized.single().scale, .0001f)
+    }
+
 }
