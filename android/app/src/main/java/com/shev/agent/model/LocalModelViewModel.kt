@@ -438,7 +438,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val actionSucceeded = changed != null && when (command.action) {
             LiveWidgetAction.SHOW -> changed.any { it.type == command.type }
             LiveWidgetAction.HIDE -> !existing || changed.none { it.type == command.type }
-            LiveWidgetAction.MOVE -> existing
+            LiveWidgetAction.MOVE -> existing && (command.x != null || command.y != null)
         }
         if (changed != null && actionSucceeded && changed != before) {
             liveWidgetRepository.save(changed)
