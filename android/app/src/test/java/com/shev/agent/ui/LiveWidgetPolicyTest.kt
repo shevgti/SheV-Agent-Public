@@ -44,5 +44,18 @@ class LiveWidgetPolicyTest {
         assertEquals(0.30f, move?.x ?: -1f, .0001f)
         assertEquals(0.04f, move?.y ?: -1f, .0001f)
         assertNull(LiveWidgetIntentRouter.parse("Какая погода сегодня?"))
+
+        val battery = LiveWidgetIntentRouter.parse("Покажи батарею внизу")
+        assertEquals(LiveWidgetType.BATTERY, battery?.type)
+        assertEquals(0.30f, battery?.x ?: -1f, .0001f)
+        assertEquals(0.58f, battery?.y ?: -1f, .0001f)
+
+        val lowerLeft = LiveWidgetIntentRouter.parse("Добавь часы снизу слева")
+        assertEquals(0.04f, lowerLeft?.x ?: -1f, .0001f)
+        assertEquals(0.58f, lowerLeft?.y ?: -1f, .0001f)
+
+        val center = LiveWidgetIntentRouter.parse("Покажи часы по центру")
+        assertEquals(0.30f, center?.x ?: -1f, .0001f)
+        assertEquals(0.35f, center?.y ?: -1f, .0001f)
     }
 }
