@@ -410,7 +410,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
 
     fun moveLiveWidget(id: String, x: Float, y: Float) {
         val current = mutableLiveWidgets.value
-        val changed = current.map { if (it.id == id) it.copy(x = x.coerceIn(0f, 0.45f), y = y.coerceIn(0f, 0.82f)) else it }
+        val changed = current.map { if (it.id == id) it.copy(x = x.coerceIn(0f, 0.84f), y = y.coerceIn(0f, 0.82f)) else it }
         if (LiveWidgetPolicy.validate(changed) == null) {
             liveWidgetRepository.save(changed)
             mutableLiveWidgets.value = changed
