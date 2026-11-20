@@ -1,5 +1,6 @@
 package com.shev.agent.ui
 
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -7,10 +8,17 @@ import java.net.HttpURLConnection
 import java.net.URLEncoder
 import java.net.URL
 
+/**
+ * City names are resolved to coordinates, but all meteorological values come from Yandex Weather.
+ * The API key is supplied by the user and is kept only in private app preferences.
+ */
 object LiveWeatherClient {
-    suspend fun current(city: String): String = withContext(Dispatchers.IO) {
+    suspend fun current(city: String, apiKey: String): String = withContext(Dispatchers.IO) {
         val normalized = city.trim()
-        require(normalized.isNotEmpty()) { "Укажи город в команде, например «погода в Амстердаме»." }
+        require(normalized.isNotEmpty()) { "Укажи город, например «погода в Амстердаме»." }
+        require(apiKey.isNotBlank()) {
+            "Для Яндекс.Погоды нужен API-ключ. Открой Настройки → Яндекс.Погода и добавь ключ."
+        }
         val candidates = buildList {
             add(normalized)
             if (normalized.endsWith("е")) {
@@ -20,7 +28,7 @@ object LiveWeatherClient {
             }
             if (normalized.endsWith("у")) add(normalized.removeSuffix("у"))
         }.distinct()
-        var location: com.google.gson.JsonObject? = null
+        var location: JsonObject? = null
         for (candidate in candidates) {
             val geocodeUrl = "https://geocoding-api.open-meteo.com/v1/search?name=${URLEncoder.encode(candidate, "UTF-8")}&count=1&language=ru&format=json"
             val geo = request(geocodeUrl)
@@ -33,46 +41,72 @@ object LiveWeatherClient {
         val lon = resolvedLocation.get("longitude").asDouble
         val name = resolvedLocation.get("name")?.asString ?: normalized
         val country = resolvedLocation.get("country")?.asString.orEmpty()
-        val weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&timezone=auto"
-        val weather = JsonParser.parseString(request(weatherUrl)).asJsonObject.getAsJsonObject("current")
-        val temp = weather.get("temperature_2m").asInt
-        val feels = weather.get("apparent_temperature").asInt
-        val wind = weather.get("wind_speed_10m").asInt
-        val code = weather.get("weather_code").asInt
-        val description = describe(code)
-        val humidity = weather.get("relative_humidity_2m").asInt
-        "$name${if (country.isBlank()) "" else ", $country"} · $temp° · $description · ощущается $feels° · ветер $wind км/ч · влажность $humidity%"
+
+        val weatherUrl = "https://api.weather.yandex.ru/v2/forecast?lat=$lat&lon=$lon&lang=ru_RU&limit=1&hours=false"
+        val root = JsonParser.parseString(request(weatherUrl, apiKey)).asJsonObject
+        val fact = root.getAsJsonObject("fact")
+            ?: throw IllegalStateException("Яндекс.Погода не вернула текущие погодные данные.")
+        val temp = fact.get("temp")?.asInt ?: throw IllegalStateException("В ответе Яндекс.Погоды нет температуры.")
+        val feels = fact.get("feels_like")?.asInt
+        val wind = fact.get("wind_speed")?.asDouble
+        val humidity = fact.get("humidity")?.asInt
+        val condition = describe(fact.get("condition")?.asString.orEmpty())
+        buildString {
+            append("$name${if (country.isBlank()) "" else ", $country"} · $temp° · $condition")
+            feels?.let { append(" · ощущается $it°") }
+            wind?.let { append(" · ветер ${"%.1f".format(java.util.Locale.US, it)} м/с") }
+            humidity?.let { append(" · влажность $it%") }
+            append(" · данные Яндекс.Погоды")
+        }
     }
 
-    private fun request(url: String): String {
+    private fun request(url: String, apiKey: String? = null): String {
         val connection = URL(url).openConnection() as HttpURLConnection
         return try {
-            connection.connectTimeout = 8_000
-            connection.readTimeout = 8_000
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 10_000
             connection.requestMethod = "GET"
             connection.setRequestProperty("Accept", "application/json")
+            apiKey?.let { connection.setRequestProperty("X-Yandex-Weather-Key", it.trim()) }
             val status = connection.responseCode
-            if (status !in 200..299) throw IllegalStateException("Погодный сервис вернул HTTP $status")
+            if (status !in 200..299) {
+                val detail = runCatching {
+                    (connection.errorStream ?: connection.inputStream).bufferedReader().use { it.readText() }
+                }.getOrNull().orEmpty()
+                val message = when (status) {
+                    403 -> "Яндекс.Погода отклонила ключ (HTTP 403). Проверь ключ и подключённый тариф API."
+                    404 -> "Яндекс.Погода не нашла координаты этого города."
+                    429 -> "Превышен лимит запросов Яндекс.Погоды (HTTP 429)."
+                    else -> "Яндекс.Погода вернула HTTP $status."
+                }
+                throw IllegalStateException(if (detail.isBlank()) message else "$message $detail".take(400))
+            }
             connection.inputStream.bufferedReader().use { it.readText() }
         } finally {
             connection.disconnect()
         }
     }
 
-    private fun describe(code: Int): String = when (code) {
-        0 -> "ясно"
-        1 -> "преимущественно ясно"
-        2 -> "переменная облачность"
-        3 -> "пасмурно"
-        45, 48 -> "туман"
-        51, 53, 55 -> "морось"
-        56, 57 -> "ледяная морось"
-        61, 63, 65 -> "дождь"
-        66, 67 -> "ледяной дождь"
-        71, 73, 75, 77 -> "снег"
-        80, 81, 82 -> "ливень"
-        85, 86 -> "снегопад"
-        95, 96, 99 -> "гроза"
-        else -> "погодные условия"
+    private fun describe(condition: String): String = when (condition.lowercase()) {
+        "clear" -> "ясно"
+        "partly-cloudy" -> "малооблачно"
+        "cloudy" -> "облачно с прояснениями"
+        "overcast" -> "пасмурно"
+        "drizzle" -> "морось"
+        "light-rain" -> "небольшой дождь"
+        "rain" -> "дождь"
+        "moderate-rain" -> "умеренный дождь"
+        "heavy-rain" -> "сильный дождь"
+        "continuous-heavy-rain" -> "затяжной сильный дождь"
+        "showers" -> "ливень"
+        "wet-snow" -> "мокрый снег"
+        "light-snow" -> "небольшой снег"
+        "snow" -> "снег"
+        "snow-showers" -> "снегопад"
+        "hail" -> "град"
+        "thunderstorm" -> "гроза"
+        "thunderstorm-with-rain" -> "гроза с дождём"
+        "thunderstorm-with-hail" -> "гроза с градом"
+        else -> if (condition.isBlank()) "условия не указаны" else condition
     }
 }
