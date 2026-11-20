@@ -757,6 +757,17 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             sendLiveWidgetCommandReply(message, command)
             return
         }
+        if (LiveWidgetIntentRouter.needsDestinationClarification(message, mutableLiveWidgets.value)) {
+            mutableState.update {
+                it.copy(
+                    prompt = "",
+                    error = null,
+                    messages = it.messages + "Вы: $message" +
+                        "SheV: Куда переместить блок? Скажи, например: «наверх слева», «вниз справа» или «по центру»."
+                )
+            }
+            return
+        }
         if (LiveWidgetIntentRouter.needsTargetClarification(message, mutableLiveWidgets.value)) {
             val available = mutableLiveWidgets.value.joinToString(", ") { widget ->
                 when (widget.type) {
