@@ -1992,11 +1992,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         try {
                             AgentToolResult(
                                 true,
-                                LiveWeatherClient.current(
-                                    city,
-                                    getApplication<Application>().getSharedPreferences("shev_weather", Application.MODE_PRIVATE)
-                                        .getString("yandex_api_key", "").orEmpty()
-                                )
+                                LiveWeatherClient.current(city)
                             )
                         } catch (cancelled: CancellationException) {
                             throw cancelled
