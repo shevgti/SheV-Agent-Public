@@ -278,7 +278,7 @@ jobs:
 
   publish-branch-update:
     name: Publish installable Codex-enabled update for device testing
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/fix/android-codex-file-locks' }}
+    if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/fix/android-codex-file-locks' || github.ref == 'refs/heads/release/0.3.2-build.39') }}
     needs:
       - build-and-unit-tests
     runs-on: ubuntu-latest
@@ -339,9 +339,10 @@ jobs:
 
   android-16-emulator:
     name: Optional Android 16 (API 36) instrumentation smoke test
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_emulator == true }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || github.event_name == 'pull_request' }}
     needs: build-and-unit-tests
-    runs-on: ubuntu-latest
+    # Pin to Ubuntu 24.04 while investigating emulator boot failures on ubuntu-latest (26.04).
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - name: Checkout
@@ -367,12 +368,19 @@ jobs:
           fi
       - name: Run Android 16 emulator tests
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          # Hosted runners may not expose KVM. Android Emulator requires an
+          # explicit opt-in before falling back to the very slow TCG backend.
+          ANDROID_I_WANT_MY_TCG: "yes"
         with:
           api-level: 36
           target: google_apis
           arch: x86_64
           profile: pixel_2
           disable-animations: true
+          # Headless boot with software rendering and no snapshots is more reliable
+          # on hosted Ubuntu runners; snapshots can leave adb disconnected.
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -wipe-data
           emulator-boot-timeout: 900
           script: |
             cd android

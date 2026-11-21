@@ -15,6 +15,7 @@ import android.os.Looper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -69,6 +70,7 @@ import com.shev.agent.BuildConfig
 import com.shev.agent.update.AppUpdate
 import com.shev.agent.update.AppUpdater
 import com.shev.agent.update.UpdateCheckWorker
+import com.shev.agent.ui.LiveWidgetsOverlay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import java.util.Locale
@@ -76,6 +78,7 @@ import java.util.Locale
 @Composable
 fun LocalModelPanel(viewModel: LocalModelViewModel) {
     val state by viewModel.state.collectAsState()
+    val liveWidgets by viewModel.liveWidgets.collectAsState()
     val context = LocalContext.current
     var listening by remember { mutableStateOf(false) }
     var voiceConversation by remember { mutableStateOf(false) }
@@ -96,6 +99,11 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var showCodexSettings by remember { mutableStateOf(true) }
     var showGeminiSettings by remember { mutableStateOf(false) }
     var showOpenRouterSettings by remember { mutableStateOf(false) }
+    var yandexWeatherKey by remember {
+        mutableStateOf(context.getSharedPreferences("shev_weather", android.content.Context.MODE_PRIVATE)
+            .getString("yandex_api_key", "").orEmpty())
+    }
+    var weatherKeySaved by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<AppUpdate?>(null) }
     var updateMessage by remember { mutableStateOf<String?>(null) }
     var checkingUpdate by remember { mutableStateOf(false) }
@@ -377,6 +385,39 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text(if (checkingUpdate) "Проверяю обновления…" else "Проверить обновления") }
+                        }
+                    }
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Яндекс.Погода", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Погодные блоки и ответы SheV о погоде будут получать данные напрямую из API Яндекс.Погоды. Нужен личный API-ключ.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            OutlinedTextField(
+                                value = yandexWeatherKey,
+                                onValueChange = { yandexWeatherKey = it; weatherKeySaved = false },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("API-ключ Яндекс.Погоды") },
+                                singleLine = true,
+                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
+                            )
+                            Button(
+                                onClick = {
+                                    context.getSharedPreferences("shev_weather", android.content.Context.MODE_PRIVATE)
+                                        .edit().putString("yandex_api_key", yandexWeatherKey.trim()).apply()
+                                    weatherKeySaved = true
+                                },
+                                enabled = yandexWeatherKey.isNotBlank(),
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Сохранить ключ на телефоне") }
+                            if (weatherKeySaved) {
+                                Text("Ключ сохранён. Он не добавляется в репозиторий GitHub.", style = MaterialTheme.typography.bodySmall, color = Color(0xFF16834A))
+                            }
+                            TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://yandex.ru/dev/weather/"))) }) {
+                                Text("Получить API-ключ Яндекс.Погоды")
+                            }
                         }
                     }
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -725,6 +766,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             }
         }
 
+        Box(Modifier.weight(1f).fillMaxWidth()) {
         if (state.messages.isEmpty()) {
             Spacer(Modifier.height(22.dp))
             Text("Привет! Я SheV.", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
@@ -735,7 +777,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
         } else {
             LazyColumn(
                 state = chatListState,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
+                modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 10.dp)
             ) {
@@ -771,6 +813,17 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             }
         }
 
+        // Render the overlay even before the first chat message and keep it as a
+        // sibling above the scrollable transcript, so live cards remain visible.
+        LiveWidgetsOverlay(
+            widgets = liveWidgets,
+            onMove = viewModel::moveLiveWidget,
+            onRemove = viewModel::removeLiveWidget,
+            onResize = viewModel::resizeLiveWidget
+        )
+        }
+
+        // Keep status and the message composer below the transcript viewport.
         if (state.busy) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CircularProgressIndicator(modifier = Modifier.height(18.dp))

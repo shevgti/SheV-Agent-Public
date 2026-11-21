@@ -31,7 +31,14 @@ import com.shev.agent.creator.AgentManifestParser
 import com.shev.agent.creator.AgentRunPolicy
 import com.shev.agent.tools.AgentTool
 import com.shev.agent.tools.LocalTimeTool
-import com.shev.agent.tools.OpenMeteoWeatherTool
+import com.shev.agent.ui.LiveWeatherClient
+import com.shev.agent.ui.LiveWidget
+import com.shev.agent.ui.LiveWidgetAction
+import com.shev.agent.ui.LiveWidgetCommand
+import com.shev.agent.ui.LiveWidgetIntentRouter
+import com.shev.agent.ui.LiveWidgetPolicy
+import com.shev.agent.ui.LiveWidgetRepository
+import com.shev.agent.ui.LiveWidgetType
 import com.shev.agent.tools.PublicWebSearchTool
 import com.shev.agent.tools.SuspendingAgentTool
 import com.shev.agent.tools.AgentToolDescriptor
@@ -107,6 +114,9 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     private val dao = database.agentDao()
     private val skillLibrary = AgentSkillLibrary(dao)
     private val conversationStateRepository = ConversationStateRepository(database)
+    private val liveWidgetRepository = LiveWidgetRepository(application.applicationContext)
+    private val mutableLiveWidgets = MutableStateFlow(liveWidgetRepository.load())
+    val liveWidgets: StateFlow<List<LiveWidget>> = mutableLiveWidgets.asStateFlow()
     private val taskRepository = RoomAgentTaskRepository(
         database,
         RoomAgentTaskAuthorizationVerifier(dao)
@@ -646,6 +656,95 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun moveLiveWidget(id: String, x: Float, y: Float) {
+        val changed = mutableLiveWidgets.value.map { if (it.id == id) it.copy(x = x.coerceIn(0f, 1f), y = y.coerceIn(0f, 1f)) else it }
+        if (LiveWidgetPolicy.validate(changed) == null) {
+            liveWidgetRepository.save(changed)
+            mutableLiveWidgets.value = changed
+        }
+    }
+
+    fun resizeLiveWidget(id: String, scale: Float) {
+        val changed = mutableLiveWidgets.value.map { if (it.id == id) it.copy(scale = scale.coerceIn(0.75f, 1.5f)) else it }
+        if (LiveWidgetPolicy.validate(changed) == null) {
+            liveWidgetRepository.save(changed)
+            mutableLiveWidgets.value = changed
+        }
+    }
+
+    fun removeLiveWidget(id: String) {
+        val changed = mutableLiveWidgets.value.filterNot { it.id == id }
+        liveWidgetRepository.save(changed)
+        mutableLiveWidgets.value = changed
+    }
+
+    /**
+     * Live cards are native Compose state, not pixels the language model can inspect.
+     * Attach a compact, read-only description to every model turn so SheV can answer
+     * questions about what is currently on screen without pretending to use vision.
+     */
+    private fun liveWidgetContext(): String {
+        val items = mutableLiveWidgets.value
+        if (items.isEmpty()) return "\n\n[Состояние живых блоков: сейчас в чате нет активных блоков.]"
+        fun position(widget: LiveWidget): String {
+            val horizontal = when { widget.x < 0.22f -> "слева"; widget.x > 0.55f -> "справа"; else -> "по центру" }
+            val vertical = when { widget.y < 0.22f -> "сверху"; widget.y > 0.52f -> "снизу"; else -> "посередине" }
+            return "$vertical $horizontal"
+        }
+        val details = items.joinToString("; ") { widget ->
+            val title = when (widget.type) {
+                LiveWidgetType.CLOCK -> "часы (текущее локальное время и дата)"
+                LiveWidgetType.WEATHER -> "погода (текущая температура, условия, ветер и влажность)"
+                LiveWidgetType.BATTERY -> "заряд батареи (текущий процент заряда устройства)"
+            }
+            val extra = if (widget.type == LiveWidgetType.WEATHER) {
+                val latest = LiveWeatherClient.latestDisplay
+                if (widget.city.isBlank()) {
+                    " (город не задан; карточка просит указать город)"
+                } else {
+                    " (город: ${widget.city}" + (latest?.let { "; сейчас на карточке: $it" } ?: "; актуальные данные ещё не загружены") + ")"
+                }
+            } else ""
+            "$title — ${position(widget)}$extra"
+        }
+        return "\n\n[Состояние живых блоков в чате: $details. Это фактическое состояние интерфейса. Если пользователь спрашивает о блоках, отвечай по этому списку. Не утверждай, что видишь другие части экрана.]"
+    }
+    private fun sendLiveWidgetCommandReply(message: String, command: LiveWidgetCommand) {
+        val before = mutableLiveWidgets.value
+        val changed = LiveWidgetPolicy.apply(before, command)
+        val exists = before.any { it.type == command.type }
+        val success = changed != null && when (command.action) {
+            LiveWidgetAction.SHOW -> changed.any { it.type == command.type }
+            LiveWidgetAction.HIDE -> exists && changed.none { it.type == command.type }
+            LiveWidgetAction.HIDE_ALL -> before.isNotEmpty() && changed.isEmpty()
+            LiveWidgetAction.MOVE -> exists && (command.x != null || command.y != null)
+            LiveWidgetAction.RESIZE -> exists && changed.firstOrNull { it.type == command.type }?.scale != before.firstOrNull { it.type == command.type }?.scale
+        }
+        if (changed != null && success) {
+            liveWidgetRepository.save(changed)
+            mutableLiveWidgets.value = changed
+        }
+        val name = when (command.type) {
+            LiveWidgetType.CLOCK -> "часы"
+            LiveWidgetType.WEATHER -> "погоду"
+            LiveWidgetType.BATTERY -> "заряд батареи"
+        }
+        val answer = when {
+            command.action == LiveWidgetAction.HIDE_ALL && before.isEmpty() -> "На экране уже нет живых блоков."
+            changed == null -> "Не удалось изменить блок: проверь положение и лимит блоков."
+            !success && command.action == LiveWidgetAction.HIDE -> "Блок «$name» не найден."
+            !success -> "Не удалось выполнить команду с блоком «$name»."
+            command.action == LiveWidgetAction.HIDE_ALL -> "Убрал все живые блоки с экрана."
+            command.action == LiveWidgetAction.HIDE -> "Убрал блок «$name»."
+            command.action == LiveWidgetAction.MOVE -> "Переместил блок «$name»."
+            command.action == LiveWidgetAction.RESIZE -> "Изменил размер блока «$name»."
+            command.type == LiveWidgetType.WEATHER && command.city.isBlank() -> "Добавил погоду. Укажи город, например: «Покажи погоду в Берлине»."
+            command.type == LiveWidgetType.WEATHER -> "Добавил погоду для города ${command.city}."
+            else -> "Добавил блок «$name» в чат."
+        }
+        mutableState.update { it.copy(prompt = "", error = null, messages = it.messages + "Вы: $message" + "SheV: $answer") }
+    }
+
     fun send() {
         val message = mutableState.value.prompt.trim()
         if (message.isEmpty() || mutableState.value.busy) return
@@ -654,6 +753,39 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             "shev_omniroute",
             Application.MODE_PRIVATE
         )
+        LiveWidgetIntentRouter.parse(message, mutableLiveWidgets.value)?.let { command ->
+            sendLiveWidgetCommandReply(message, command)
+            return
+        }
+        if (LiveWidgetIntentRouter.needsDestinationClarification(message, mutableLiveWidgets.value)) {
+            mutableState.update {
+                it.copy(
+                    prompt = "",
+                    error = null,
+                    messages = it.messages + "Вы: $message" +
+                        "SheV: Куда переместить блок? Скажи, например: «наверх слева», «вниз справа» или «по центру»."
+                )
+            }
+            return
+        }
+        if (LiveWidgetIntentRouter.needsTargetClarification(message, mutableLiveWidgets.value)) {
+            val available = mutableLiveWidgets.value.joinToString(", ") { widget ->
+                when (widget.type) {
+                    LiveWidgetType.CLOCK -> "часы"
+                    LiveWidgetType.WEATHER -> "погоду"
+                    LiveWidgetType.BATTERY -> "заряд батареи"
+                }
+            }
+            mutableState.update {
+                it.copy(
+                    prompt = "",
+                    error = null,
+                    messages = it.messages + "Вы: $message" +
+                        "SheV: Уточни, какой блок изменить: $available. Или скажи «убери все блоки»."
+                )
+            }
+            return
+        }
         // Device-local facts must not depend on model quality or a remote provider.
         if (LocalTimeIntentRouter.isCurrentTimeRequest(message)) {
             sendLocalTimeReply(message)
@@ -710,7 +842,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val summaryCheckpoint = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
                 val promptWithContext = ConversationContextBuilder.build(
                     chronologicalHistory = history,
-                    currentMessage = message,
+                    currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint
                 )
@@ -806,7 +938,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val summaryCheckpoint = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
                 val promptWithContext = ConversationContextBuilder.build(
                     chronologicalHistory = history,
-                    currentMessage = message,
+                    currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint
                 )
@@ -930,7 +1062,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     val summaryRead = conversationStateRepository.readSummary()
                     ConversationContextBuilder.build(
                         chronologicalHistory = history,
-                        currentMessage = message,
+                        currentMessage = message + liveWidgetContext(),
                         rollingSummary = (summaryRead as? ConversationSummaryRead.Ready)?.plaintext,
                         summaryThroughMessageId = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
                     )
@@ -1113,7 +1245,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val summaryRead = conversationStateRepository.readSummary()
                 val conversationContext = ConversationContextBuilder.build(
                     chronologicalHistory = history,
-                    currentMessage = message,
+                    currentMessage = message + liveWidgetContext(),
                     rollingSummary = (summaryRead as? ConversationSummaryRead.Ready)?.plaintext,
                     summaryThroughMessageId = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
                 )
@@ -1390,7 +1522,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val summaryCheckpoint = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
                 val promptWithContext = ConversationContextBuilder.build(
                     chronologicalHistory = history,
-                    currentMessage = message,
+                    currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint
                 )
@@ -1463,7 +1595,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val summaryCheckpoint = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
                 val promptWithContext = ConversationContextBuilder.build(
                     chronologicalHistory = history,
-                    currentMessage = message,
+                    currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint
                 )
@@ -1535,7 +1667,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val summaryCheckpoint = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
                 val promptWithContext = ConversationContextBuilder.build(
                     chronologicalHistory = history,
-                    currentMessage = message,
+                    currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint
                 )
@@ -1619,7 +1751,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val summaryCheckpoint = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
                 val promptWithContext = ConversationContextBuilder.build(
                     chronologicalHistory = history,
-                    currentMessage = message,
+                    currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint
                 )
@@ -1858,7 +1990,14 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         AgentToolResult(false, "Укажи город.", "CITY_REQUIRED")
                     } else {
                         try {
-                            AgentToolResult(true, OpenMeteoWeatherTool().currentWeather(city))
+                            AgentToolResult(
+                                true,
+                                LiveWeatherClient.current(
+                                    city,
+                                    getApplication<Application>().getSharedPreferences("shev_weather", Application.MODE_PRIVATE)
+                                        .getString("yandex_api_key", "").orEmpty()
+                                )
+                            )
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (failure: Exception) {
