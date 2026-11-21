@@ -23,7 +23,7 @@ class AgentPlanPostconditionVerifierTest {
             )
         )
         assertTrue(result.verified)
-        assertEquals(null, result.unverifiedStepIds)
+        assertEquals(emptyList<String>(), result.unverifiedStepIds)
     }
 
     @Test fun missingObservationCannotVerifyCompletion() {
