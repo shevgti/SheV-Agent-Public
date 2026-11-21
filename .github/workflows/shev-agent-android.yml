@@ -341,7 +341,8 @@ jobs:
     name: Optional Android 16 (API 36) instrumentation smoke test
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || github.event_name == 'pull_request' }}
     needs: build-and-unit-tests
-    runs-on: ubuntu-latest
+    # Pin to Ubuntu 24.04 while investigating emulator boot failures on ubuntu-latest (26.04).
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - name: Checkout
