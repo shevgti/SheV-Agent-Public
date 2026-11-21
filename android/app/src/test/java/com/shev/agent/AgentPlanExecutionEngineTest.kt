@@ -307,6 +307,59 @@ class AgentPlanExecutionEngineTest {
         assertEquals("search-1", result.failedStepId)
     }
 
+    @Test fun repeatedIdenticalToolCallIsBlockedWithinOneApprovedPlan() = runBlocking {
+        var calls = 0
+        val registry = registry()
+        val executor = AgentToolExecutor(
+            registry,
+            mapOf("research.lookup" to AgentTool {
+                calls++
+                AgentToolResult(true, "Источник найден")
+            })
+        )
+        val duplicatePlan = plan().copy(
+            steps = listOf(
+                plan().steps.single(),
+                plan().steps.single().copy(id = "search-duplicate", title = "Повторить тот же поиск")
+            )
+        )
+        val result = AgentPlanExecutionEngine(AgentPlanValidator(registry), executor).executeApprovedPlan(
+            duplicatePlan,
+            agentAllowedToolIds = setOf("research.lookup"),
+            context = AgentToolExecutionContext(setOf(AgentCapability.ANALYZE_DATA))
+        )
+        assertEquals(1, calls)
+        assertEquals(AgentPlanExecutionStatus.DUPLICATE_TOOL_CALL, result.status)
+        assertEquals("search-duplicate", result.failedStepId)
+        assertEquals(1, result.steps.size)
+        assertTrue(result.steps.single().success)
+    }
+
+    @Test fun sameToolWithDifferentInputIsNotTreatedAsDuplicate() = runBlocking {
+        var calls = 0
+        val registry = registry()
+        val executor = AgentToolExecutor(
+            registry,
+            mapOf("research.lookup" to AgentTool {
+                calls++
+                AgentToolResult(true, "ok")
+            })
+        )
+        val twoQueries = plan().copy(
+            steps = listOf(
+                plan().steps.single(),
+                plan().steps.single().copy(id = "search-2", input = "{\"query\":\"другая тема\"}")
+            )
+        )
+        val result = AgentPlanExecutionEngine(AgentPlanValidator(registry), executor).executeApprovedPlan(
+            twoQueries,
+            agentAllowedToolIds = setOf("research.lookup"),
+            context = AgentToolExecutionContext(setOf(AgentCapability.ANALYZE_DATA))
+        )
+        assertEquals(2, calls)
+        assertEquals(AgentPlanExecutionStatus.EXECUTED_NEEDS_VERIFICATION, result.status)
+    }
+
     @Test fun outputIsBounded() = runBlocking {
         val registry = registry()
         val executor = AgentToolExecutor(
