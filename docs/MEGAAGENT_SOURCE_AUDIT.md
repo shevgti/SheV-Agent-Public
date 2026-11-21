@@ -124,3 +124,16 @@ Validation status:
 - PR currently contains 4 commits / 3 changed files relative to that base.
 - GitHub Actions had not yet reported a run at the time of this update. The patch is not yet verified by CI or a device test. Do not merge or distribute an APK until tests/build pass.
 - Review exact ADK Kotlin 1.5.0 API compatibility and ensure cancellation cleanup works under the Android coroutine runtime.
+
+## CI failure triage and corrective change — 2026-11-21
+
+The first PR check (run `44893364000`, commit `58369fc181b779ef7fcabb9d9da78e414bde57fa`) failed during Kotlin compilation in an unrelated pre-existing weather adapter call:
+`LocalModelViewModel.kt:1997` passed both city and a stored Yandex API key to `LiveWeatherClient.current`, while the current keyless Open-Meteo adapter exposes only `current(city: String)`. The same stale call exists on the PR base branch `feature/live-widgets-on-build49`, so this is not caused by the new ADK session isolation.
+Corrected on the MegaAgent branch:
+- Commit `4e8f31d08b805595cbc73a176bd8e3a28815ed82`
+- Removed the obsolete Yandex preference argument; weather continues to use the already-implemented keyless Open-Meteo provider.
+- This is a compatibility cleanup consistent with the user's earlier request to remove the Yandex-key dependency.
+
+Validation:
+- The failed run is confirmed to have stopped at the stale weather signature error.
+- A new workflow run for the corrective commit had not appeared in the Actions API at the time of writing. Therefore compile/test status remains unverified; do not call this fixed in CI until a new run succeeds.
