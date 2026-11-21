@@ -137,3 +137,11 @@ Corrected on the MegaAgent branch:
 Validation:
 - The failed run is confirmed to have stopped at the stale weather signature error.
 - A new workflow run for the corrective commit had not appeared in the Actions API at the time of writing. Therefore compile/test status remains unverified; do not call this fixed in CI until a new run succeeds.
+
+## CI result and creator-session cleanup follow-up — 2026-11-21
+
+- Android JVM unit-test workflow run `44894903661` completed successfully for commit `6af990534ca0a60c624a4cf6ab62c81654294060`. All workflow steps passed, including the complete Android JVM unit-test suite.
+- PR #68 remains open/draft and mergeable; no release APK has been produced by this test workflow.
+- Additional lifecycle review found `runCreator()` created a unique session but returned the runner Flow without deleting the session after collection. Fixed on branch in commit `ed4f2504952df4980fc6b468e2771e78a4a313dd`: creator output is now collected through a Flow wrapper and the per-attempt session is deleted in a cancellation-safe `NonCancellable` finally block, matching main chat-turn lifecycle.
+- This cleanup keeps the model/runner loaded and prevents abandoned creator sessions from accumulating. The new commit still requires a fresh CI run.
+- Next: validate this latest commit in CI, then add repeated-tool-call detection and actual postcondition verification. Do not merge or publish APK until the latest head is green.
