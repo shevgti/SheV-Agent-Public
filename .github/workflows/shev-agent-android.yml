@@ -368,6 +368,10 @@ jobs:
           fi
       - name: Run Android 16 emulator tests
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          # Hosted runners may not expose KVM. Android Emulator requires an
+          # explicit opt-in before falling back to the very slow TCG backend.
+          ANDROID_I_WANT_MY_TCG: "yes"
         with:
           api-level: 36
           target: google_apis
