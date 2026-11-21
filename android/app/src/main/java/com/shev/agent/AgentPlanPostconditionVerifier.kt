@@ -13,7 +13,8 @@ data class AgentPostconditionObservation(
 data class AgentPlanPostconditionResult(
     val verified: Boolean,
     val unverifiedStepIds: List<String>,
-    val hasUnexpectedObservations: Boolean
+    val hasUnexpectedObservations: Boolean,
+    val hasInvalidExecutionSteps: Boolean
 )
 
 /**
@@ -30,6 +31,7 @@ object AgentPlanPostconditionVerifier {
     ): AgentPlanPostconditionResult {
         val expectedIds = execution.steps.map { it.stepId }
         val expectedSet = expectedIds.toSet()
+        val invalidExecutionSteps = expectedIds.any { it.isBlank() } || expectedSet.size != expectedIds.size
         val counts = observations.groupingBy { it.stepId }.eachCount()
         val unexpected = observations.any { it.stepId !in expectedSet } ||
             counts.values.any { it > 1 }
@@ -49,9 +51,10 @@ object AgentPlanPostconditionVerifier {
             execution.steps.all { it.success }
 
         return AgentPlanPostconditionResult(
-            verified = executionEligible && unverified.isEmpty() && !unexpected,
+            verified = executionEligible && unverified.isEmpty() && !unexpected && !invalidExecutionSteps,
             unverifiedStepIds = unverified,
-            hasUnexpectedObservations = unexpected
+            hasUnexpectedObservations = unexpected,
+            hasInvalidExecutionSteps = invalidExecutionSteps
         )
     }
 }
