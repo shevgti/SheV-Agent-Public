@@ -159,7 +159,7 @@ private fun LiveWidgetCard(widget: LiveWidget, onRemove: () -> Unit, onResize: (
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(18.dp),
-        color = Color(0xE81A2330),
+        color = Color(0x881A2330),
         contentColor = Color(0xFFF0F4FA),
         shadowElevation = 10.dp,
         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x665C86A6))
