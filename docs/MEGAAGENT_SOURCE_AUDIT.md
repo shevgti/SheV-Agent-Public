@@ -86,3 +86,24 @@ The existing code also contains a persistent Room task repository, encrypted con
 ## Current status
 
 This document is an audit/design commit only. No app source code was changed, no APK was built, and no third-party code was copied. The next implementation slice should be selected after inspecting the existing ADK runtime/session persistence and CI baseline.
+
+## Critical host-context finding — existing ADK session may duplicate prior turns
+
+Inspected:
+- `SheVAgentRuntime.run(text)` always invokes the same fixed `SheVAgentSession.SESSION_ID` (`main-session`) in the same `InMemorySessionService`.
+- `LocalModelViewModel.send()` rebuilds a prompt containing the rolling summary plus up to 12 previous completed messages / 4,000 history characters, then passes that *entire reconstructed context* as the new user message to `active.run(promptWithSkills)` on every turn.
+- The in-memory ADK session is not reset between these calls in the inspected `run()` path.
+
+This creates a likely context duplication defect: each new turn appends another user message containing prior turns that the same persistent ADK session already retains. Over several turns, the model may receive repeated copies of old dialogue, wasting context and making references/intent less reliable. This is a stronger and more actionable hypothesis than simply increasing the history limits.
+
+Recommended fix direction (not yet implemented):
+- Keep the encrypted Room transcript and rolling summary as the durable source of truth.
+- Give each top-level user turn a fresh ADK session ID, injecting the bounded reconstructed context exactly once for that turn. Keep all tool calls and specialist delegation within that per-turn session.
+- Alternatively, retain one ADK session but send only the new user message after the first turn; however this requires careful recovery when the native model/session cache is reset and when rolling summaries are updated. Prefer fresh per-turn sessions for deterministic context reconstruction unless ADK LiteRT cache costs make this impractical.
+- Add regression tests that run at least 5 turns and assert each prior transcript entry is present exactly once in the model input, the current turn is present once, and tool-call round trips remain in the same turn session.
+- Measure latency and memory before adopting the per-turn session approach. The loaded model must remain shared; do not reload model weights per turn.
+
+## Corrections to earlier rough diagnosis
+
+The current host does have a rolling summary repository and a tested context builder. The builder explicitly limits history to 12 messages / 4,000 characters and summary to 2,000 characters, and tests cover checkpoint exclusion, bounds, failed/pending rows and current-message preservation. Therefore do not describe the app as having no memory or no summarization. The problem to investigate is how this reconstructed context is combined with the persistent in-memory ADK session.
+
