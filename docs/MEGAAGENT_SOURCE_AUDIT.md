@@ -107,3 +107,20 @@ Recommended fix direction (not yet implemented):
 
 The current host does have a rolling summary repository and a tested context builder. The builder explicitly limits history to 12 messages / 4,000 characters and summary to 2,000 characters, and tests cover checkpoint exclusion, bounds, failed/pending rows and current-message preservation. Therefore do not describe the app as having no memory or no summarization. The problem to investigate is how this reconstructed context is combined with the persistent in-memory ADK session.
 
+
+## First code change — per-turn ADK session isolation
+
+Implemented on `megaagent/mega-core-foundation`:
+- Commit: `44b1ad9d928cc7f23c5d32e98d1be85c15140998`
+- `SheVAgentRuntime.run(text)` now returns a Flow that creates a unique ADK session for each top-level user turn.
+- The reconstructed Room transcript/summary is passed once as that session's user message.
+- All model/tool round-trips for that turn remain within the same session.
+- The session is deleted in a `NonCancellable` cleanup block after collection, preventing accumulation of per-turn event history in the in-memory session service.
+- The LiteRT model and InMemoryRunner remain alive; no model weights are reloaded per turn.
+- Removed initialization of the old fixed `main-session`.
+
+Validation status:
+- Draft PR #68 opened against `feature/live-widgets-on-build49` (not main) to keep the review diff isolated.
+- PR currently contains 4 commits / 3 changed files relative to that base.
+- GitHub Actions had not yet reported a run at the time of this update. The patch is not yet verified by CI or a device test. Do not merge or distribute an APK until tests/build pass.
+- Review exact ADK Kotlin 1.5.0 API compatibility and ensure cancellation cleanup works under the Android coroutine runtime.
