@@ -2,11 +2,13 @@ package com.shev.agent.ui
 
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.os.BatteryManager
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -88,9 +90,6 @@ fun LiveWidgetsOverlay(
                         transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
                     }
                     .pointerInput(widget.id, widthPx, heightPx, cardWidth) {
-                        // Keep an accumulated position for the whole gesture. The widget
-                        // model is recomposed after every drag delta, but pointerInput is
-                        // intentionally not restarted for each model update.
                         var dragX = latestX.value.coerceIn(0f, maxX)
                         var dragY = latestY.value.coerceIn(0f, maxY)
                         detectDragGestures(
@@ -139,11 +138,7 @@ private fun LiveWidgetCard(widget: LiveWidget, onRemove: () -> Unit, onResize: (
                     weather = "Обновляю…"
                     weatherError = null
                     try {
-                        weather = LiveWeatherClient.current(
-                            widget.city,
-                            context.getSharedPreferences("shev_weather", android.content.Context.MODE_PRIVATE)
-                                .getString("yandex_api_key", "").orEmpty()
-                        )
+                        weather = LiveWeatherClient.current(widget.city)
                         LiveWeatherClient.publishLatestDisplay(weather)
                     } catch (error: Exception) {
                         weatherError = error.message ?: "Погодные данные недоступны"
@@ -195,6 +190,16 @@ private fun LiveWidgetCard(widget: LiveWidget, onRemove: () -> Unit, onResize: (
                 LiveWidgetType.WEATHER -> {
                     Text(weather, style = MaterialTheme.typography.bodyMedium)
                     weatherError?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = Color(0xFFFFB8A8)) }
+                    Text(
+                        "Источник: Open-Meteo",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFB7C7D9),
+                        modifier = Modifier.clickable {
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://open-meteo.com/")))
+                            }
+                        }
+                    )
                 }
                 LiveWidgetType.BATTERY -> {
                     Text(batteryPercent?.let { "$it%" } ?: "—", style = MaterialTheme.typography.headlineMedium)
