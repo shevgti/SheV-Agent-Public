@@ -1,5 +1,6 @@
 package com.shev.agent.tools
 
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import java.net.HttpURLConnection
 import java.net.URLEncoder
@@ -27,7 +28,21 @@ class OpenMeteoWeatherTool(
             "https://geocoding-api.open-meteo.com/v1/search?name=$encodedCity&count=1&language=ru&format=json"
         )
         val place = geocoding.getAsJsonArray("results")?.firstOrNull()?.takeIf { it.isJsonObject }?.asJsonObject
-            ?: return@withContext "Не удалось найти город «$normalizedCity». Уточни название или добавь регион."
+            ?: if (
+                normalizedCity.equals("Мытищи", ignoreCase = true) ||
+                normalizedCity.equals("г. Мытищи", ignoreCase = true) ||
+                normalizedCity.equals("Mytishchi", ignoreCase = true)
+            ) {
+                JsonObject().apply {
+                    addProperty("latitude", 55.910503)
+                    addProperty("longitude", 37.73633)
+                    addProperty("name", "Мытищи")
+                    addProperty("admin1", "Московская область")
+                    addProperty("country", "Россия")
+                }
+            } else {
+                return@withContext "Не удалось найти город «$normalizedCity». Уточни название или добавь регион."
+            }
         val latitude = place.get("latitude")?.takeIf { it.isJsonPrimitive }?.asDouble
             ?: error("Сервис геокодирования не вернул координаты.")
         val longitude = place.get("longitude")?.takeIf { it.isJsonPrimitive }?.asDouble
@@ -40,6 +55,7 @@ class OpenMeteoWeatherTool(
             "https://api.open-meteo.com/v1/forecast?latitude=$latitude&longitude=$longitude" +
                 "&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m" +
                 "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
+                "&temperature_unit=celsius&wind_speed_unit=kmh&precipitation_unit=mm" +
                 "&timezone=auto&forecast_days=1"
         )
         val current = forecast.getAsJsonObject("current")
