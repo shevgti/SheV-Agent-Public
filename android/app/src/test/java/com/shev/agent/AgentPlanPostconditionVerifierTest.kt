@@ -65,6 +65,47 @@ class AgentPlanPostconditionVerifierTest {
         assertFalse(result.verified)
     }
 
+
+    @Test fun duplicateStepIdsInExecutionCannotBeVerifiedByOneObservation() {
+        val duplicated = execution().copy(
+            steps = listOf(
+                AgentPlanStepExecution("step-1", "research.lookup", true, "first"),
+                AgentPlanStepExecution("step-1", "research.lookup", true, "second")
+            )
+        )
+        val result = AgentPlanPostconditionVerifier.verify(
+            duplicated,
+            listOf(AgentPostconditionObservation("step-1", true, "read-back"))
+        )
+        assertFalse(result.verified)
+        assertTrue(result.hasInvalidExecutionSteps)
+    }
+
+    @Test fun blankStepIdInExecutionCannotBeVerified() {
+        val invalid = execution().copy(
+            steps = listOf(AgentPlanStepExecution("", "research.lookup", true, "output"))
+        )
+        val result = AgentPlanPostconditionVerifier.verify(
+            invalid,
+            listOf(AgentPostconditionObservation("", true, "read-back"))
+        )
+        assertFalse(result.verified)
+        assertTrue(result.hasInvalidExecutionSteps)
+    }
+
+    @Test fun duplicateObservationsForSameStepAreRejected() {
+        val result = AgentPlanPostconditionVerifier.verify(
+            execution(),
+            listOf(
+                AgentPostconditionObservation("step-1", true, "first read-back"),
+                AgentPostconditionObservation("step-1", true, "second read-back"),
+                AgentPostconditionObservation("step-2", true, "read-back")
+            )
+        )
+        assertFalse(result.verified)
+        assertTrue(result.hasUnexpectedObservations)
+    }
+
     @Test fun observationsForUnknownStepsAreRejected() {
         val result = AgentPlanPostconditionVerifier.verify(
             execution(),
