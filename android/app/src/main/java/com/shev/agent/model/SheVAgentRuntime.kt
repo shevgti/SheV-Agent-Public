@@ -85,15 +85,22 @@ class SheVAgentRuntime private constructor(
         // must not append to the first attempt's KV/cache state, which may have
         // consumed nearly all native context capacity.
         val sessionId = SheVAgentSession.newCreatorSessionId()
-        sessionService.createSession(
-            SessionKey(SheVAgentSession.APP_NAME, SheVAgentSession.USER_ID, sessionId)
-        )
-        return creatorRunner.runAsync(
-            userId = SheVAgentSession.USER_ID,
-            sessionId = sessionId,
-            newMessage = Content(role = Role.USER, parts = listOf(Part(text = text))),
-            runConfig = RunConfig(maxLlmCalls = MAX_CREATOR_LLM_CALLS)
-        )
+        val sessionKey = SessionKey(SheVAgentSession.APP_NAME, SheVAgentSession.USER_ID, sessionId)
+        sessionService.createSession(sessionKey)
+        return flow {
+            try {
+                creatorRunner.runAsync(
+                    userId = SheVAgentSession.USER_ID,
+                    sessionId = sessionId,
+                    newMessage = Content(role = Role.USER, parts = listOf(Part(text = text))),
+                    runConfig = RunConfig(maxLlmCalls = MAX_CREATOR_LLM_CALLS)
+                ).collect { event -> emit(event) }
+            } finally {
+                runCatching {
+                    withContext(NonCancellable) { sessionService.deleteSession(sessionKey) }
+                }
+            }
+        }
     }
 
     /**
