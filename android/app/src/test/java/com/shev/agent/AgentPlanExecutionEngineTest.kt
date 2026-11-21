@@ -331,8 +331,10 @@ class AgentPlanExecutionEngineTest {
         assertEquals(1, calls)
         assertEquals(AgentPlanExecutionStatus.DUPLICATE_TOOL_CALL, result.status)
         assertEquals("search-duplicate", result.failedStepId)
-        assertEquals(1, result.steps.size)
-        assertTrue(result.steps.single().success)
+        assertEquals(2, result.steps.size)
+        assertTrue(result.steps.first().success)
+        assertFalse(result.steps.last().success)
+        assertEquals("DUPLICATE_TOOL_CALL", result.steps.last().errorCode)
     }
 
     @Test fun sameToolWithDifferentInputIsNotTreatedAsDuplicate() = runBlocking {
