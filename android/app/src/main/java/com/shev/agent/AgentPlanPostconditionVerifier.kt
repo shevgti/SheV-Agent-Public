@@ -38,7 +38,8 @@ object AgentPlanPostconditionVerifier {
         val unverified = execution.steps.filter { step ->
             val observation = byStep[step.stepId]
             !step.success ||
-                observation?.verified != true ||
+                observation == null ||
+                !observation.verified ||
                 observation.evidenceReference.isBlank() ||
                 counts[step.stepId] != 1
         }.map { it.stepId }
