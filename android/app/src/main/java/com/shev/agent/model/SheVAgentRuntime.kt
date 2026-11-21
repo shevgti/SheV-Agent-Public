@@ -21,6 +21,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withTimeout
 import java.util.UUID
 import com.shev.agent.creator.AgentManifest
@@ -30,11 +32,7 @@ import kotlinx.coroutines.withContext
 internal object SheVAgentSession {
     const val APP_NAME = "SheVAgent"
     const val USER_ID = "local-user"
-    const val SESSION_ID = "main-session"
-    suspend fun initialize(sessionService: InMemorySessionService) {
-        sessionService.createSession(SessionKey(APP_NAME, USER_ID, SESSION_ID))
-    }
-
+    fun newConversationTurnSessionId(): String = "turn-${UUID.randomUUID()}"
     fun newCreatorSessionId(): String = "creator-${UUID.randomUUID()}"
 }
 
@@ -49,15 +47,34 @@ class SheVAgentRuntime private constructor(
 ) : Closeable {
     private val closed = AtomicBoolean(false)
 
+    /**
+     * Reconstructs conversation context from the encrypted host transcript for each top-level turn.
+     * A fresh ADK session prevents the already reconstructed transcript from being appended again
+     * to the previous ADK event history. Tool calls within this Flow still share one session.
+     * The native model/runner remain loaded; only lightweight session state is per-turn.
+     */
     fun run(text: String): Flow<Event> {
         check(!closed.get()) { "SheV Agent runtime is closed." }
         require(text.isNotBlank())
-        return runner.runAsync(
-            userId = SheVAgentSession.USER_ID,
-            sessionId = SheVAgentSession.SESSION_ID,
-            newMessage = Content(role = Role.USER, parts = listOf(Part(text = text))),
-            runConfig = RunConfig(maxLlmCalls = MAX_LLM_CALLS)
-        )
+        return flow {
+            val sessionId = SheVAgentSession.newConversationTurnSessionId()
+            val sessionKey = SessionKey(SheVAgentSession.APP_NAME, SheVAgentSession.USER_ID, sessionId)
+            sessionService.createSession(sessionKey)
+            try {
+                runner.runAsync(
+                    userId = SheVAgentSession.USER_ID,
+                    sessionId = sessionId,
+                    newMessage = Content(role = Role.USER, parts = listOf(Part(text = text))),
+                    runConfig = RunConfig(maxLlmCalls = MAX_LLM_CALLS)
+                ).collect { event -> emit(event) }
+            } finally {
+                // Do not retain completed turn events in the in-memory session service.
+                // Cleanup must not cancel/replace the result when the caller cancels the Flow.
+                runCatching {
+                    withContext(NonCancellable) { sessionService.deleteSession(sessionKey) }
+                }
+            }
+        }
     }
 
     /** Tool-free creator runner: generated manifests cannot invoke host actions. */
@@ -68,15 +85,22 @@ class SheVAgentRuntime private constructor(
         // must not append to the first attempt's KV/cache state, which may have
         // consumed nearly all native context capacity.
         val sessionId = SheVAgentSession.newCreatorSessionId()
-        sessionService.createSession(
-            SessionKey(SheVAgentSession.APP_NAME, SheVAgentSession.USER_ID, sessionId)
-        )
-        return creatorRunner.runAsync(
-            userId = SheVAgentSession.USER_ID,
-            sessionId = sessionId,
-            newMessage = Content(role = Role.USER, parts = listOf(Part(text = text))),
-            runConfig = RunConfig(maxLlmCalls = MAX_CREATOR_LLM_CALLS)
-        )
+        val sessionKey = SessionKey(SheVAgentSession.APP_NAME, SheVAgentSession.USER_ID, sessionId)
+        sessionService.createSession(sessionKey)
+        return flow {
+            try {
+                creatorRunner.runAsync(
+                    userId = SheVAgentSession.USER_ID,
+                    sessionId = sessionId,
+                    newMessage = Content(role = Role.USER, parts = listOf(Part(text = text))),
+                    runConfig = RunConfig(maxLlmCalls = MAX_CREATOR_LLM_CALLS)
+                ).collect { event -> emit(event) }
+            } finally {
+                runCatching {
+                    withContext(NonCancellable) { sessionService.deleteSession(sessionKey) }
+                }
+            }
+        }
     }
 
     /**
@@ -236,7 +260,6 @@ class SheVAgentRuntime private constructor(
                         ?: SheVAgentModelFactory.DEFAULT_SKILLS
                     val agent = SheVAgentModelFactory.createAgent(activeModel, tools, enabledRoles, enabledSkills)
                     val sessionService = InMemorySessionService()
-                    SheVAgentSession.initialize(sessionService)
                     val activeRunner = InMemoryRunner(
                         agent = agent,
                         appName = SheVAgentSession.APP_NAME,
