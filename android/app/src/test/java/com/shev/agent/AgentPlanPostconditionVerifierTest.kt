@@ -106,6 +106,39 @@ class AgentPlanPostconditionVerifierTest {
         assertTrue(result.hasUnexpectedObservations)
     }
 
+    @Test fun emptyExecutionCannotBeVerified() {
+        val empty = execution().copy(steps = emptyList())
+        val result = AgentPlanPostconditionVerifier.verify(empty, emptyList())
+        assertFalse(result.verified)
+    }
+
+    @Test fun blankEvidenceReferenceCannotVerifyStep() {
+        val result = AgentPlanPostconditionVerifier.verify(
+            execution(),
+            listOf(
+                AgentPostconditionObservation("step-1", true, " "),
+                AgentPostconditionObservation("step-2", true, "read-back")
+            )
+        )
+        assertFalse(result.verified)
+        assertEquals(listOf("step-1"), result.unverifiedStepIds)
+    }
+
+    @Test fun everyNonExecutableStatusIsRejected() {
+        val nonExecutableStatuses = AgentPlanExecutionStatus.values()
+            .filter { it != AgentPlanExecutionStatus.EXECUTED_NEEDS_VERIFICATION }
+        nonExecutableStatuses.forEach { status ->
+            val result = AgentPlanPostconditionVerifier.verify(
+                execution().copy(status = status),
+                listOf(
+                    AgentPostconditionObservation("step-1", true, "read-back"),
+                    AgentPostconditionObservation("step-2", true, "read-back")
+                )
+            )
+            assertFalse("Status $status must not verify", result.verified)
+        }
+    }
+
     @Test fun observationsForUnknownStepsAreRejected() {
         val result = AgentPlanPostconditionVerifier.verify(
             execution(),
