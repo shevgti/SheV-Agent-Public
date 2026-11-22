@@ -13,6 +13,34 @@ class AgentSkillLibrary(
 ) {
     fun observeVerified(): Flow<List<AgentSkillEntity>> = dao.observeVerifiedAgentSkills()
 
+    /**
+     * Seeds a small, reviewed starter pack distilled from public engineering practices.
+     * Existing user edits and disabled entries are never overwritten.
+     */
+    suspend fun seedBuiltInSkills(): Int {
+        var added = 0
+        for (skill in AgentBuiltInSkillCatalog.skills) {
+            if (dao.getAgentSkill(skill.id) != null) continue
+            saveDraft(
+                skillId = skill.id,
+                title = skill.title,
+                summary = skill.summary,
+                instructions = skill.instructions,
+                keywords = skill.keywords,
+                sourceUrls = skill.sources,
+                verificationNotes = "Встроенный набор SheV: структура и обязательные разделы проверены локальным каталогом."
+            )
+            markVerified(
+                skill.id,
+                "Встроенный навык прошёл проверку структуры: уникальный ID, непустые инструкции, лимиты, публичные источники. " +
+                    "Содержимое является справочным руководством; любые действия выполняются только через зарегистрированные инструменты, политики доступа и проверки."
+            )
+            added++
+        }
+        return added
+    }
+
+
     fun observeAll(): Flow<List<AgentSkillEntity>> = dao.observeAllAgentSkills()
 
     suspend fun saveDraft(
