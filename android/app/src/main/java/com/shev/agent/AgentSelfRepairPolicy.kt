@@ -47,7 +47,7 @@ object AgentSelfRepairPolicy {
         """android/app/src/(main|test)/java/[A-Za-z0-9_./-]+\.kt"""
     )
     private val forbiddenSegments = setOf(
-        ".github", "gradle", "buildSrc", "keystore", "secrets", "signing"
+        ".github", "gradle", "buildsrc", "keystore", "secrets", "signing"
     )
     private val protectedNames = setOf(
         "AndroidManifest.xml", "build.gradle", "build.gradle.kts",
