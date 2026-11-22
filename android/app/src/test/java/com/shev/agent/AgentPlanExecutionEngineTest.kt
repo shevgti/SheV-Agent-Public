@@ -410,7 +410,7 @@ class AgentPlanExecutionEngineTest {
         assertEquals(AgentPlanExecutionStatus.EXECUTED_NEEDS_VERIFICATION, result.status)
         assertEquals(1, result.postconditionObservations.size)
         assertEquals("search-1", result.postconditionObservations.single().stepId)
-        assertEquals("readback:search-1", result.postconditionObservations.single().evidenceReference)
+        assertEquals("host-readback:search-1", result.postconditionObservations.single().evidenceReference)
         assertEquals(AgentPostconditionEvidenceSource.HOST_READ_BACK, result.postconditionObservations.single().source)
         assertTrue(AgentPlanPostconditionVerifier.verify(result, result.postconditionObservations).verified)
     }
