@@ -396,7 +396,7 @@ class AgentPlanExecutionEngineTest {
                 "research.lookup" to SuspendingAgentToolPostconditionVerifier { _, _ ->
                     AgentToolPostconditionEvidence(
                         verified = true,
-                        reference = "readback:search-1",
+                        reference = "host-readback:search-1",
                         source = AgentToolEvidenceSource.HOST_READ_BACK
                     )
                 }
