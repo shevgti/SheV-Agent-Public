@@ -28,6 +28,18 @@ data class AgentPlanPostconditionResult(
  * repository state check, or an authoritative API result) for every executed step.
  */
 object AgentPlanPostconditionVerifier {
+    private fun hasValidEvidenceReference(observation: AgentPostconditionObservation): Boolean {
+        val requiredPrefix = when (observation.source) {
+            AgentPostconditionEvidenceSource.HOST_READ_BACK -> "host-readback:"
+            AgentPostconditionEvidenceSource.AUTHORITATIVE_API -> "api:"
+            AgentPostconditionEvidenceSource.LOCAL_STATE_INSPECTION -> "local-state:"
+            AgentPostconditionEvidenceSource.MODEL_NARRATIVE,
+            AgentPostconditionEvidenceSource.USER_ASSERTION -> return false
+        }
+        val reference = observation.evidenceReference.trim()
+        return reference.startsWith(requiredPrefix) && reference.length > requiredPrefix.length
+    }
+
     fun verify(
         execution: AgentPlanExecutionResult,
         observations: List<AgentPostconditionObservation>
@@ -45,7 +57,7 @@ object AgentPlanPostconditionVerifier {
             !step.success ||
                 observation == null ||
                 !observation.verified ||
-                observation.evidenceReference.isBlank() ||
+                !hasValidEvidenceReference(observation) ||
                 observation.source == AgentPostconditionEvidenceSource.MODEL_NARRATIVE ||
                 observation.source == AgentPostconditionEvidenceSource.USER_ASSERTION ||
                 counts[step.stepId] != 1
