@@ -95,7 +95,15 @@ class AgentTaskExecutionCoordinator(
             .mapTo(mutableSetOf()) { it.stepId }
         val remaining = plan.steps.filterNot { it.id in completedIds }
         if (remaining.isEmpty()) {
-            return beginVerification(taskId, revision)
+            // Step outputs alone are not durable proof. A process may have died after the
+            // final tool returned but before its host read-back evidence was persisted.
+            // Never infer verification from COMPLETED step rows after a restart.
+            return pauseRunning(
+                taskId,
+                revision,
+                "Все шаги отмечены выполненными, но независимые доказательства проверки не сохранены. " +
+                    "Автоматическое завершение заблокировано. Требуется повторная проверка результатов."
+            )
         }
 
         return try {
