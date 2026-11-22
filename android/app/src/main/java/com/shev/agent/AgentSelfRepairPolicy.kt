@@ -80,7 +80,7 @@ object AgentSelfRepairPolicy {
         val normalized = proposal.changedPaths.map { it.replace('\\', '/') }
         val unsafe = normalized.any { path ->
             path.startsWith("/") ||
-                path.split("/").any { it == ".." || it in forbiddenSegments } ||
+                path.split("/").any { it.isEmpty() || it == "." || it == ".." || it in forbiddenSegments } ||
                 path.substringAfterLast("/") in protectedNames ||
                 protectedCodePatterns.any { it.containsMatchIn(path) } ||
                 !allowedPath.matches(path)
