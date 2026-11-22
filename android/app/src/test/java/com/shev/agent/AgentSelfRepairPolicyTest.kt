@@ -122,6 +122,18 @@ class AgentSelfRepairPolicyTest {
         }
     }
 
+    @Test fun nonCanonicalPathSegmentsAreRejected() {
+        val paths = listOf(
+            "android/app/src/main/java/com/shev/agent/./Example.kt",
+            "android//app/src/main/java/com/shev/agent/Example.kt",
+            "android/app/src/main/java/com/shev/agent//Example.kt"
+        )
+        paths.forEach { path ->
+            assertEquals(path, AgentSelfRepairDecision.REJECT_UNSAFE_PATH,
+                AgentSelfRepairPolicy.assess(proposal(paths = listOf(path))).decision)
+        }
+    }
+
     @Test fun malformedProposalIsRejected() {
         val invalid = proposal().copy(summary = "")
         val result = AgentSelfRepairPolicy.assess(invalid)
