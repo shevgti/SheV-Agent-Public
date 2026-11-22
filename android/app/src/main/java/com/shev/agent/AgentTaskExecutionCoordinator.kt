@@ -127,7 +127,21 @@ class AgentTaskExecutionCoordinator(
             )
 
             if (execution.status == AgentPlanExecutionStatus.EXECUTED_NEEDS_VERIFICATION) {
-                beginVerification(taskId, revision)
+                val postconditions = AgentPlanPostconditionVerifier.verify(
+                    execution,
+                    execution.postconditionObservations
+                )
+                if (!postconditions.verified) {
+                    pauseRunning(
+                        taskId,
+                        revision,
+                        "Шаги выполнились, но независимая проверка результата не пройдена. " +
+                            "Неподтверждённые шаги: " + postconditions.unverifiedStepIds.joinToString().ifBlank { "неизвестно" } +
+                            ". Для каждого инструмента нужен host-side read-back verifier."
+                    )
+                } else {
+                    beginVerification(taskId, revision)
+                }
             } else if (execution.status in setOf(
                     AgentPlanExecutionStatus.APPROVAL_REQUIRED,
                     AgentPlanExecutionStatus.ACCESS_DENIED,
