@@ -70,6 +70,58 @@ class AgentSelfRepairPolicyTest {
         )
     }
 
+    @Test fun windowsPathSeparatorsAreNormalizedBeforeSafetyChecks() {
+        val result = AgentSelfRepairPolicy.assess(
+            proposal(paths = listOf("android\\app\\src\\main\\java\\com\\shev\\agent\\security\\Token.kt"))
+        )
+        assertEquals(AgentSelfRepairDecision.REJECT_UNSAFE_PATH, result.decision)
+    }
+
+    @Test fun protectedAuthenticationAndCryptoDirectoriesAreRejected() {
+        val paths = listOf(
+            "android/app/src/main/java/com/shev/agent/auth/AuthFlow.kt",
+            "android/app/src/main/java/com/shev/agent/crypto/Cipher.kt",
+            "android/app/src/main/java/com/shev/agent/permissions/Grant.kt"
+        )
+        paths.forEach { path ->
+            assertEquals(path, AgentSelfRepairDecision.REJECT_UNSAFE_PATH,
+                AgentSelfRepairPolicy.assess(proposal(paths = listOf(path))).decision)
+        }
+    }
+
+    @Test fun tooManyChangedFilesAreRejected() {
+        val paths = (1..AgentSelfRepairPolicy.MAX_CHANGED_FILES + 1).map {
+            "android/app/src/main/java/com/shev/agent/File$it.kt"
+        }
+        assertEquals(
+            AgentSelfRepairDecision.REJECT_TOO_LARGE,
+            AgentSelfRepairPolicy.assess(proposal(paths = paths)).decision
+        )
+    }
+
+    @Test fun oversizedSummaryAndRationaleAreRejected() {
+        assertEquals(
+            AgentSelfRepairDecision.REJECT_INVALID_PROPOSAL,
+            AgentSelfRepairPolicy.assess(proposal().copy(summary = "x".repeat(AgentSelfRepairPolicy.MAX_SUMMARY_CHARS + 1))).decision
+        )
+        assertEquals(
+            AgentSelfRepairDecision.REJECT_INVALID_PROPOSAL,
+            AgentSelfRepairPolicy.assess(proposal().copy(rationale = "x".repeat(AgentSelfRepairPolicy.MAX_RATIONALE_CHARS + 1))).decision
+        )
+    }
+
+    @Test fun absoluteAndBuildSystemPathsAreRejected() {
+        val paths = listOf(
+            "/android/app/src/main/java/com/shev/agent/Example.kt",
+            "android/gradle/src/main/java/com/shev/agent/Example.kt",
+            "android/app/src/main/java/com/shev/agent/buildSrc/Example.kt"
+        )
+        paths.forEach { path ->
+            assertEquals(path, AgentSelfRepairDecision.REJECT_UNSAFE_PATH,
+                AgentSelfRepairPolicy.assess(proposal(paths = listOf(path))).decision)
+        }
+    }
+
     @Test fun malformedProposalIsRejected() {
         val invalid = proposal().copy(summary = "")
         val result = AgentSelfRepairPolicy.assess(invalid)
