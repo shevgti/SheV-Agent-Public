@@ -217,21 +217,32 @@ class AgentToolExecutor(
             return AgentToolExecutionResult(AgentToolExecutionStatus.HANDLER_NOT_REGISTERED)
         }
 
-        return try {
-            val result = suspendingHandler?.execute(request.input)
+        val result = try {
+            suspendingHandler?.execute(request.input)
                 ?: synchronousHandler!!.execute(request.input)
-            val evidence = if (result.success) {
-                postconditionVerifiers[request.toolId]?.verify(request.input, result)
-            } else null
-            AgentToolExecutionResult(AgentToolExecutionStatus.COMPLETED, result, evidence)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            AgentToolExecutionResult(
+            return AgentToolExecutionResult(
                 AgentToolExecutionStatus.HANDLER_FAILED,
                 AgentToolResult(false, "Инструмент завершился с ошибкой", "HANDLER_FAILED")
             )
         }
+
+        // A read-back failure must never disguise a successful action as a failed action.
+        // Doing so could invite the caller to retry a side effect that already happened.
+        // Keep the handler result, omit evidence, and let the workflow's verification gate
+        // pause the task (fail-closed) until an independent check succeeds.
+        val evidence = if (result.success) {
+            try {
+                postconditionVerifiers[request.toolId]?.verify(request.input, result)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+        } else null
+        return AgentToolExecutionResult(AgentToolExecutionStatus.COMPLETED, result, evidence)
     }
 
     companion object {
