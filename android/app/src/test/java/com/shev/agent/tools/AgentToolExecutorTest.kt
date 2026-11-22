@@ -442,4 +442,69 @@ class AgentToolExecutorTest {
         assertFalse(called)
     }
 
+
+    @Test fun postconditionEvidenceIsMintedOnlyByRegisteredHostVerifier() = kotlinx.coroutines.runBlocking {
+        val registry = AgentToolRegistry()
+        registry.register(
+            AgentToolDescriptor(
+                "local.readback",
+                "Проверяемый инструмент",
+                "Тестирует host-side evidence",
+                setOf(AgentCapability.CREATE_DRAFT),
+                ToolInputSchema(listOf(ToolInputField("value", ToolInputType.STRING)))
+            )
+        )
+        val executor = AgentToolExecutor(
+            registry = registry,
+            handlers = emptyMap(),
+            suspendingHandlers = mapOf(
+                "local.readback" to SuspendingAgentTool { AgentToolResult(true, "created") }
+            ),
+            postconditionVerifiers = mapOf(
+                "local.readback" to SuspendingAgentToolPostconditionVerifier { input, result ->
+                    assertEquals("created", result.output)
+                    assertEquals("""{"value":"x"}""", input)
+                    AgentToolPostconditionEvidence(
+                        verified = true,
+                        reference = "host-readback:resource-123",
+                        source = AgentToolEvidenceSource.HOST_READ_BACK
+                    )
+                }
+            )
+        )
+        val result = executor.executeSuspending(
+            AgentToolRequest("local.readback", AgentCapability.CREATE_DRAFT, """{"value":"x"}"""),
+            AgentToolExecutionContext(setOf(AgentCapability.CREATE_DRAFT))
+        )
+        assertEquals(AgentToolExecutionStatus.COMPLETED, result.status)
+        assertEquals("host-readback:resource-123", result.postconditionEvidence?.reference)
+        assertEquals(AgentToolEvidenceSource.HOST_READ_BACK, result.postconditionEvidence?.source)
+    }
+
+    @Test fun successfulToolWithoutHostVerifierProducesNoEvidence() = kotlinx.coroutines.runBlocking {
+        val registry = AgentToolRegistry()
+        registry.register(
+            AgentToolDescriptor(
+                "local.no-verifier",
+                "Без проверки",
+                "Успешный handler без read-back",
+                setOf(AgentCapability.CREATE_DRAFT),
+                ToolInputSchema(listOf(ToolInputField("value", ToolInputType.STRING)))
+            )
+        )
+        val executor = AgentToolExecutor(
+            registry = registry,
+            handlers = emptyMap(),
+            suspendingHandlers = mapOf(
+                "local.no-verifier" to SuspendingAgentTool { AgentToolResult(true, "done") }
+            )
+        )
+        val result = executor.executeSuspending(
+            AgentToolRequest("local.no-verifier", AgentCapability.CREATE_DRAFT, """{"value":"x"}"""),
+            AgentToolExecutionContext(setOf(AgentCapability.CREATE_DRAFT))
+        )
+        assertEquals(AgentToolExecutionStatus.COMPLETED, result.status)
+        assertNull(result.postconditionEvidence)
+    }
+
 }
