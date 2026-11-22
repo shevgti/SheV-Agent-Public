@@ -139,6 +139,18 @@ class AgentPlanPostconditionVerifierTest {
         }
     }
 
+    @Test fun modelNarrativeCannotBeUsedAsIndependentEvidence() {
+        val result = AgentPlanPostconditionVerifier.verify(
+            execution(),
+            listOf(
+                AgentPostconditionObservation("step-1", true, "the model says it worked", AgentPostconditionEvidenceSource.MODEL_NARRATIVE),
+                AgentPostconditionObservation("step-2", true, "the model says it worked", AgentPostconditionEvidenceSource.MODEL_NARRATIVE)
+            )
+        )
+        assertFalse(result.verified)
+        assertEquals(listOf("step-1", "step-2"), result.unverifiedStepIds)
+    }
+
     @Test fun observationsForUnknownStepsAreRejected() {
         val result = AgentPlanPostconditionVerifier.verify(
             execution(),
