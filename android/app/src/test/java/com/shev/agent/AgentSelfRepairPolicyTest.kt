@@ -134,6 +134,18 @@ class AgentSelfRepairPolicyTest {
         }
     }
 
+    @Test fun forbiddenPathSegmentsAreCaseInsensitive() {
+        val paths = listOf(
+            "android/app/src/main/java/com/shev/agent/Secrets/Token.kt",
+            "android/app/src/main/java/com/shev/agent/.GITHUB/Workflow.kt",
+            "android/app/src/main/java/com/shev/agent/Signing/Key.kt"
+        )
+        paths.forEach { path ->
+            assertEquals(path, AgentSelfRepairDecision.REJECT_UNSAFE_PATH,
+                AgentSelfRepairPolicy.assess(proposal(paths = listOf(path))).decision)
+        }
+    }
+
     @Test fun malformedProposalIsRejected() {
         val invalid = proposal().copy(summary = "")
         val result = AgentSelfRepairPolicy.assess(invalid)
