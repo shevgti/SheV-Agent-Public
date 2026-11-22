@@ -163,6 +163,9 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             )
         }
         viewModelScope.launch(Dispatchers.IO) {
+            // Install the curated starter playbooks once. Existing user-created or disabled
+            // skills are preserved; only verified built-ins are injected into future prompts.
+            runCatching { skillLibrary.seedBuiltInSkills() }
             val deviceSummary = DeviceDiagnostics.summary(getApplication())
             val available = store.findVerifiedModel() != null
             try {
