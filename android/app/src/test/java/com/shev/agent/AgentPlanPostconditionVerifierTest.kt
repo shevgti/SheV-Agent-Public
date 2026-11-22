@@ -18,8 +18,8 @@ class AgentPlanPostconditionVerifierTest {
         val result = AgentPlanPostconditionVerifier.verify(
             execution(),
             listOf(
-                AgentPostconditionObservation("step-1", true, "https://example.org", AgentPostconditionEvidenceSource.AUTHORITATIVE_API),
-                AgentPostconditionObservation("step-2", true, "page title observed", AgentPostconditionEvidenceSource.HOST_READ_BACK)
+                AgentPostconditionObservation("step-1", true, "api:https://example.org", AgentPostconditionEvidenceSource.AUTHORITATIVE_API),
+                AgentPostconditionObservation("step-2", true, "host-readback:page title observed", AgentPostconditionEvidenceSource.HOST_READ_BACK)
             )
         )
         assertTrue(result.verified)
@@ -29,7 +29,7 @@ class AgentPlanPostconditionVerifierTest {
     @Test fun missingObservationCannotVerifyCompletion() {
         val result = AgentPlanPostconditionVerifier.verify(
             execution(),
-            listOf(AgentPostconditionObservation("step-1", true, "source checked", AgentPostconditionEvidenceSource.HOST_READ_BACK))
+            listOf(AgentPostconditionObservation("step-1", true, "host-readback:source checked", AgentPostconditionEvidenceSource.HOST_READ_BACK))
         )
         assertFalse(result.verified)
         assertEquals(listOf("step-2"), result.unverifiedStepIds)
@@ -39,8 +39,8 @@ class AgentPlanPostconditionVerifierTest {
         val result = AgentPlanPostconditionVerifier.verify(
             execution(),
             listOf(
-                AgentPostconditionObservation("step-1", true, "source checked", AgentPostconditionEvidenceSource.HOST_READ_BACK),
-                AgentPostconditionObservation("step-2", false, "page unavailable", AgentPostconditionEvidenceSource.HOST_READ_BACK)
+                AgentPostconditionObservation("step-1", true, "host-readback:source checked", AgentPostconditionEvidenceSource.HOST_READ_BACK),
+                AgentPostconditionObservation("step-2", false, "host-readback:page unavailable", AgentPostconditionEvidenceSource.HOST_READ_BACK)
             )
         )
         assertFalse(result.verified)
@@ -58,8 +58,8 @@ class AgentPlanPostconditionVerifierTest {
         val result = AgentPlanPostconditionVerifier.verify(
             failed,
             listOf(
-                AgentPostconditionObservation("step-1", true, "checked", AgentPostconditionEvidenceSource.HOST_READ_BACK),
-                AgentPostconditionObservation("step-2", true, "checked", AgentPostconditionEvidenceSource.HOST_READ_BACK)
+                AgentPostconditionObservation("step-1", true, "host-readback:checked", AgentPostconditionEvidenceSource.HOST_READ_BACK),
+                AgentPostconditionObservation("step-2", true, "host-readback:checked", AgentPostconditionEvidenceSource.HOST_READ_BACK)
             )
         )
         assertFalse(result.verified)
@@ -75,7 +75,7 @@ class AgentPlanPostconditionVerifierTest {
         )
         val result = AgentPlanPostconditionVerifier.verify(
             duplicated,
-            listOf(AgentPostconditionObservation("step-1", true, "read-back", AgentPostconditionEvidenceSource.HOST_READ_BACK))
+            listOf(AgentPostconditionObservation("step-1", true, "host-readback:read-back", AgentPostconditionEvidenceSource.HOST_READ_BACK))
         )
         assertFalse(result.verified)
         assertTrue(result.hasInvalidExecutionSteps)
@@ -87,7 +87,7 @@ class AgentPlanPostconditionVerifierTest {
         )
         val result = AgentPlanPostconditionVerifier.verify(
             invalid,
-            listOf(AgentPostconditionObservation("", true, "read-back", AgentPostconditionEvidenceSource.HOST_READ_BACK))
+            listOf(AgentPostconditionObservation("", true, "host-readback:read-back", AgentPostconditionEvidenceSource.HOST_READ_BACK))
         )
         assertFalse(result.verified)
         assertTrue(result.hasInvalidExecutionSteps)
@@ -97,9 +97,9 @@ class AgentPlanPostconditionVerifierTest {
         val result = AgentPlanPostconditionVerifier.verify(
             execution(),
             listOf(
-                AgentPostconditionObservation("step-1", true, "first read-back", AgentPostconditionEvidenceSource.HOST_READ_BACK),
-                AgentPostconditionObservation("step-1", true, "second read-back", AgentPostconditionEvidenceSource.HOST_READ_BACK),
-                AgentPostconditionObservation("step-2", true, "read-back", AgentPostconditionEvidenceSource.HOST_READ_BACK)
+                AgentPostconditionObservation("step-1", true, "host-readback:first read-back", AgentPostconditionEvidenceSource.HOST_READ_BACK),
+                AgentPostconditionObservation("step-1", true, "host-readback:second read-back", AgentPostconditionEvidenceSource.HOST_READ_BACK),
+                AgentPostconditionObservation("step-2", true, "host-readback:read-back", AgentPostconditionEvidenceSource.HOST_READ_BACK)
             )
         )
         assertFalse(result.verified)
@@ -117,7 +117,7 @@ class AgentPlanPostconditionVerifierTest {
             execution(),
             listOf(
                 AgentPostconditionObservation("step-1", true, " ", AgentPostconditionEvidenceSource.HOST_READ_BACK),
-                AgentPostconditionObservation("step-2", true, "read-back", AgentPostconditionEvidenceSource.HOST_READ_BACK)
+                AgentPostconditionObservation("step-2", true, "host-readback:read-back", AgentPostconditionEvidenceSource.HOST_READ_BACK)
             )
         )
         assertFalse(result.verified)
@@ -131,8 +131,8 @@ class AgentPlanPostconditionVerifierTest {
             val result = AgentPlanPostconditionVerifier.verify(
                 execution().copy(status = status),
                 listOf(
-                    AgentPostconditionObservation("step-1", true, "read-back", AgentPostconditionEvidenceSource.HOST_READ_BACK),
-                    AgentPostconditionObservation("step-2", true, "read-back", AgentPostconditionEvidenceSource.HOST_READ_BACK)
+                    AgentPostconditionObservation("step-1", true, "host-readback:read-back", AgentPostconditionEvidenceSource.HOST_READ_BACK),
+                    AgentPostconditionObservation("step-2", true, "host-readback:read-back", AgentPostconditionEvidenceSource.HOST_READ_BACK)
                 )
             )
             assertFalse("Status $status must not verify", result.verified)
@@ -155,8 +155,8 @@ class AgentPlanPostconditionVerifierTest {
         val result = AgentPlanPostconditionVerifier.verify(
             execution(),
             listOf(
-                AgentPostconditionObservation("step-1", true, "checked", AgentPostconditionEvidenceSource.HOST_READ_BACK),
-                AgentPostconditionObservation("step-2", true, "checked", AgentPostconditionEvidenceSource.HOST_READ_BACK),
+                AgentPostconditionObservation("step-1", true, "host-readback:checked", AgentPostconditionEvidenceSource.HOST_READ_BACK),
+                AgentPostconditionObservation("step-2", true, "host-readback:checked", AgentPostconditionEvidenceSource.HOST_READ_BACK),
                 AgentPostconditionObservation("invented", true, "not valid", AgentPostconditionEvidenceSource.HOST_READ_BACK)
             )
         )
