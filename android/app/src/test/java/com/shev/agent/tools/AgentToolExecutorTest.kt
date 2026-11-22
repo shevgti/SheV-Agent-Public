@@ -507,4 +507,46 @@ class AgentToolExecutorTest {
         assertNull(result.postconditionEvidence)
     }
 
+
+    @Test fun verifierFailurePreservesSuccessfulSideEffectWithoutMintingEvidence() = kotlinx.coroutines.runBlocking {
+        val registry = AgentToolRegistry()
+        registry.register(
+            AgentToolDescriptor(
+                "local.readback-fails",
+                "Проверка может упасть",
+                "Успешное действие с недоступным read-back",
+                setOf(AgentCapability.CREATE_DRAFT),
+                ToolInputSchema(listOf(ToolInputField("value", ToolInputType.STRING)))
+            )
+        )
+        var handlerCalls = 0
+        var verifierCalls = 0
+        val executor = AgentToolExecutor(
+            registry = registry,
+            handlers = emptyMap(),
+            suspendingHandlers = mapOf("local.readback-fails" to SuspendingAgentTool {
+                handlerCalls++
+                AgentToolResult(true, "side-effect-completed")
+            }),
+            postconditionVerifiers = mapOf(
+                "local.readback-fails" to SuspendingAgentToolPostconditionVerifier { _, _ ->
+                    verifierCalls++
+                    throw IllegalStateException("read-back unavailable")
+                }
+            )
+        )
+
+        val result = executor.executeSuspending(
+            AgentToolRequest("local.readback-fails", AgentCapability.CREATE_DRAFT, """{"value":"x"}"""),
+            AgentToolExecutionContext(setOf(AgentCapability.CREATE_DRAFT))
+        )
+
+        assertEquals(1, handlerCalls)
+        assertEquals(1, verifierCalls)
+        assertEquals(AgentToolExecutionStatus.COMPLETED, result.status)
+        assertTrue(result.result?.success == true)
+        assertEquals("side-effect-completed", result.result?.output)
+        assertNull(result.postconditionEvidence)
+    }
+
 }
