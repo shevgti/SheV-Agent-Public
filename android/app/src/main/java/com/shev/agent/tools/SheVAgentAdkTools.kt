@@ -154,8 +154,8 @@ class SheVAgentAdkTools(
         } else {
             mapOf(
                 "status" to "ok",
-                "skills" to matches.joinToString("\\n\\n") { skill ->
-                    "## ${skill.title}\\n${skill.summary}\\n${skill.instructions}\\nИсточники: ${skill.sourceUrls}"
+                "skills" to matches.joinToString("\n\n") { skill ->
+                    "## ${skill.title}\n${skill.summary}\n${skill.instructions}\nИсточники: ${skill.sourceUrls}"
                 }
             )
         }
