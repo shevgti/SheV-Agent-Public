@@ -4,10 +4,13 @@ package com.shev.agent
  * Independently observed evidence for one approved plan step.
  * evidenceReference must identify an observation produced outside the model's own narrative.
  */
+enum class AgentPostconditionEvidenceSource { HOST_READ_BACK, AUTHORITATIVE_API, LOCAL_STATE_INSPECTION, MODEL_NARRATIVE, USER_ASSERTION }
+
 data class AgentPostconditionObservation(
     val stepId: String,
     val verified: Boolean,
-    val evidenceReference: String
+    val evidenceReference: String,
+    val source: AgentPostconditionEvidenceSource
 )
 
 data class AgentPlanPostconditionResult(
@@ -43,6 +46,8 @@ object AgentPlanPostconditionVerifier {
                 observation == null ||
                 !observation.verified ||
                 observation.evidenceReference.isBlank() ||
+                observation.source == AgentPostconditionEvidenceSource.MODEL_NARRATIVE ||
+                observation.source == AgentPostconditionEvidenceSource.USER_ASSERTION ||
                 counts[step.stepId] != 1
         }.map { it.stepId }
 
