@@ -4,6 +4,7 @@ import com.shev.agent.tools.AgentToolExecutionContext
 import com.shev.agent.tools.AgentToolExecutionStatus
 import com.shev.agent.tools.AgentToolExecutor
 import com.shev.agent.tools.AgentToolRequest
+import com.shev.agent.AgentPostconditionEvidenceSource
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
@@ -30,7 +31,8 @@ data class AgentPlanExecutionResult(
     val status: AgentPlanExecutionStatus,
     val steps: List<AgentPlanStepExecution> = emptyList(),
     val failedStepId: String? = null,
-    val validationRejection: AgentPlanRejection? = null
+    val validationRejection: AgentPlanRejection? = null,
+    val postconditionObservations: List<AgentPostconditionObservation> = emptyList()
 )
 
 /**
@@ -77,6 +79,7 @@ class AgentPlanExecutionEngine(
         }
 
         val results = mutableListOf<AgentPlanStepExecution>()
+        val observations = mutableListOf<AgentPostconditionObservation>()
         // De-duplicate only byte-for-byte identical tool requests within this approved plan.
         // Different inputs remain valid; the guard is scoped to this invocation, not future turns.
         val seenCalls = mutableSetOf<Triple<String, com.shev.agent.AgentCapability, String>>()
@@ -110,6 +113,18 @@ class AgentPlanExecutionEngine(
                 context = context
             )
             val toolResult = execution.result
+            execution.postconditionEvidence?.let { evidence ->
+                observations += AgentPostconditionObservation(
+                    stepId = step.id,
+                    verified = evidence.verified,
+                    evidenceReference = evidence.reference,
+                    source = when (evidence.source) {
+                        com.shev.agent.tools.AgentToolEvidenceSource.HOST_READ_BACK -> AgentPostconditionEvidenceSource.HOST_READ_BACK
+                        com.shev.agent.tools.AgentToolEvidenceSource.AUTHORITATIVE_API -> AgentPostconditionEvidenceSource.AUTHORITATIVE_API
+                        com.shev.agent.tools.AgentToolEvidenceSource.LOCAL_STATE_INSPECTION -> AgentPostconditionEvidenceSource.LOCAL_STATE_INSPECTION
+                    }
+                )
+            }
             if (execution.status != AgentToolExecutionStatus.COMPLETED || toolResult?.success != true) {
                 val status = when (execution.status) {
                     AgentToolExecutionStatus.ACCESS_DENIED ->
@@ -150,7 +165,8 @@ class AgentPlanExecutionEngine(
 
         return AgentPlanExecutionResult(
             status = AgentPlanExecutionStatus.EXECUTED_NEEDS_VERIFICATION,
-            steps = results
+            steps = results,
+            postconditionObservations = observations
         )
     }
 
