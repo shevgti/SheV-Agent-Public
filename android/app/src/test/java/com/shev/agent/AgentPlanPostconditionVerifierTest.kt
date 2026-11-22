@@ -151,6 +151,41 @@ class AgentPlanPostconditionVerifierTest {
         assertEquals(listOf("step-1", "step-2"), result.unverifiedStepIds)
     }
 
+    @Test fun evidencePrefixMustMatchDeclaredSource() {
+        val result = AgentPlanPostconditionVerifier.verify(
+            execution(),
+            listOf(
+                AgentPostconditionObservation("step-1", true, "host-readback:looks valid", AgentPostconditionEvidenceSource.AUTHORITATIVE_API),
+                AgentPostconditionObservation("step-2", true, "api:looks valid", AgentPostconditionEvidenceSource.HOST_READ_BACK)
+            )
+        )
+        assertFalse(result.verified)
+        assertEquals(listOf("step-1", "step-2"), result.unverifiedStepIds)
+    }
+
+    @Test fun evidencePrefixWithoutPayloadIsRejected() {
+        val result = AgentPlanPostconditionVerifier.verify(
+            execution(),
+            listOf(
+                AgentPostconditionObservation("step-1", true, "api:", AgentPostconditionEvidenceSource.AUTHORITATIVE_API),
+                AgentPostconditionObservation("step-2", true, "host-readback: ", AgentPostconditionEvidenceSource.HOST_READ_BACK)
+            )
+        )
+        assertFalse(result.verified)
+        assertEquals(listOf("step-1", "step-2"), result.unverifiedStepIds)
+    }
+
+    @Test fun localStateEvidenceRequiresLocalStatePrefix() {
+        val result = AgentPlanPostconditionVerifier.verify(
+            execution(),
+            listOf(
+                AgentPostconditionObservation("step-1", true, "local-state:database checked", AgentPostconditionEvidenceSource.LOCAL_STATE_INSPECTION),
+                AgentPostconditionObservation("step-2", true, "local-state:cache checked", AgentPostconditionEvidenceSource.LOCAL_STATE_INSPECTION)
+            )
+        )
+        assertTrue(result.verified)
+    }
+
     @Test fun observationsForUnknownStepsAreRejected() {
         val result = AgentPlanPostconditionVerifier.verify(
             execution(),
