@@ -41,9 +41,30 @@ enum class AgentToolExecutionStatus {
     INPUT_TOO_LARGE, INPUT_SCHEMA_NOT_REGISTERED, INVALID_INPUT, HANDLER_FAILED
 }
 
+enum class AgentToolEvidenceSource { HOST_READ_BACK, AUTHORITATIVE_API, LOCAL_STATE_INSPECTION }
+
+/**
+ * Evidence can only be minted by the host-side tool verification adapter.
+ * The model-facing plan/input contract has no field for this object.
+ */
+data class AgentToolPostconditionEvidence internal constructor(
+    val verified: Boolean,
+    val reference: String,
+    val source: AgentToolEvidenceSource
+) {
+    init {
+        require(reference.isNotBlank()) { "Evidence reference must not be blank" }
+    }
+}
+
+fun interface SuspendingAgentToolPostconditionVerifier {
+    suspend fun verify(input: String, result: AgentToolResult): AgentToolPostconditionEvidence?
+}
+
 data class AgentToolExecutionResult(
     val status: AgentToolExecutionStatus,
-    val result: AgentToolResult? = null
+    val result: AgentToolResult? = null,
+    val postconditionEvidence: AgentToolPostconditionEvidence? = null
 )
 
 /**
@@ -54,7 +75,8 @@ class AgentToolExecutor(
     private val registry: AgentToolRegistry,
     private val handlers: Map<String, AgentTool>,
     private val maxInputChars: Int = DEFAULT_MAX_INPUT_CHARS,
-    private val suspendingHandlers: Map<String, SuspendingAgentTool> = emptyMap()
+    private val suspendingHandlers: Map<String, SuspendingAgentTool> = emptyMap(),
+    private val postconditionVerifiers: Map<String, SuspendingAgentToolPostconditionVerifier> = emptyMap()
 ) {
     init {
         require(maxInputChars in 1..MAX_ALLOWED_INPUT_CHARS) {
@@ -198,7 +220,10 @@ class AgentToolExecutor(
         return try {
             val result = suspendingHandler?.execute(request.input)
                 ?: synchronousHandler!!.execute(request.input)
-            AgentToolExecutionResult(AgentToolExecutionStatus.COMPLETED, result)
+            val evidence = if (result.success) {
+                postconditionVerifiers[request.toolId]?.verify(request.input, result)
+            } else null
+            AgentToolExecutionResult(AgentToolExecutionStatus.COMPLETED, result, evidence)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (_: Exception) {
