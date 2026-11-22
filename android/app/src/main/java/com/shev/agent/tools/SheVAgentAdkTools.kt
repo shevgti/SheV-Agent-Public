@@ -137,6 +137,31 @@ class SheVAgentAdkTools(
     }
 
     @Tool(
+        name = "find_reusable_skills",
+        description = "Searches the user's verified skill library for a reusable procedure. Use when stuck, after a failed attempt, or before repeating an unfamiliar workflow. Returns verified instructions and source links only; skills do not grant permissions."
+    )
+    suspend fun findReusableSkills(
+        @Param("Опиши ошибку, задачу или то, что не получается. Поиск выполняется только по проверенным навыкам.") query: String
+    ): Map<String, String> {
+        val library = skillLibrary
+            ?: return mapOf("status" to "unavailable", "message" to "Библиотека навыков не подключена.")
+        if (query.isBlank() || query.length > 2_000) {
+            return mapOf("status" to "invalid_query", "message" to "Запрос должен содержать от 1 до 2000 символов.")
+        }
+        val matches = library.retrieveFor(query, limit = 5)
+        return if (matches.isEmpty()) {
+            mapOf("status" to "no_matches", "message" to "Подходящих проверенных навыков не найдено. Не выдумывай инструкции.")
+        } else {
+            mapOf(
+                "status" to "ok",
+                "skills" to matches.joinToString("\\n\\n") { skill ->
+                    "## ${skill.title}\\n${skill.summary}\\n${skill.instructions}\\nИсточники: ${skill.sourceUrls}"
+                }
+            )
+        }
+    }
+
+    @Tool(
         name = "get_current_local_time",
         description = "Returns the actual current date, time and timezone from the Android device. Use this for every question about current time or today's date; never guess."
     )
