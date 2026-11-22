@@ -120,7 +120,8 @@ class AgentSkillLibrary(
             .map { skill -> skill to score(skill, terms) }
             .filter { it.second > 0 }
             .sortedWith(compareByDescending<Pair<AgentSkillEntity, Int>> { it.second }
-                .thenByDescending { it.first.updatedAtEpochMillis })
+                .thenByDescending { it.first.updatedAtEpochMillis }
+                .thenBy { it.first.skillId })
             .take(limit)
             .map { it.first }
     }
