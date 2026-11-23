@@ -430,3 +430,30 @@ class AgentPlanExecutionEngineTest {
         assertFalse(AgentPlanPostconditionVerifier.verify(result, result.postconditionObservations).verified)
     }
 }
+
+    @Test fun durableStepStartFailurePreventsToolSideEffect() = runBlocking {
+        var calls = 0
+        val registry = registry()
+        val executor = AgentToolExecutor(
+            registry,
+            mapOf("research.lookup" to AgentTool {
+                calls++
+                AgentToolResult(true, "should never run")
+            })
+        )
+        val engine = AgentPlanExecutionEngine(AgentPlanValidator(registry), executor)
+
+        val failure = runCatching {
+            engine.executeApprovedPlan(
+                plan(),
+                agentAllowedToolIds = setOf("research.lookup"),
+                context = AgentToolExecutionContext(setOf(AgentCapability.ANALYZE_DATA)),
+                onStepStarted = { error("durable start write failed") }
+            )
+        }
+
+        assertTrue(failure.isFailure)
+        assertEquals(0, calls)
+    }
+
+}
