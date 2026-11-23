@@ -429,7 +429,6 @@ class AgentPlanExecutionEngineTest {
         assertTrue(result.postconditionObservations.isEmpty())
         assertFalse(AgentPlanPostconditionVerifier.verify(result, result.postconditionObservations).verified)
     }
-}
 
     @Test fun durableStepStartFailurePreventsToolSideEffect() = runBlocking {
         var calls = 0
