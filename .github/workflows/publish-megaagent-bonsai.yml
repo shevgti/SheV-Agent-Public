@@ -66,8 +66,11 @@ jobs:
               if release.get("draft") or release.get("prerelease"):
                   continue
               match = re.search(r"(?im)^versionCode:\s*(\d+)\s*$", release.get("body") or "")
+              tag_match = re.search(r"build[.-](\d+)$", release.get("tag_name") or "")
               if match:
                   codes.append(int(match.group(1)))
+              elif tag_match:
+                  codes.append(int(tag_match.group(1)))
           if not codes:
               raise SystemExit("Cannot determine the last published Android versionCode.")
           previous = max(codes)
