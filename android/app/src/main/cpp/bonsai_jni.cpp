@@ -62,7 +62,7 @@ Java_com_shev_agent_model_BonsaiJni_nativeGenerate(JNIEnv * env, jclass, jlong r
 
     auto context_params = llama_context_default_params();
     context_params.n_ctx = handle->context_size;
-    context_params.n_batch = std::min<uint32_t>(handle->context_size, 256);
+    context_params.n_batch = std::min<uint32_t>(handle->context_size, std::max<uint32_t>(256, static_cast<uint32_t>(token_count)));
     context_params.n_ubatch = context_params.n_batch;
     context_params.n_threads = handle->threads;
     context_params.n_threads_batch = handle->threads;
@@ -81,7 +81,10 @@ Java_com_shev_agent_model_BonsaiJni_nativeGenerate(JNIEnv * env, jclass, jlong r
 
     int status = llama_decode(context, llama_batch_get_one(tokens.data(), token_count));
     if (status == 0) {
-        for (int i = 0; i < std::clamp(static_cast<int>(max_tokens), 1, 2048); ++i) {
+        const int generation_limit = std::max(1, std::min(
+            std::clamp(static_cast<int>(max_tokens), 1, 2048),
+            static_cast<int>(handle->context_size) - token_count - 1));
+        for (int i = 0; i < generation_limit; ++i) {
             const llama_token token = llama_sampler_sample(sampler, context, -1);
             if (llama_vocab_is_eog(vocab, token)) break;
             char piece[512];

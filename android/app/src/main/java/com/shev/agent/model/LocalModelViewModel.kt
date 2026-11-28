@@ -595,6 +595,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 check(bonsaiInstaller.isModelInstalled() && bonsaiInstaller.isRuntimeInstalled()) {
                     "Сначала установи GGUF и ARM64 runtime Bonsai."
                 }
+                val activityManager = getApplication<Application>().getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                val memoryInfo = android.app.ActivityManager.MemoryInfo()
+                activityManager.getMemoryInfo(memoryInfo)
+                check(!memoryInfo.lowMemory && memoryInfo.availMem >= 5L * 1024L * 1024L * 1024L) {
+                    "Для безопасной загрузки Bonsai желательно не менее 5 ГБ свободной оперативной памяти. Сейчас свободной памяти меньше."
+                }
                 val backend = BonsaiNativeBackend.load(
                     bonsaiInstaller.installedRuntimeLibDirectory(),
                     bonsaiInstaller.installedModelFile(),
