@@ -187,7 +187,7 @@ internal object AgentBuiltInSkillCatalog {
                 8. Сохраняй rollback путь и не удаляй старые релизы, пока целевой release и asset однозначно не идентифицированы.
             """.trimIndent(),
             keywords = listOf("github", "git", "CI", "Actions", "APK", "release", "сборка", "публикация"),
-            sources = listOf("https://docs.github.com/actions", "https://developer.android.com/studio/publish")
+            sources = listOf("https://github.com/actions/starter-workflows", "https://github.com/android/nowinandroid")
         ),
         BuiltInAgentSkill(
             id = "builtin.local-model-runtime",
