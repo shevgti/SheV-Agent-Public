@@ -30,7 +30,7 @@ It builds the PrismML llama.cpp source at immutable commit
 `arm64-v8a`, Android API 28, shared libraries, KleidiAI enabled, and OpenMP disabled.
 The workflow emits a runtime ZIP and SHA-256 file as an Actions artifact and publishes the same files to the durable prerelease tag `bonsai-android-arm64-latest` for in-app installation.
 
-The in-app installer downloads the model from an immutable Hugging Face revision, verifies its SHA-256, downloads the runtime release asset and verifies its detached checksum, then extracts it with path-traversal protection into app-private storage. This installs the components only; it does not claim that inference is ready.
+The in-app installer downloads the model from an immutable Hugging Face revision and verifies its SHA-256. It downloads the runtime release asset, verifies it against the SHA-256 pinned in the app (`61b6d9c15755a6c89a5eb59b2411e3df0add06a82c62207f09dce9c16367bcad`), then extracts it with path-traversal protection into app-private storage.
 
 ## Required app installation UX
 
