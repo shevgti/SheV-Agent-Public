@@ -54,7 +54,6 @@ import com.shev.agent.model.LocalModelViewModel
 import com.shev.agent.tools.GitHubAuthCard
 import com.shev.agent.tools.ToolWorkshopScreen
 import com.shev.agent.updates.ReleaseUpdateCard
-import com.shev.agent.update.UpdateCheckWorker
 import com.shev.agent.update.AppUpdater
 import android.widget.Toast
 import kotlinx.coroutines.launch
@@ -71,7 +70,6 @@ class MainActivity : ComponentActivity() {
             getSharedPreferences(PERMISSIONS_PREFS, MODE_PRIVATE).edit()
                 .putBoolean(KEY_NOTIFICATION_PROMPTED, true).apply()
             requestMicrophonePermissionIfNeeded()
-            UpdateCheckWorker.schedule(applicationContext)
         }
 
     private val microphonePermissionLauncher =
@@ -88,7 +86,6 @@ class MainActivity : ComponentActivity() {
         window.navigationBarColor = android.graphics.Color.rgb(16, 19, 24)
         window.decorView.systemUiVisibility = 0
         // Create the high-importance update channel before requesting notification permission.
-        UpdateCheckWorker.ensureNotificationChannel(applicationContext)
         // One Room database stores encrypted conversation history and declarative agent drafts.
         val database = SheVAgentDatabaseProvider.get(applicationContext)
         val chatViewModel = ViewModelProvider(this)[LocalModelViewModel::class.java]
@@ -115,8 +112,6 @@ class MainActivity : ComponentActivity() {
             }
         }
         requestFirstLaunchPermissions()
-        // Run one update check immediately and keep the 15-minute periodic check scheduled.
-        UpdateCheckWorker.schedule(applicationContext)
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
