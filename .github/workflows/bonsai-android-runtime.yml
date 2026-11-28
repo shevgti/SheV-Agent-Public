@@ -9,7 +9,7 @@ on:
       - "docs/MEGAAGENT_BONSAI_ANDROID_INSTALL.md"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-arm64-runtime:
@@ -20,11 +20,15 @@ jobs:
       - name: Check out MegaAgent
         uses: actions/checkout@v4
 
-      - name: Set up Android NDK
-        uses: android-actions/setup-android@v3
+      - name: Configure preinstalled Android SDK
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+          echo "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/16.0/bin" >> "$GITHUB_PATH"
+          echo "${ANDROID_HOME:-/usr/local/lib/android/sdk}/platform-tools" >> "$GITHUB_PATH"
 
       - name: Install pinned NDK
-        run: sdkmanager "ndk;27.2.12479018"
+        run: |
+          sdkmanager --install "ndk;27.2.12479018"
 
       - name: Install native build tools
         run: |

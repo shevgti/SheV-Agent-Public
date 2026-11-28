@@ -472,6 +472,27 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                                     Text("Удалить Gemma с телефона")
                                 }
                             }
+                            androidx.compose.material3.HorizontalDivider()
+                            Text("Ternary Bonsai 2 9B · отдельный движок", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                when {
+                                    state.bonsaiModelInstalled && state.bonsaiRuntimeInstalled -> "GGUF и ARM64 runtime установлены. JNI/backend для запуска ещё не подключён."
+                                    state.bonsaiRuntimeInstalled -> "Движок установлен; модель ещё не загружена."
+                                    else -> "Локальная модель 9B · GGUF около 2,56 ГБ и отдельный ARM64 runtime."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (state.bonsaiProgress != null) {
+                                LinearProgressIndicator(progress = { state.bonsaiProgress ?: 0f }, modifier = Modifier.fillMaxWidth())
+                                Text(state.bonsaiStage ?: "Установка Bonsai")
+                                TextButton(onClick = viewModel::cancelBonsaiInstall) { Text("Отменить установку Bonsai") }
+                            } else {
+                                Button(onClick = viewModel::installBonsai, enabled = !state.bonsaiModelInstalled, modifier = Modifier.fillMaxWidth()) {
+                                    Text(if (state.bonsaiModelInstalled && state.bonsaiRuntimeInstalled) "Компоненты Bonsai установлены" else "Скачать и установить Bonsai 9B")
+                                }
+                            }
+                            Text("Файл Q2_0 закреплён по ревизии и проверяется SHA-256. Gemma остаётся отдельной моделью.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(state.deviceSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
@@ -483,7 +504,8 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                                 "shev_researcher" to ("Исследователь" to "Анализирует вопросы и факты"),
                                 "shev_planner" to ("Планировщик" to "Разбивает задачи на этапы"),
                                 "shev_engineer" to ("Инженер" to "Помогает с кодом и Android"),
-                                "shev_reviewer" to ("Контролёр" to "Проверяет решения и ошибки")
+                                "shev_reviewer" to ("Контролёр" to "Проверяет решения и ошибки"),
+                                "shev_executor" to ("Исполнитель" to "Выполняет разрешённые шаги и проверяет результат")
                             ).forEach { (id, info) ->
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
