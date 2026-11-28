@@ -54,8 +54,8 @@ object MegaAgentWorkspace {
         val uri = Uri.parse(documentUri)
         require(DocumentsContract.isDocumentUri(context, uri)) { "URI не является документом SAF." }
         val rootId = DocumentsContract.getTreeDocumentId(tree)
-        val documentId = DocumentsContract.getDocumentId(uri)
-        require(documentId == rootId || documentId.startsWith(rootId.trimEnd('/') + "/")) {
+        val uriTreeId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+        require(uri.authority == tree.authority && uriTreeId == rootId) {
             "Отказано: файл находится за пределами выбранной рабочей папки."
         }
         val mime = context.contentResolver.getType(uri).orEmpty()
