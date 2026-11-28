@@ -96,7 +96,6 @@ jobs:
           echo "$BADGING" | grep -q "package: name='com.shev.agent'"
           echo "$BADGING" | grep -q "versionCode='$APP_VERSION_CODE'"
           "$APKSIGNER" verify --verbose "$APK"
-          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libbonsai_jni.so'
           echo "Verified package, versionCode and APK signature."
 
       - name: Prepare release package

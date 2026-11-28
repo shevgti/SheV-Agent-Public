@@ -1,6 +1,7 @@
 package com.shev.agent.model
 
 import android.content.Context
+import android.os.Build
 import android.os.StatFs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -63,6 +64,7 @@ class BonsaiInstallManager(context: Context) {
     }
 
     suspend fun installRuntime(onProgress: (Progress) -> Unit = {}): File = withContext(Dispatchers.IO) {
+        require(Build.SUPPORTED_ABIS.any { it == "arm64-v8a" }) { "Bonsai runtime сейчас поддерживает только Android ARM64." }
         root.mkdirs()
         if (isRuntimeInstalled()) return@withContext runtimeDir
         requireFreeSpace(RUNTIME_REQUIRED_SPACE_BYTES)
