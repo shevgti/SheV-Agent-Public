@@ -464,7 +464,7 @@ fun LocalModelPanel(
                         OutlinedButton(onClick = { importLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Выбрать файл модели") }
                     } else {
                         Button(onClick = viewModel::launchAgent, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-                            Text(if (state.busy) "Запускаю…" else "Запустить SheV")
+                            Text(if (state.busy) "Запускаю…" else "Запустить MegaAgent")
                         }
                     }
                     Text(state.deviceSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -474,12 +474,21 @@ fun LocalModelPanel(
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
         if (state.messages.isEmpty()) {
-            Spacer(Modifier.height(22.dp))
-            Text("Привет! Я SheV.", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Text(
-                "Напиши мне или нажми на микрофон и просто поговори. Я отвечу здесь.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp, start = 4.dp, end = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    "Привет! Я MegaAgent.",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    "Напиши, что нужно сделать, или нажми на микрофон. Я помогу прямо здесь.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
         } else {
             LazyColumn(
                 state = chatListState,
@@ -537,7 +546,7 @@ fun LocalModelPanel(
         if (state.busy) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CircularProgressIndicator(modifier = Modifier.height(18.dp))
-                Text("SheV думает…", style = MaterialTheme.typography.bodySmall)
+                Text("MegaAgent думает…", style = MaterialTheme.typography.bodySmall)
             }
         }
 
