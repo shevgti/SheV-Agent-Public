@@ -788,7 +788,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF16834A), contentColor = Color.White)
                 ) { Text("Обновить") }
             }
-            IconButton(onClick = { workspacePicker.launch(workspaceUri?.let(android.net.Uri::parse)) }) {
+            IconButton(onClick = { workspacePicker.launch(workspaceUri?.let { android.net.Uri.parse(it) }) }) {
                 Text("📁", style = MaterialTheme.typography.titleLarge)
             }
             IconButton(onClick = { showSettings = true }) {
