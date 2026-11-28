@@ -24,7 +24,7 @@ class BonsaiInstallManager(context: Context) {
 
     data class Progress(val stage: String, val downloaded: Long, val total: Long?) {
         val fraction: Float? get() = total?.takeIf { it > 0L }?.let {
-            (downloaded.toDouble() / it).toFloat().coerceIn(0.0, 1.0).toFloat()
+            (downloaded.toDouble() / it).toFloat().coerceIn(0f, 1f)
         }
     }
 
