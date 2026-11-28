@@ -791,6 +791,13 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             IconButton(onClick = { workspacePicker.launch(workspaceUri?.let { android.net.Uri.parse(it) }) }) {
                 Text("📁", style = MaterialTheme.typography.titleLarge)
             }
+            IconButton(onClick = {
+                runCatching {
+                    context.startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                }
+            }) {
+                Text("♿", style = MaterialTheme.typography.titleLarge)
+            }
             IconButton(onClick = { showSettings = true }) {
                 Text("⚙", style = MaterialTheme.typography.titleLarge)
             }
