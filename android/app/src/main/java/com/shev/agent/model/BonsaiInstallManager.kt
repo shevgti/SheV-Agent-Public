@@ -46,7 +46,7 @@ class BonsaiInstallManager(context: Context) {
     suspend fun installModel(onProgress: (Progress) -> Unit = {}): File = withContext(Dispatchers.IO) {
         root.mkdirs()
         if (isModelInstalled()) return@withContext model
-        requireFreeSpace(MODEL_MAX_BYTES + STORAGE_RESERVE_BYTES)
+        requireFreeSpace(MAX_MODEL_BYTES + STORAGE_RESERVE_BYTES)
         download(MODEL_URL, modelPart, MAX_MODEL_BYTES, "Модель", onProgress)
         if (modelPart.length() !in MIN_MODEL_BYTES..MAX_MODEL_BYTES) {
             modelPart.delete()
