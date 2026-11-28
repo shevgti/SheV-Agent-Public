@@ -46,8 +46,14 @@ class BonsaiInstallManager(context: Context) {
         root.mkdirs()
         if (isModelInstalled()) return@withContext model
         download(MODEL_URL, modelPart, MAX_MODEL_BYTES, "Модель", onProgress)
-        check(modelPart.length() in MIN_MODEL_BYTES..MAX_MODEL_BYTES) { "Размер GGUF не соответствует ожидаемому." }
-        check(sha256(modelPart) == MODEL_SHA256) { "SHA-256 Bonsai не совпал. Модель не установлена." }
+        if (modelPart.length() !in MIN_MODEL_BYTES..MAX_MODEL_BYTES) {
+            modelPart.delete()
+            error("Размер GGUF не соответствует ожидаемому; неполный файл удалён.")
+        }
+        if (sha256(modelPart) != MODEL_SHA256) {
+            modelPart.delete()
+            error("SHA-256 Bonsai не совпал; файл удалён, повтори загрузку.")
+        }
         promote(modelPart, model)
         modelMarker.writeText(MODEL_SHA256)
         model
@@ -60,8 +66,16 @@ class BonsaiInstallManager(context: Context) {
         download("$base/$RUNTIME_ZIP", runtimeZip, MAX_RUNTIME_ZIP_BYTES, "Движок", onProgress)
         download("$base/$RUNTIME_SHA_FILE", runtimeSha, 4096L, "Проверка движка", onProgress)
         val expected = runtimeSha.readText().trim().substringBefore(' ').lowercase()
-        require(expected.matches(Regex("[0-9a-f]{64}"))) { "Контрольная сумма движка повреждена." }
-        check(sha256(runtimeZip) == expected) { "SHA-256 архива движка не совпал." }
+        if (!expected.matches(Regex("[0-9a-f]{64}"))) {
+            runtimeSha.delete()
+            runtimeZip.delete()
+            error("Контрольная сумма движка повреждена; архив удалён.")
+        }
+        if (sha256(runtimeZip) != expected) {
+            runtimeSha.delete()
+            runtimeZip.delete()
+            error("SHA-256 архива движка не совпал; архив удалён.")
+        }
         val staging = File(root, "runtime.installing")
         staging.deleteRecursively()
         check(staging.mkdirs()) { "Не удалось подготовить установку движка." }
@@ -118,8 +132,16 @@ class BonsaiInstallManager(context: Context) {
                 if (offset > 0L) setRequestProperty("Range", "bytes=$offset-")
             }
             val status = connection.responseCode
+            if (status == HttpURLConnection.HTTP_REQUESTED_RANGE_NOT_SATISFIABLE) {
+                partial.delete()
+                error("$stage: сервер отклонил смещение продолжения; повтори загрузку.")
+            }
             require(status == HttpURLConnection.HTTP_OK || status == HttpURLConnection.HTTP_PARTIAL) { "$stage: HTTP $status." }
             val append = status == HttpURLConnection.HTTP_PARTIAL
+            if (append && !connection.getHeaderField("Content-Range").orEmpty().startsWith("bytes $offset-")) {
+                partial.delete()
+                error("$stage: сервер вернул неверный диапазон продолжения.")
+            }
             if (offset > 0L && !append) { partial.delete(); offset = 0L }
             val length = connection.contentLengthLong.takeIf { it >= 0L }
             val total = if (append) length?.plus(offset) else length
