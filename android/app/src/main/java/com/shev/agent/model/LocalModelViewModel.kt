@@ -208,6 +208,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 }
             }
+            // If Bonsai was selected before the app was closed, restore its native
+            // backend automatically after verifying both pinned model and runtime files.
+            if (useBonsai && bonsaiModelAvailable && bonsaiRuntimeAvailable) {
+                launchBonsai()
+            }
         }
     }
 
