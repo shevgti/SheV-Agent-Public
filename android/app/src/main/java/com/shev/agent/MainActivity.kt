@@ -246,7 +246,7 @@ private fun SheVAgentApp(
                     style = MaterialTheme.typography.titleMedium
                 )
             }
-            Box(Modifier.fillMaxSize().weight(1f)) {
+            Box(Modifier.fillMaxWidth().weight(1f)) {
                 when (destination) {
                     "creator" -> AgentCreatorScreen(database.agentDao(), chatViewModel)
                     "tasks" -> AgentTasksScreen(chatViewModel)
