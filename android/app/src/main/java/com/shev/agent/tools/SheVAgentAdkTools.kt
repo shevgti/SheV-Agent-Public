@@ -238,6 +238,22 @@ class SheVAgentAdkTools(
         description = "Read-only inspection of visible UI text from the currently active Android screen. Requires the user to enable MegaAgent Accessibility in Android Settings. Never claims to see hidden/private app data."
     )
     fun inspectVisibleDeviceScreen(): Map<String, String> {
+        // Reuse the host's ANALYZE_DATA capability gate; ADK annotations alone
+        // must never grant access to the Android accessibility bridge.
+        val gate = execute(
+            AgentToolRequest(
+                toolId = TOOL_ID,
+                capability = AgentCapability.ANALYZE_DATA,
+                input = "{}"
+            )
+        )
+        if (gate.status != AgentToolExecutionStatus.COMPLETED || gate.result?.success != true) {
+            return mapOf(
+                "status" to "access_denied",
+                "reason" to gate.status.name,
+                "message" to "Доступ к анализу устройства не выдан политикой возможностей."
+            )
+        }
         if (!com.shev.agent.device.MegaAgentAccessibilityService.isEnabled()) {
             return mapOf(
                 "status" to "permission_required",
