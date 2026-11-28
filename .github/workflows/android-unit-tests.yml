@@ -49,3 +49,13 @@ jobs:
       - name: Run complete Android JVM unit test suite
         working-directory: android
         run: gradle testDebugUnitTest --stacktrace
+      - name: Assemble installable MegaAgent debug APK
+        working-directory: android
+        run: gradle assembleDebug --stacktrace
+      - name: Upload MegaAgent Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: megaagent-bonsai-android-debug
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14

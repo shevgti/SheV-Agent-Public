@@ -1,0 +1,3 @@
+<resources>
+    <string name="megaagent_accessibility_description">Разрешает MegaAgent читать видимые элементы экрана и выполнять действия интерфейса по поручению пользователя.</string>
+</resources>

@@ -46,6 +46,7 @@ import com.shev.agent.tools.AgentToolExecutionContext
 import com.shev.agent.tools.AgentToolExecutor
 import com.shev.agent.tools.AgentToolRegistry
 import com.shev.agent.tools.AgentToolResult
+import com.shev.agent.tools.AgentToolRequest
 import com.shev.agent.tools.ToolInputField
 import com.shev.agent.tools.ToolInputSchema
 import com.shev.agent.tools.ToolInputType
@@ -206,6 +207,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         error = "Не удалось расшифровать локальную историю. Данные не будут показаны: ${failure.message ?: "ошибка ключа"}"
                     )
                 }
+            }
+            // If Bonsai was selected before the app was closed, restore its native
+            // backend automatically after verifying both pinned model and runtime files.
+            if (useBonsai && bonsaiModelAvailable && bonsaiRuntimeAvailable) {
+                launchBonsai()
             }
         }
     }
@@ -650,7 +656,58 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         mutableState.update { it.copy(useBonsai = true, useCodex = false, useGemini = false, useOpenAI = false, useDeepSeek = false, useOpenRouter = false, useOmniRoute = false) }
     }
 
+    private fun isDevicePermissionQuery(message: String): Boolean {
+        val text = message.lowercase()
+        return listOf("права доступа", "права телефона", "разрешения телефона", "доступ к телефону", "проверь разрешения")
+            .any { it in text }
+    }
+
     private fun sendBonsaiReply(message: String) {
+        if (isDevicePermissionQuery(message)) {
+            val app = getApplication<Application>()
+            val requested = app.packageManager.getPackageInfo(
+                app.packageName,
+                android.content.pm.PackageManager.GET_PERMISSIONS
+            ).requestedPermissions.orEmpty()
+            val runtimePermissions = requested.filter { permission ->
+                permission in setOf(
+                    android.Manifest.permission.RECORD_AUDIO,
+                    android.Manifest.permission.POST_NOTIFICATIONS,
+                    android.Manifest.permission.CAMERA,
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            }
+            val report = buildString {
+                appendLine("Проверка разрешений MegaAgent на этом телефоне:")
+                runtimePermissions.forEach { permission ->
+                    val granted = app.checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    appendLine("${permission.substringAfterLast('.')}: ${if (granted) "РАЗРЕШЕНО" else "НЕ РАЗРЕШЕНО"}")
+                }
+                appendLine("Специальные возможности MegaAgent: ${if (com.shev.agent.device.MegaAgentAccessibilityService.isEnabled()) "ВКЛЮЧЕНЫ" else "ВЫКЛЮЧЕНЫ"}")
+                appendLine("Доступ к экрану других приложений возможен только при включённой пользователем службе специальных возможностей. Android не предоставляет приложению полный доступ ко всем данным телефона.")
+            }.trim()
+            mutableState.update { it.copy(prompt = "", busy = false, error = null, messages = it.messages + "Вы: $message" + "SheV: $report") }
+            viewModelScope.launch(Dispatchers.IO) {
+                runCatching {
+                    dao.appendConversationMessage(ConversationMessageEntity(
+                        id = UUID.randomUUID().toString(),
+                        role = ConversationContextBuilder.ROLE_USER,
+                        content = LocalMessageCipher.encrypt(message),
+                        status = ConversationContextBuilder.STATUS_COMPLETE,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    ))
+                    dao.appendConversationMessage(ConversationMessageEntity(
+                        id = UUID.randomUUID().toString(),
+                        role = ConversationContextBuilder.ROLE_ASSISTANT,
+                        content = LocalMessageCipher.encrypt(report),
+                        status = ConversationContextBuilder.STATUS_COMPLETE,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    ))
+                }
+            }
+            return
+        }
         val backend = bonsaiBackend
         if (backend == null) {
             mutableState.update { it.copy(error = "Bonsai не загружена в память. Нажми «Запустить Bonsai» в настройках.") }
@@ -670,7 +727,41 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         createdAtEpochMillis = System.currentTimeMillis()
                     )
                 )
-                val answer = BonsaiAgentTeam(backend).answer(conversationContext, message)
+                // Bonsai uses the same host registry, schemas, grants and CapabilityPolicy as
+                // the ADK runtime. Only handler-backed tools are advertised to local subagents.
+                if (toolExecutor == null || agentToolRegistry == null || agentExecutionContext == null) {
+                    createAgentToolHost()
+                }
+                val executor = checkNotNull(toolExecutor) { "Реестр инструментов не готов." }
+                val context = checkNotNull(agentExecutionContext) { "Контекст разрешений не готов." }
+                val descriptors = executor.availableTools()
+                // Ensure the reviewed starter playbooks exist even if the first chat turn
+                // races the asynchronous startup seeding job.
+                runCatching { skillLibrary.seedBuiltInSkills() }
+                val skills = skillLibrary.buildContext(message)
+                val team = BonsaiAgentTeam(backend, descriptors) { descriptor, capability, input ->
+                    val result = executor.executeSuspending(
+                        AgentToolRequest(
+                            toolId = descriptor.id,
+                            capability = capability,
+                            input = input
+                        ),
+                        context
+                    )
+                    buildString {
+                        append("status=").append(result.status.name)
+                        result.result?.let { toolResult ->
+                            append("; success=").append(toolResult.success)
+                            if (toolResult.output.isNotBlank()) append("; output=").append(toolResult.output.take(8_000))
+                            toolResult.errorCode?.let { append("; error=").append(it) }
+                        }
+                        result.postconditionEvidence?.let { evidence ->
+                            append("; verified=").append(evidence.verified)
+                            append("; evidence=").append(evidence.reference)
+                        }
+                    }
+                }
+                val answer = team.answer(conversationContext, message, skills)
                 check(answer.isNotBlank()) { "Bonsai вернула пустой ответ." }
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
@@ -1014,7 +1105,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     chronologicalHistory = history,
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
-                    summaryThroughMessageId = summaryCheckpoint
+                    summaryThroughMessageId = summaryCheckpoint,
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(
+                        getApplication(),
+                        if (mutableState.value.useBonsai) "Ternary Bonsai 2 9B · GGUF Q2_0"
+                        else mutableState.value.backendName ?: "не определена"
+                    )
                 )
                 // Retrieve only explicitly verified reusable skills. Drafts and unreviewed
                 // model-generated instructions are never injected into the agent prompt.
@@ -1110,7 +1206,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     chronologicalHistory = history,
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
-                    summaryThroughMessageId = summaryCheckpoint
+                    summaryThroughMessageId = summaryCheckpoint,
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(
+                        getApplication(),
+                        if (mutableState.value.useBonsai) "Ternary Bonsai 2 9B · GGUF Q2_0"
+                        else mutableState.value.backendName ?: "не определена"
+                    )
                 )
 
                 dao.appendConversationMessage(
@@ -1234,7 +1335,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         chronologicalHistory = history,
                         currentMessage = message + liveWidgetContext(),
                         rollingSummary = (summaryRead as? ConversationSummaryRead.Ready)?.plaintext,
-                        summaryThroughMessageId = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
+                        summaryThroughMessageId = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId,
+                        environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(
+                        getApplication(),
+                        if (mutableState.value.useBonsai) "Ternary Bonsai 2 9B · GGUF Q2_0"
+                        else mutableState.value.backendName ?: "не определена"
+                    )
                     )
                 } else message
 
@@ -1417,7 +1523,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     chronologicalHistory = history,
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = (summaryRead as? ConversationSummaryRead.Ready)?.plaintext,
-                    summaryThroughMessageId = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
+                    summaryThroughMessageId = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId,
+                        environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(
+                        getApplication(),
+                        if (mutableState.value.useBonsai) "Ternary Bonsai 2 9B · GGUF Q2_0"
+                        else mutableState.value.backendName ?: "не определена"
+                    )
                 )
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
@@ -1694,7 +1805,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     chronologicalHistory = history,
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
-                    summaryThroughMessageId = summaryCheckpoint
+                    summaryThroughMessageId = summaryCheckpoint,
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(
+                        getApplication(),
+                        if (mutableState.value.useBonsai) "Ternary Bonsai 2 9B · GGUF Q2_0"
+                        else mutableState.value.backendName ?: "не определена"
+                    )
                 )
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
@@ -1767,7 +1883,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     chronologicalHistory = history,
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
-                    summaryThroughMessageId = summaryCheckpoint
+                    summaryThroughMessageId = summaryCheckpoint,
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(
+                        getApplication(),
+                        if (mutableState.value.useBonsai) "Ternary Bonsai 2 9B · GGUF Q2_0"
+                        else mutableState.value.backendName ?: "не определена"
+                    )
                 )
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
@@ -1839,7 +1960,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     chronologicalHistory = history,
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
-                    summaryThroughMessageId = summaryCheckpoint
+                    summaryThroughMessageId = summaryCheckpoint,
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(
+                        getApplication(),
+                        if (mutableState.value.useBonsai) "Ternary Bonsai 2 9B · GGUF Q2_0"
+                        else mutableState.value.backendName ?: "не определена"
+                    )
                 )
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
@@ -1923,7 +2049,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     chronologicalHistory = history,
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
-                    summaryThroughMessageId = summaryCheckpoint
+                    summaryThroughMessageId = summaryCheckpoint,
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(
+                        getApplication(),
+                        if (mutableState.value.useBonsai) "Ternary Bonsai 2 9B · GGUF Q2_0"
+                        else mutableState.value.backendName ?: "не определена"
+                    )
                 )
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
@@ -2059,6 +2190,28 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 )
             )
+            register(
+                AgentToolDescriptor(
+                    id = SheVAgentAdkTools.LIST_WORKSPACE_FILES_ID,
+                    title = "Просмотр рабочей папки",
+                    description = "Перечисляет элементы только в выбранной пользователем SAF-папке",
+                    capabilities = setOf(AgentCapability.READ_LOCAL_DATA),
+                    inputSchema = ToolInputSchema(
+                        listOf(ToolInputField("query", ToolInputType.STRING, required = false, maxLength = 200))
+                    )
+                )
+            )
+            register(
+                AgentToolDescriptor(
+                    id = SheVAgentAdkTools.READ_WORKSPACE_FILE_ID,
+                    title = "Чтение файла рабочей папки",
+                    description = "Читает текстовый файл только внутри выбранной SAF-папки",
+                    capabilities = setOf(AgentCapability.READ_LOCAL_DATA),
+                    inputSchema = ToolInputSchema(
+                        listOf(ToolInputField("documentUri", ToolInputType.STRING, required = true, maxLength = 4_096))
+                    )
+                )
+            )
         }
         val planValidator = AgentPlanValidator(registry)
         val allowedPlanToolIds = registry.list().mapTo(linkedSetOf()) { it.id } - setOf(
@@ -2147,7 +2300,27 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 SheVAgentAdkTools.TOOL_ID to AgentTool {
                     AgentToolResult(true, registry.list().joinToString("\n") { tool -> "${tool.id} | ${tool.title} | ${tool.capabilities.joinToString { it.name }} | ${tool.description} | input: ${tool.inputSchema?.describe() ?: "schema unavailable"}" })
                 },
-                SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to currentTimeHandler
+                SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to currentTimeHandler,
+                SheVAgentAdkTools.LIST_WORKSPACE_FILES_ID to AgentTool { input ->
+                    val query = runCatching { JsonParser.parseString(input).asJsonObject.get("query")?.asString.orEmpty() }.getOrDefault("")
+                    try {
+                        val entries = com.shev.agent.device.MegaAgentWorkspace.list(getApplication<Application>())
+                            .filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
+                        AgentToolResult(true, if (entries.isEmpty()) "В выбранной папке нет совпадений." else
+                            entries.joinToString("\n") { "${if (it.isDirectory) "[ПАПКА]" else "[ФАЙЛ]"} ${it.name} | ${it.mimeType} | ${it.uri}" })
+                    } catch (failure: Exception) {
+                        AgentToolResult(false, failure.message ?: "Не удалось просмотреть папку.", "WORKSPACE_LIST_FAILED")
+                    }
+                },
+                SheVAgentAdkTools.READ_WORKSPACE_FILE_ID to AgentTool { input ->
+                    val uri = runCatching { JsonParser.parseString(input).asJsonObject.get("documentUri")?.asString }.getOrNull()
+                    if (uri.isNullOrBlank()) AgentToolResult(false, "Не указан URI файла.", "DOCUMENT_URI_REQUIRED")
+                    else try {
+                        AgentToolResult(true, com.shev.agent.device.MegaAgentWorkspace.read(getApplication<Application>(), uri))
+                    } catch (failure: Exception) {
+                        AgentToolResult(false, failure.message ?: "Не удалось прочитать файл.", "WORKSPACE_READ_FAILED")
+                    }
+                }
             ),
             suspendingHandlers = mapOf(
                 SheVAgentAdkTools.CREATE_TASK_DRAFT_ID to taskDraftHandler,
@@ -2193,6 +2366,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val executionContext = AgentToolExecutionContext(
             grantedCapabilities = setOf(
                 AgentCapability.ANALYZE_DATA,
+                AgentCapability.READ_LOCAL_DATA,
                 AgentCapability.CREATE_DRAFT,
                 AgentCapability.READ_REMOTE_DATA
             ),

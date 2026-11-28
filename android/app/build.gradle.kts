@@ -6,7 +6,7 @@ plugins {
 
 val configuredVersionCode = providers.gradleProperty("SHEV_VERSION_CODE")
     .map { it.toInt() }
-    .getOrElse(36)
+    .getOrElse(52)
 require(configuredVersionCode > 0) {
     "SHEV_VERSION_CODE must be a positive Android versionCode."
 }
@@ -19,7 +19,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = configuredVersionCode
-        versionName = "0.3.2"
+        versionName = "MegaAgent 0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val githubClientId = providers.gradleProperty("GITHUB_CLIENT_ID")
             .orElse(providers.environmentVariable("GITHUB_CLIENT_ID"))

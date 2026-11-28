@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.lifecycle.ViewModelProvider
 import androidx.compose.foundation.layout.Arrangement
@@ -52,9 +53,6 @@ import com.shev.agent.model.LocalModelPanel
 import com.shev.agent.model.LocalModelViewModel
 import com.shev.agent.tools.GitHubAuthCard
 import com.shev.agent.tools.ToolWorkshopScreen
-import com.shev.agent.updates.ReleaseUpdateCard
-import com.shev.agent.update.UpdateCheckWorker
-import com.shev.agent.update.AppUpdater
 import android.widget.Toast
 import kotlinx.coroutines.launch
 
@@ -63,31 +61,24 @@ import kotlinx.coroutines.launch
  * safe tool workshop remain available as separate bottom-navigation destinations.
  */
 class MainActivity : ComponentActivity() {
-    private var installDownloadedUpdateRequested = false
-    private var awaitingInstallPermission = false
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
             getSharedPreferences(PERMISSIONS_PREFS, MODE_PRIVATE).edit()
                 .putBoolean(KEY_NOTIFICATION_PROMPTED, true).apply()
             requestMicrophonePermissionIfNeeded()
-            UpdateCheckWorker.schedule(applicationContext)
         }
 
     private val microphonePermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
             getSharedPreferences(PERMISSIONS_PREFS, MODE_PRIVATE).edit()
                 .putBoolean(KEY_MICROPHONE_PROMPTED, true).apply()
-            UpdateCheckWorker.schedule(applicationContext)
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        installDownloadedUpdateRequested = intent?.action == ACTION_INSTALL_DOWNLOADED_UPDATE
         window.statusBarColor = android.graphics.Color.rgb(16, 19, 24)
         window.navigationBarColor = android.graphics.Color.rgb(16, 19, 24)
         window.decorView.systemUiVisibility = 0
-        // Create the high-importance update channel before requesting notification permission.
-        UpdateCheckWorker.ensureNotificationChannel(applicationContext)
         // One Room database stores encrypted conversation history and declarative agent drafts.
         val database = SheVAgentDatabaseProvider.get(applicationContext)
         val chatViewModel = ViewModelProvider(this)[LocalModelViewModel::class.java]
@@ -114,56 +105,10 @@ class MainActivity : ComponentActivity() {
             }
         }
         requestFirstLaunchPermissions()
-        // Run one update check immediately and keep the 15-minute periodic check scheduled.
-        UpdateCheckWorker.schedule(applicationContext)
-    }
-
-    override fun onNewIntent(intent: android.content.Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        if (intent.action == ACTION_INSTALL_DOWNLOADED_UPDATE) {
-            installDownloadedUpdateRequested = true
-            installDownloadedUpdateIfRequested()
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        installDownloadedUpdateIfRequested()
-    }
-
-    private fun installDownloadedUpdateIfRequested() {
-        if (installDownloadedUpdateRequested) {
-            installDownloadedUpdateRequested = false
-            try {
-                awaitingInstallPermission = !AppUpdater.openInstaller(this)
-            } catch (error: Exception) {
-                Toast.makeText(
-                    this,
-                    "Не удалось открыть установку обновления: ${error.message ?: "ошибка"}",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-            return
-        }
-        if (awaitingInstallPermission &&
-            (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls())
-        ) {
-            awaitingInstallPermission = false
-            try {
-                AppUpdater.openInstaller(this)
-            } catch (error: Exception) {
-                Toast.makeText(
-                    this,
-                    "Не удалось открыть установку обновления: ${error.message ?: "ошибка"}",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-        }
     }
 
     /**
-     * Ask for update notifications first on the first app launch after install.
+     * Ask for notification permission on the first app launch when Android requires it.
      * Android owns the system dialog and the user makes the final choice.
      */
     private fun requestFirstLaunchPermissions() {
@@ -203,54 +148,56 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
-        const val ACTION_INSTALL_DOWNLOADED_UPDATE = "com.shev.agent.action.INSTALL_DOWNLOADED_UPDATE"
         const val PERMISSIONS_PREFS = "shev_agent_permissions"
         const val KEY_NOTIFICATION_PROMPTED = "notification_prompt_completed"
         const val KEY_MICROPHONE_PROMPTED = "microphone_prompt_completed"
     }
 }
 
-private enum class SheVAgentTab(val label: String, val glyph: String) {
-    CREATOR("Создатель", "✧"),
-    CHAT("Чат", "◉"),
-    TASKS("Поручения", "✓"),
-    TOOLS("Настройки", "⚙")
-}
-
+/**
+ * MegaAgent opens directly into the conversation. Secondary workspaces remain
+ * reachable from the chat's own controls instead of a permanent legacy tab bar.
+ */
 @Composable
 private fun SheVAgentApp(
     database: SheVAgentDatabase,
     chatViewModel: LocalModelViewModel
 ) {
-    var tab by rememberSaveable { mutableStateOf(SheVAgentTab.CREATOR) }
-    Scaffold(
-        bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                SheVAgentTab.values().forEach { item ->
-                    NavigationBarItem(
-                        selected = tab == item,
-                        onClick = { tab = item },
-                        icon = { Text(item.glyph, style = MaterialTheme.typography.titleLarge) },
-                        label = { Text(item.label, maxLines = 1) }
+    var destination by rememberSaveable { mutableStateOf("chat") }
+    BackHandler(enabled = destination != "chat") { destination = "chat" }
+    if (destination == "chat") {
+        LocalModelPanel(
+            chatViewModel,
+            onOpenCreator = { destination = "creator" },
+            onOpenTasks = { destination = "tasks" },
+            onOpenTools = { destination = "tools" }
+        )
+    } else {
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                TextButton(onClick = { destination = "chat" }) { Text("← Чат MegaAgent") }
+                Text(
+                    when (destination) {
+                        "creator" -> "Создатель агентов"
+                        "tasks" -> "Поручения"
+                        else -> "Инструменты и навыки"
+                    },
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+                when (destination) {
+                    "creator" -> AgentCreatorScreen(database.agentDao(), chatViewModel)
+                    "tasks" -> AgentTasksScreen(chatViewModel)
+                    else -> SettingsScreen(
+                        modifier = Modifier.fillMaxSize(),
+                        skillLibrary = AgentSkillLibrary(database.agentDao())
                     )
                 }
             }
-        }
-    ) { inset ->
-        when (tab) {
-            SheVAgentTab.CREATOR -> Box(Modifier.fillMaxSize().padding(inset)) {
-                AgentCreatorScreen(database.agentDao(), chatViewModel)
-            }
-            SheVAgentTab.CHAT -> Box(Modifier.fillMaxSize().padding(inset)) {
-                LocalModelPanel(chatViewModel)
-            }
-            SheVAgentTab.TASKS -> Box(Modifier.fillMaxSize().padding(inset)) {
-                AgentTasksScreen(chatViewModel)
-            }
-            SheVAgentTab.TOOLS -> SettingsScreen(
-                modifier = Modifier.fillMaxSize().padding(inset),
-                skillLibrary = AgentSkillLibrary(database.agentDao())
-            )
         }
     }
 }
@@ -622,10 +569,9 @@ private fun SettingsScreen(
     ) {
         Text("Настройки", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "Обновление приложения и дополнительные подключения.",
+            "Дополнительные подключения, инструменты и библиотека навыков.",
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        ReleaseUpdateCard()
         Card {
             Column(Modifier.fillMaxWidth().padding(12.dp)) {
                 TextButton(onClick = { showSkills = !showSkills }) {
