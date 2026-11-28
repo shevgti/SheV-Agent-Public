@@ -656,7 +656,58 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         mutableState.update { it.copy(useBonsai = true, useCodex = false, useGemini = false, useOpenAI = false, useDeepSeek = false, useOpenRouter = false, useOmniRoute = false) }
     }
 
+    private fun isDevicePermissionQuery(message: String): Boolean {
+        val text = message.lowercase()
+        return listOf("права доступа", "права телефона", "разрешения телефона", "доступ к телефону", "проверь разрешения")
+            .any { it in text }
+    }
+
     private fun sendBonsaiReply(message: String) {
+        if (isDevicePermissionQuery(message)) {
+            val app = getApplication<Application>()
+            val requested = app.packageManager.getPackageInfo(
+                app.packageName,
+                android.content.pm.PackageManager.GET_PERMISSIONS
+            ).requestedPermissions.orEmpty()
+            val runtimePermissions = requested.filter { permission ->
+                permission in setOf(
+                    android.Manifest.permission.RECORD_AUDIO,
+                    android.Manifest.permission.POST_NOTIFICATIONS,
+                    android.Manifest.permission.CAMERA,
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            }
+            val report = buildString {
+                appendLine("Проверка разрешений MegaAgent на этом телефоне:")
+                runtimePermissions.forEach { permission ->
+                    val granted = app.checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    appendLine("${permission.substringAfterLast('.')}: ${if (granted) "РАЗРЕШЕНО" else "НЕ РАЗРЕШЕНО"}")
+                }
+                appendLine("Специальные возможности MegaAgent: ${if (com.shev.agent.device.MegaAgentAccessibilityService.isEnabled()) "ВКЛЮЧЕНЫ" else "ВЫКЛЮЧЕНЫ"}")
+                appendLine("Доступ к экрану других приложений возможен только при включённой пользователем службе специальных возможностей. Android не предоставляет приложению полный доступ ко всем данным телефона.")
+            }.trim()
+            mutableState.update { it.copy(prompt = "", busy = false, error = null, messages = it.messages + "Вы: $message" + "SheV: $report") }
+            viewModelScope.launch(Dispatchers.IO) {
+                runCatching {
+                    dao.appendConversationMessage(ConversationMessageEntity(
+                        id = UUID.randomUUID().toString(),
+                        role = ConversationContextBuilder.ROLE_USER,
+                        content = LocalMessageCipher.encrypt(message),
+                        status = ConversationContextBuilder.STATUS_COMPLETE,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    ))
+                    dao.appendConversationMessage(ConversationMessageEntity(
+                        id = UUID.randomUUID().toString(),
+                        role = ConversationContextBuilder.ROLE_ASSISTANT,
+                        content = LocalMessageCipher.encrypt(report),
+                        status = ConversationContextBuilder.STATUS_COMPLETE,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    ))
+                }
+            }
+            return
+        }
         val backend = bonsaiBackend
         if (backend == null) {
             mutableState.update { it.copy(error = "Bonsai не загружена в память. Нажми «Запустить Bonsai» в настройках.") }
