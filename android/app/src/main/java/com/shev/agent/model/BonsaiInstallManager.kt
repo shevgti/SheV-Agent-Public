@@ -28,13 +28,18 @@ class BonsaiInstallManager(context: Context) {
         }
     }
 
+    fun installedModelFile(): File = model
+    fun installedRuntimeLibDirectory(): File = File(runtimeDir, "lib")
+
     suspend fun isModelInstalled() = withContext(Dispatchers.IO) {
         model.isFile && model.length() in MIN_MODEL_BYTES..MAX_MODEL_BYTES &&
             modelMarker.isFile && modelMarker.readText().trim() == MODEL_SHA256
     }
 
     suspend fun isRuntimeInstalled() = withContext(Dispatchers.IO) {
-        File(runtimeDir, "lib/libllama.so").isFile && File(runtimeDir, "BUILD-METADATA.txt").isFile
+        File(runtimeDir, "lib/libllama.so").isFile &&
+            File(runtimeDir, "lib/libbonsai_jni.so").isFile &&
+            File(runtimeDir, "BUILD-METADATA.txt").isFile
     }
 
     suspend fun installModel(onProgress: (Progress) -> Unit = {}): File = withContext(Dispatchers.IO) {

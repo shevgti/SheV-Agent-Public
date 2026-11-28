@@ -73,6 +73,19 @@ jobs:
           cmake --build build-bonsai-android --config Release --parallel 2
           cmake --install build-bonsai-android --prefix bonsai-runtime --config Release
           test -d bonsai-runtime/lib
+          LLAMA_SO="$(find build-bonsai-android -name libllama.so -type f -print -quit)"
+          test -n "$LLAMA_SO"
+          cmake -S android/app/src/main/cpp -B build-bonsai-jni -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-28 \
+            -DLLAMA_SOURCE_DIR="$PWD/prism-llama" \
+            -DLLAMA_LIBRARY="$PWD/$LLAMA_SO" \
+            -DCMAKE_INSTALL_PREFIX="$PWD/bonsai-runtime"
+          cmake --build build-bonsai-jni --parallel 2
+          cmake --install build-bonsai-jni
+          test -f bonsai-runtime/lib/libbonsai_jni.so
           find bonsai-runtime -type f -name '*.so' -print
 
       - name: Package runtime and provenance
