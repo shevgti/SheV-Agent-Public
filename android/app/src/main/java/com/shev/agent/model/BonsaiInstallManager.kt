@@ -45,8 +45,8 @@ class BonsaiInstallManager(context: Context) {
 
     suspend fun installModel(onProgress: (Progress) -> Unit = {}): File = withContext(Dispatchers.IO) {
         root.mkdirs()
-        requireFreeSpace(MODEL_MAX_BYTES + STORAGE_RESERVE_BYTES)
         if (isModelInstalled()) return@withContext model
+        requireFreeSpace(MODEL_MAX_BYTES + STORAGE_RESERVE_BYTES)
         download(MODEL_URL, modelPart, MAX_MODEL_BYTES, "Модель", onProgress)
         if (modelPart.length() !in MIN_MODEL_BYTES..MAX_MODEL_BYTES) {
             modelPart.delete()
@@ -63,8 +63,8 @@ class BonsaiInstallManager(context: Context) {
 
     suspend fun installRuntime(onProgress: (Progress) -> Unit = {}): File = withContext(Dispatchers.IO) {
         root.mkdirs()
-        requireFreeSpace(RUNTIME_REQUIRED_SPACE_BYTES)
         if (isRuntimeInstalled()) return@withContext runtimeDir
+        requireFreeSpace(RUNTIME_REQUIRED_SPACE_BYTES)
         val base = "https://github.com/shevgti/SheV-Agent-Public/releases/download/$RUNTIME_TAG"
         download("$base/$RUNTIME_ZIP", runtimeZip, MAX_RUNTIME_ZIP_BYTES, "Движок", onProgress)
         download("$base/$RUNTIME_SHA_FILE", runtimeSha, 4096L, "Проверка движка", onProgress)
@@ -173,7 +173,7 @@ class BonsaiInstallManager(context: Context) {
     private fun requireFreeSpace(requiredBytes: Long) {
         val available = StatFs(root.absolutePath).availableBytes
         require(available >= requiredBytes) {
-            "Для установки Bonsai нужно ещё \${requiredBytes / 1_000_000_000L} ГБ свободного места."
+            "Для установки Bonsai нужно ещё ${requiredBytes / 1_000_000_000L} ГБ свободного места."
         }
     }
 
