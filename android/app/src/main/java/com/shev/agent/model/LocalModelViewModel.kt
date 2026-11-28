@@ -657,6 +657,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             return
         }
         mutableState.update { it.copy(prompt = "", busy = true, error = null, messages = it.messages + "Вы: $message") }
+        val conversationContext = mutableState.value.messages.takeLast(12).joinToString("\n")
         responseJob = viewModelScope.launch(Dispatchers.IO) {
             val userId = UUID.randomUUID().toString()
             try {
@@ -669,7 +670,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         createdAtEpochMillis = System.currentTimeMillis()
                     )
                 )
-                val answer = BonsaiAgentTeam(backend).answer(message)
+                val answer = BonsaiAgentTeam(backend).answer(conversationContext)
                 check(answer.isNotBlank()) { "Bonsai вернула пустой ответ." }
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
