@@ -17,6 +17,7 @@ class BonsaiInstallManager(context: Context) {
     private val root = File(context.applicationContext.filesDir, "bonsai")
     private val model = File(root, MODEL_FILE)
     private val modelPart = File(root, "$MODEL_FILE.part")
+    private val modelMarker = File(root, "model.sha256")
     private val runtimeDir = File(root, "runtime")
     private val runtimeZip = File(root, "runtime.zip.part")
     private val runtimeSha = File(root, "runtime.zip.sha256.part")
@@ -28,7 +29,8 @@ class BonsaiInstallManager(context: Context) {
     }
 
     suspend fun isModelInstalled() = withContext(Dispatchers.IO) {
-        model.isFile && model.length() in MIN_MODEL_BYTES..MAX_MODEL_BYTES && sha256(model) == MODEL_SHA256
+        model.isFile && model.length() in MIN_MODEL_BYTES..MAX_MODEL_BYTES &&
+            modelMarker.isFile && modelMarker.readText().trim() == MODEL_SHA256
     }
 
     suspend fun isRuntimeInstalled() = withContext(Dispatchers.IO) {
@@ -42,6 +44,7 @@ class BonsaiInstallManager(context: Context) {
         check(modelPart.length() in MIN_MODEL_BYTES..MAX_MODEL_BYTES) { "Размер GGUF не соответствует ожидаемому." }
         check(sha256(modelPart) == MODEL_SHA256) { "SHA-256 Bonsai не совпал. Модель не установлена." }
         promote(modelPart, model)
+        modelMarker.writeText(MODEL_SHA256)
         model
     }
 

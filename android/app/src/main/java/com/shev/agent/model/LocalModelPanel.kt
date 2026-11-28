@@ -488,8 +488,8 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                                 Text(state.bonsaiStage ?: "Установка Bonsai")
                                 TextButton(onClick = viewModel::cancelBonsaiInstall) { Text("Отменить установку Bonsai") }
                             } else {
-                                Button(onClick = viewModel::installBonsai, enabled = !state.bonsaiModelInstalled, modifier = Modifier.fillMaxWidth()) {
-                                    Text(if (state.bonsaiModelInstalled && state.bonsaiRuntimeInstalled) "Компоненты Bonsai установлены" else "Скачать и установить Bonsai 9B")
+                                Button(onClick = viewModel::installBonsai, enabled = !(state.bonsaiModelInstalled && state.bonsaiRuntimeInstalled), modifier = Modifier.fillMaxWidth()) {
+                                    Text(if (state.bonsaiModelInstalled && state.bonsaiRuntimeInstalled) "Компоненты Bonsai установлены" else if (state.bonsaiModelInstalled || state.bonsaiRuntimeInstalled) "Доустановить компонент Bonsai" else "Скачать и установить Bonsai 9B")
                                 }
                             }
                             Text("Файл Q2_0 закреплён по ревизии и проверяется SHA-256. Gemma остаётся отдельной моделью.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
