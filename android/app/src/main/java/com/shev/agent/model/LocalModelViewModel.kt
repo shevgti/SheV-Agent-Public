@@ -684,6 +684,9 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 val executor = checkNotNull(toolExecutor) { "Реестр инструментов не готов." }
                 val context = checkNotNull(agentExecutionContext) { "Контекст разрешений не готов." }
                 val descriptors = executor.availableTools()
+                // Ensure the reviewed starter playbooks exist even if the first chat turn
+                // races the asynchronous startup seeding job.
+                runCatching { skillLibrary.seedBuiltInSkills() }
                 val skills = skillLibrary.buildContext(message)
                 val team = BonsaiAgentTeam(backend, descriptors) { descriptor, capability, input ->
                     val result = executor.executeSuspending(
