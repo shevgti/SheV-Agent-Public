@@ -170,7 +170,7 @@ internal object AgentBuiltInSkillCatalog {
                 8. После системного действия проверь фактическое состояние и покажи владельцу, какие разрешения включены.
             """.trimIndent(),
             keywords = listOf("android", "телефон", "SAF", "Accessibility", "файлы", "устройство", "разрешения", "POCO"),
-            sources = listOf("https://developer.android.com/guide/topics/providers/document-provider", "https://developer.android.com/guide/topics/ui/accessibility/service")
+            sources = listOf("https://github.com/android/architecture-samples", "https://github.com/android/compose-samples")
         ),
         BuiltInAgentSkill(
             id = "builtin.github-ci-delivery",
@@ -204,7 +204,7 @@ internal object AgentBuiltInSkillCatalog {
                 8. При перезапуске приложения восстанавливай выбранный backend только после проверки файлов и памяти; иначе сообщай точную причину.
             """.trimIndent(),
             keywords = listOf("local model", "GGUF", "Bonsai", "llama.cpp", "RAM", "GPU", "CPU", "модель", "квантование"),
-            sources = listOf("https://github.com/ggml-org/llama.cpp", "https://huggingface.co/docs/hub")
+            sources = listOf("https://github.com/ggml-org/llama.cpp", "https://github.com/huggingface/huggingface_hub")
         )
     )
 }
