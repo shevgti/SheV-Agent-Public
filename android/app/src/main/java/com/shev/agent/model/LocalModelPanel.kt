@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Looper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,6 +68,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.window.DialogProperties
 import com.shev.agent.ui.LiveWidgetsOverlay
 import kotlinx.coroutines.launch
@@ -83,6 +86,7 @@ fun LocalModelPanel(
     val state by viewModel.state.collectAsState()
     val liveWidgets by viewModel.liveWidgets.collectAsState()
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val workspacePrefs = remember(context) { context.getSharedPreferences("megaagent_device_bridge", android.content.Context.MODE_PRIVATE) }
     var workspaceUri by remember { mutableStateOf(workspacePrefs.getString("workspace_tree_uri", null)) }
     val workspacePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -328,243 +332,47 @@ fun LocalModelPanel(
                         TextButton(onClick = { showSettings = false }) { Text("Закрыть") }
                     }
                     Column(
-                    modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Яндекс.Погода", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                "Погодные блоки и ответы SheV о погоде будут получать данные напрямую из API Яндекс.Погоды. Нужен личный API-ключ.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            OutlinedTextField(
-                                value = yandexWeatherKey,
-                                onValueChange = { yandexWeatherKey = it; weatherKeySaved = false },
-                                modifier = Modifier.fillMaxWidth(),
-                                label = { Text("API-ключ Яндекс.Погоды") },
-                                singleLine = true,
-                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
-                            )
-                            Button(
-                                onClick = {
-                                    context.getSharedPreferences("shev_weather", android.content.Context.MODE_PRIVATE)
-                                        .edit().putString("yandex_api_key", yandexWeatherKey.trim()).apply()
-                                    weatherKeySaved = true
-                                },
-                                enabled = yandexWeatherKey.isNotBlank(),
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Сохранить ключ на телефоне") }
-                            if (weatherKeySaved) {
-                                Text("Ключ сохранён. Он не добавляется в репозиторий GitHub.", style = MaterialTheme.typography.bodySmall, color = Color(0xFF16834A))
-                            }
-                            TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://yandex.ru/dev/weather/"))) }) {
-                                Text("Получить API-ключ Яндекс.Погоды")
-                            }
-                        }
-                    }
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Выбор основного AI", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            Text("Выбери, кто будет отвечать в основном чате. Активным может быть один основной провайдер.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("OpenAI Codex · полноценный AI-агент", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                if (state.useCodex) "Сейчас выбран Codex" else "Отдельный агент Codex с официальным входом ChatGPT; проверка аккаунта выполняется OpenAI.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            OutlinedButton(onClick = { showCodexSettings = !showCodexSettings }, modifier = Modifier.fillMaxWidth()) {
-                                Text(if (showCodexSettings) "Скрыть настройки Codex" else "Подключить Codex")
-                            }
-                            if (showCodexSettings) CodexProviderPanel(viewModel)
-                            androidx.compose.material3.HorizontalDivider()
-                            Text("Google Gemini · облачная модель", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text(if (state.useGemini) "Сейчас выбран Gemini" else "Для работы нужен ключ Google AI Studio.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            OutlinedButton(onClick = { showGeminiSettings = !showGeminiSettings }, modifier = Modifier.fillMaxWidth()) {
-                                Text(if (showGeminiSettings) "Скрыть настройки Gemini" else "Настроить / выбрать Gemini")
-                            }
-                            if (showGeminiSettings) GeminiProviderPanel(viewModel)
-                            androidx.compose.material3.HorizontalDivider()
-                            Text("Gemma · локально на телефоне", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                when {
-                                    state.useCodex || state.useGemini || state.useOpenAI || state.useDeepSeek || state.useOpenRouter || state.useOmniRoute -> "Сейчас выбран облачный провайдер"
-                                    state.ready -> "Gemma запущена и выбрана для локальной работы"
-                                    state.verified -> "Модель загружена и проверена"
-                                    else -> "Модель ещё не загружена · размер около 2,58 ГБ"
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            if (state.progress != null) {
-                                LinearProgressIndicator(progress = { state.progress ?: 0f }, modifier = Modifier.fillMaxWidth())
-                                Text("Загрузка: ${((state.progress ?: 0f) * 100).toInt()}%")
-                                TextButton(onClick = viewModel::cancelDownload) { Text("Отменить загрузку") }
-                            } else if (!state.verified) {
-                                Button(onClick = viewModel::download, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-                                    Text(if (state.busy) "Подготовка…" else "Скачать Gemma · 2,58 ГБ")
-                                }
-                                OutlinedButton(onClick = { importLauncher.launch(arrayOf("*/*")) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-                                    Text("Выбрать файл Gemma")
-                                }
-                            } else {
-                                Button(onClick = viewModel::selectLocalModel, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-                                    Text(if (state.ready && !state.useCodex && !state.useGemini && !state.useOpenAI && !state.useDeepSeek && !state.useOpenRouter && !state.useOmniRoute) "Gemma выбрана" else "Выбрать Gemma")
-                                }
-                                OutlinedButton(onClick = viewModel::deleteModel, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-                                    Text("Удалить Gemma с телефона")
-                                }
-                            }
-                            androidx.compose.material3.HorizontalDivider()
-                            Text("Ternary Bonsai 2 9B · отдельный движок", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                when {
-                                    state.bonsaiReady -> "Модель активна и прошла тест генерации."
-                                    state.bonsaiModelInstalled -> "Модель установлена и проверена по SHA-256."
-                                    state.bonsaiRuntimeInstalled -> "ARM64-движок установлен; файл модели ещё не найден."
-                                    else -> "Модель ещё не установлена. Загрузка включает GGUF-файл и отдельный ARM64-движок."
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            androidx.compose.material3.Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant
+                        modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text("Локальная модель", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                            Column(
+                                Modifier.fillMaxWidth().padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text("Модель: Ternary Bonsai 2 · 9B", fontWeight = FontWeight.SemiBold)
-                                    Text("Файл: Ternary-Bonsai-2-9B-Q2_0.gguf")
-                                    Text("Формат: GGUF · квантование Q2_0 · размер загрузки около 2,56 ГБ")
-                                    Text(
-                                        if (state.bonsaiModelInstalled) "Фактическая проверка: SHA-256 совпал с закреплённой версией."
-                                        else "Статус файла: пока не подтверждён.",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                    Text("Репозиторий: prism-ml/Ternary-Bonsai-2-9B-gguf", style = MaterialTheme.typography.bodySmall)
-                                }
-                            }
-                            if (state.bonsaiProgress != null) {
-                                LinearProgressIndicator(progress = { state.bonsaiProgress ?: 0f }, modifier = Modifier.fillMaxWidth())
-                                Text(state.bonsaiStage ?: "Установка Bonsai")
-                                TextButton(onClick = viewModel::cancelBonsaiInstall) { Text("Отменить установку Bonsai") }
-                            } else if (!state.bonsaiModelInstalled || !state.bonsaiRuntimeInstalled) {
-                                Button(onClick = viewModel::installBonsai, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-                                    Text(if (state.bonsaiModelInstalled || state.bonsaiRuntimeInstalled) "Доустановить компонент Bonsai" else "Скачать и установить Bonsai 9B")
-                                }
-                            } else if (!state.bonsaiReady) {
-                                Button(onClick = viewModel::launchBonsai, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("Загрузить и проверить Bonsai") }
-                            } else {
-                                Button(onClick = viewModel::selectBonsaiModel, modifier = Modifier.fillMaxWidth()) {
-                                    Text(if (state.useBonsai) "Bonsai выбрана для чата" else "Выбрать Bonsai для чата")
-                                }
-                            }
-                            Text(if (state.useBonsai) "Основной чат работает через Bonsai. Все вызовы одной модели сериализованы." else "Файл Q2_0 закреплён по ревизии и проверяется SHA-256. Gemma остаётся отдельной моделью.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(state.deviceSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Команда локальных AI-агентов", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Все роли работают на одной загруженной модели. Изменения применятся после перезапуска локальной модели.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            listOf(
-                                "shev_researcher" to ("Исследователь" to "Анализирует вопросы и факты"),
-                                "shev_planner" to ("Планировщик" to "Разбивает задачи на этапы"),
-                                "shev_engineer" to ("Инженер" to "Помогает с кодом и Android"),
-                                "shev_reviewer" to ("Контролёр" to "Проверяет решения и ошибки"),
-                                "shev_executor" to ("Исполнитель" to "Выполняет разрешённые шаги и проверяет результат")
-                            ).forEach { (id, info) ->
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(info.first, fontWeight = FontWeight.Medium)
-                                        Text(info.second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Ternary Bonsai 2 · 9B", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                Text("Локальная модель работает непосредственно на телефоне. Облачные ключи и сторонние AI-подключения для неё не нужны.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Файл: Ternary-Bonsai-2-9B-Q2_0.gguf · GGUF Q2_0 · около 2,56 ГБ", style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    when {
+                                        state.bonsaiReady -> "Модель запущена и прошла короткий тест генерации."
+                                        state.bonsaiModelInstalled -> "Файл модели установлен и проверен."
+                                        state.bonsaiRuntimeInstalled -> "ARM64-движок установлен; модель ещё не установлена."
+                                        else -> "Модель и ARM64-движок ещё не установлены."
+                                    },
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                if (state.bonsaiProgress != null) {
+                                    LinearProgressIndicator(progress = { state.bonsaiProgress ?: 0f }, modifier = Modifier.fillMaxWidth())
+                                    Text(state.bonsaiStage ?: "Установка Bonsai")
+                                    TextButton(onClick = viewModel::cancelBonsaiInstall) { Text("Отменить") }
+                                } else if (!state.bonsaiModelInstalled || !state.bonsaiRuntimeInstalled) {
+                                    Button(onClick = viewModel::installBonsai, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
+                                        Text(if (state.bonsaiModelInstalled || state.bonsaiRuntimeInstalled) "Установить недостающий компонент" else "Скачать Bonsai 9B")
                                     }
-                                    Checkbox(
-                                        checked = id in enabledAgentRoles,
-                                        onCheckedChange = { checked ->
-                                            val updated = if (checked) enabledAgentRoles + id else enabledAgentRoles - id
-                                            enabledAgentRoles = updated
-                                            agentTeamPrefs.edit().putStringSet("enabled_roles", updated).apply()
-                                        }
-                                    )
-                                }
-                            }
-                            Text("Активно: ${enabledAgentRoles.size} из 4", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Навыки SheV", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Навыки добавляют рабочие инструкции агенту, не загружают отдельные модели и не требуют API.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            listOf(
-                                "research" to ("Исследование" to "Факты, источники и проверка сведений"),
-                                "coding" to ("Разработка" to "Android, Kotlin, архитектура и тесты"),
-                                "planning" to ("Планирование" to "Этапы, зависимости и критерии готовности"),
-                                "quality" to ("Контроль качества" to "Безопасность, ошибки и регрессии")
-                            ).forEach { (id, info) ->
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(info.first, fontWeight = FontWeight.Medium)
-                                        Text(info.second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                } else if (!state.bonsaiReady) {
+                                    Button(onClick = viewModel::launchBonsai, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("Запустить и проверить") }
+                                } else {
+                                    Button(onClick = viewModel::selectBonsaiModel, modifier = Modifier.fillMaxWidth()) {
+                                        Text(if (state.useBonsai) "Bonsai выбрана для чата" else "Выбрать Bonsai для чата")
                                     }
-                                    Checkbox(
-                                        checked = id in enabledAgentSkills,
-                                        onCheckedChange = { checked ->
-                                            val updated = if (checked) enabledAgentSkills + id else enabledAgentSkills - id
-                                            enabledAgentSkills = updated
-                                            agentTeamPrefs.edit().putStringSet("enabled_skills", updated).apply()
-                                        }
-                                    )
                                 }
+                                Text(state.deviceSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            Text("Включено: ${enabledAgentSkills.size} из 4", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                     }
-
-                    VoiceEnginesPanel()
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Бесплатные AI-модели · OpenRouter", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Единый доступ к бесплатным моделям разных разработчиков. По умолчанию используется автоматический бесплатный маршрутизатор.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            OutlinedButton(onClick = { showOpenRouterSettings = !showOpenRouterSettings }, modifier = Modifier.fillMaxWidth()) {
-                                Text(if (showOpenRouterSettings) "Скрыть настройки OpenRouter" else "Настроить бесплатный OpenRouter")
-                            }
-                            if (showOpenRouterSettings) OpenRouterProviderPanel(viewModel)
-                        }
-                    }
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("ChatGPT · обычный чат (OAuth)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Альтернативный официальный вход для основного чата; Codex остаётся отдельным агентом. API-ключ не нужен. Если OpenAI запросит подтверждение телефона, его нужно пройти в браузере.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            OutlinedButton(onClick = { showOpenAISettings = !showOpenAISettings }, modifier = Modifier.fillMaxWidth()) {
-                                Text(if (showOpenAISettings) "Скрыть настройки OpenAI" else "Настроить ChatGPT / OpenAI")
-                            }
-                            if (showOpenAISettings) OpenAIProviderPanel(viewModel)
-                        }
-                    }
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Подключение DeepSeek", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text(if (state.useDeepSeek) "DeepSeek выбран для основного чата" else "Подключи API-ключ DeepSeek, проверь соединение и выбери модель.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            OutlinedButton(onClick = { showDeepSeekSettings = !showDeepSeekSettings }, modifier = Modifier.fillMaxWidth()) {
-                                Text(if (showDeepSeekSettings) "Скрыть настройки DeepSeek" else "Настроить DeepSeek")
-                            }
-                            if (showDeepSeekSettings) DeepSeekProviderPanel(viewModel)
-                        }
-                    }
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Подключение AI-шлюза", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Необязательно. Настраивается отдельно и не требуется для локальной модели.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            OutlinedButton(onClick = { showGatewaySettings = !showGatewaySettings }, modifier = Modifier.fillMaxWidth()) {
-                                Text(if (showGatewaySettings) "Скрыть настройки OmniRoute" else "Настроить OmniRoute")
-                            }
-                            if (showGatewaySettings) OmniRoutePanel(viewModel)
-                        }
-                    }
-                }
                     Button(
                         onClick = { showSettings = false },
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp)
@@ -602,34 +410,15 @@ fun LocalModelPanel(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "MegaAgent",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1
-                )
-                Text(
-                    when {
-                        voiceConversation && listening -> "Слушаю тебя"
-                        voiceConversation && state.busy -> "Готовлю ответ"
-                        voiceConversation -> "Голосовой диалог включён"
-                        state.useCodex -> "Codex · агент"
-                        state.useOpenAI -> "ChatGPT · OAuth / OpenAI"
-                        state.useDeepSeek -> "DeepSeek · API"
-                        state.useOpenRouter -> "Бесплатные модели · OpenRouter"
-                        state.useOmniRoute -> "Удалённый AI · OmniRoute"
-                        state.ready -> "Личный помощник"
-                        else -> "Твой AI-помощник"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2
-                )
-            }
+            Text(
+                "MegaAgent",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
             Box {
                 IconButton(onClick = { showAppMenu = true }) {
                     Text("☰", style = MaterialTheme.typography.titleLarge)
@@ -639,11 +428,15 @@ fun LocalModelPanel(
                     DropdownMenuItem(text = { Text("Поручения") }, onClick = { showAppMenu = false; onOpenTasks() })
                     DropdownMenuItem(text = { Text("Инструменты и навыки") }, onClick = { showAppMenu = false; onOpenTools() })
                     DropdownMenuItem(text = { Text("Папка проекта") }, onClick = { showAppMenu = false; workspacePicker.launch(workspaceUri?.let { android.net.Uri.parse(it) }) })
+                    DropdownMenuItem(text = { Text("Проверить права телефона") }, onClick = {
+                        showAppMenu = false
+                        viewModel.setPrompt("Проверь права доступа к моему телефону и покажи, какие разрешения включены.")
+                    })
                     DropdownMenuItem(text = { Text("Специальные возможности") }, onClick = {
                         showAppMenu = false
                         runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                     })
-                    DropdownMenuItem(text = { Text("Настройки") }, onClick = { showAppMenu = false; showSettings = true })
+                    DropdownMenuItem(text = { Text("Настройки модели") }, onClick = { showAppMenu = false; showSettings = true })
                 }
             }
         }
@@ -701,6 +494,10 @@ fun LocalModelPanel(
                         horizontalArrangement = if (fromUser) Arrangement.End else Arrangement.Start
                     ) {
                         Surface(
+                            modifier = Modifier.clickable {
+                                clipboard.setText(AnnotatedString(message))
+                                android.widget.Toast.makeText(context, "Текст скопирован", android.widget.Toast.LENGTH_SHORT).show()
+                            },
                             shape = RoundedCornerShape(20.dp),
                             color = if (fromUser) Color(0xFF3158C8) else MaterialTheme.colorScheme.surface,
                             contentColor = if (fromUser) Color.White else MaterialTheme.colorScheme.onSurface
