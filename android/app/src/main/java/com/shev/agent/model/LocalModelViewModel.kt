@@ -645,7 +645,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 )
                 val prompt = "Ты — локальный ИИ-помощник MegaAgent. Отвечай по-русски, точно и по делу. Не выдумывай выполненные действия или доступ к инструментам. Запрос пользователя: $message"
-                val answer = backend.generate(prompt, 512).trim()
+                val answer = BonsaiAgentTeam(backend).answer(message)
                 check(answer.isNotBlank()) { "Bonsai вернула пустой ответ." }
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
