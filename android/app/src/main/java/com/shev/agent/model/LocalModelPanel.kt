@@ -476,7 +476,8 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                             Text("Ternary Bonsai 2 9B · отдельный движок", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text(
                                 when {
-                                    state.bonsaiModelInstalled && state.bonsaiRuntimeInstalled -> "GGUF и ARM64 runtime установлены. JNI/backend для запуска ещё не подключён."
+                                    state.bonsaiReady -> "Bonsai загружена в память и прошла тест генерации."
+                                    state.bonsaiModelInstalled && state.bonsaiRuntimeInstalled -> "GGUF и ARM64 runtime установлены."
                                     state.bonsaiRuntimeInstalled -> "Движок установлен; модель ещё не загружена."
                                     else -> "Локальная модель 9B · GGUF около 2,56 ГБ и отдельный ARM64 runtime."
                                 },
@@ -487,12 +488,18 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                                 LinearProgressIndicator(progress = { state.bonsaiProgress ?: 0f }, modifier = Modifier.fillMaxWidth())
                                 Text(state.bonsaiStage ?: "Установка Bonsai")
                                 TextButton(onClick = viewModel::cancelBonsaiInstall) { Text("Отменить установку Bonsai") }
+                            } else if (!state.bonsaiModelInstalled || !state.bonsaiRuntimeInstalled) {
+                                Button(onClick = viewModel::installBonsai, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
+                                    Text(if (state.bonsaiModelInstalled || state.bonsaiRuntimeInstalled) "Доустановить компонент Bonsai" else "Скачать и установить Bonsai 9B")
+                                }
+                            } else if (!state.bonsaiReady) {
+                                Button(onClick = viewModel::launchBonsai, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("Загрузить и проверить Bonsai") }
                             } else {
-                                Button(onClick = viewModel::installBonsai, enabled = !(state.bonsaiModelInstalled && state.bonsaiRuntimeInstalled), modifier = Modifier.fillMaxWidth()) {
-                                    Text(if (state.bonsaiModelInstalled && state.bonsaiRuntimeInstalled) "Компоненты Bonsai установлены" else if (state.bonsaiModelInstalled || state.bonsaiRuntimeInstalled) "Доустановить компонент Bonsai" else "Скачать и установить Bonsai 9B")
+                                Button(onClick = viewModel::selectBonsaiModel, modifier = Modifier.fillMaxWidth()) {
+                                    Text(if (state.useBonsai) "Bonsai выбрана для чата" else "Выбрать Bonsai для чата")
                                 }
                             }
-                            Text("Файл Q2_0 закреплён по ревизии и проверяется SHA-256. Gemma остаётся отдельной моделью.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(if (state.useBonsai) "Основной чат работает через Bonsai. Все вызовы одной модели сериализованы." else "Файл Q2_0 закреплён по ревизии и проверяется SHA-256. Gemma остаётся отдельной моделью.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(state.deviceSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
