@@ -233,6 +233,25 @@ class SheVAgentAdkTools(
         }
     }
 
+    @Tool(
+        name = "inspect_visible_device_screen",
+        description = "Read-only inspection of visible UI text from the currently active Android screen. Requires the user to enable MegaAgent Accessibility in Android Settings. Never claims to see hidden/private app data."
+    )
+    fun inspectVisibleDeviceScreen(): Map<String, String> {
+        if (!com.shev.agent.device.MegaAgentAccessibilityService.isEnabled()) {
+            return mapOf(
+                "status" to "permission_required",
+                "message" to "Включи службу MegaAgent в Настройки Android → Специальные возможности."
+            )
+        }
+        val visible = com.shev.agent.device.MegaAgentAccessibilityService.snapshot(120)
+        return mapOf(
+            "status" to "ok",
+            "visible_text" to visible.joinToString("\\n").take(12_000),
+            "items" to visible.size.toString()
+        )
+    }
+
     companion object {
         const val TOOL_ID = "agent.inspect_tools"
         const val CURRENT_TIME_TOOL_ID = "agent.current_local_time"
