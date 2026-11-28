@@ -201,7 +201,7 @@ class BonsaiInstallManager(context: Context) {
         const val MAX_MODEL_BYTES = 2_800_000_000L
         const val RUNTIME_TAG = "bonsai-android-arm64-latest"
         const val RUNTIME_ZIP = "bonsai-llama-android-arm64.zip"
-        const val RUNTIME_SHA256 = "61b6d9c15755a6c89a5eb59b2411e3df0add06a82c62207f09dce9c16367bcad"
+        const val RUNTIME_SHA256 = "7319130a139a079e957c2640e244c8ed53bf64d970efd33ddc4133fc75e5f720"
         const val MAX_RUNTIME_ZIP_BYTES = 500_000_000L
         const val RUNTIME_REQUIRED_SPACE_BYTES = 1_000_000_000L
         const val STORAGE_RESERVE_BYTES = 512_000_000L
