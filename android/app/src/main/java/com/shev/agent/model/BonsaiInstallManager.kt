@@ -66,9 +66,17 @@ class BonsaiInstallManager(context: Context) {
         if (isRuntimeInstalled()) return@withContext runtimeDir
         requireFreeSpace(RUNTIME_REQUIRED_SPACE_BYTES)
         val base = "https://github.com/shevgti/SheV-Agent-Public/releases/download/$RUNTIME_TAG"
-        download("$base/$RUNTIME_ZIP", runtimeZip, MAX_RUNTIME_ZIP_BYTES, "Движок", onProgress)
-        download("$base/$RUNTIME_SHA_FILE", runtimeSha, 4096L, "Проверка движка", onProgress)
-        val expected = runtimeSha.readText().trim().substringBefore(' ').lowercase()
+        var expected = runtimeSha.takeIf { it.isFile }?.readText()
+            ?.trim()?.substringBefore(' ')?.lowercase().orEmpty()
+        if (!expected.matches(Regex("[0-9a-f]{64}"))) {
+            runtimeSha.delete()
+            download("$base/$RUNTIME_SHA_FILE", runtimeSha, 4096L, "Проверка движка", onProgress)
+            expected = runtimeSha.readText().trim().substringBefore(' ').lowercase()
+        }
+        val cachedArchiveVerified = runtimeZip.isFile && sha256(runtimeZip) == expected
+        if (!cachedArchiveVerified) {
+            download("$base/$RUNTIME_ZIP", runtimeZip, MAX_RUNTIME_ZIP_BYTES, "Движок", onProgress)
+        }
         if (!expected.matches(Regex("[0-9a-f]{64}")) || sha256(runtimeZip) != expected) {
             runtimeZip.delete()
             runtimeSha.delete()
