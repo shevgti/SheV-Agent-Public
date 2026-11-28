@@ -210,49 +210,16 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class SheVAgentTab(val label: String, val glyph: String) {
-    CREATOR("Создатель", "✧"),
-    CHAT("Чат", "◉"),
-    TASKS("Поручения", "✓"),
-    TOOLS("Настройки", "⚙")
-}
-
+/**
+ * MegaAgent opens directly into the conversation. Secondary workspaces remain
+ * reachable from the chat's own controls instead of a permanent legacy tab bar.
+ */
 @Composable
 private fun SheVAgentApp(
     database: SheVAgentDatabase,
     chatViewModel: LocalModelViewModel
 ) {
-    var tab by rememberSaveable { mutableStateOf(SheVAgentTab.CREATOR) }
-    Scaffold(
-        bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                SheVAgentTab.values().forEach { item ->
-                    NavigationBarItem(
-                        selected = tab == item,
-                        onClick = { tab = item },
-                        icon = { Text(item.glyph, style = MaterialTheme.typography.titleLarge) },
-                        label = { Text(item.label, maxLines = 1) }
-                    )
-                }
-            }
-        }
-    ) { inset ->
-        when (tab) {
-            SheVAgentTab.CREATOR -> Box(Modifier.fillMaxSize().padding(inset)) {
-                AgentCreatorScreen(database.agentDao(), chatViewModel)
-            }
-            SheVAgentTab.CHAT -> Box(Modifier.fillMaxSize().padding(inset)) {
-                LocalModelPanel(chatViewModel)
-            }
-            SheVAgentTab.TASKS -> Box(Modifier.fillMaxSize().padding(inset)) {
-                AgentTasksScreen(chatViewModel)
-            }
-            SheVAgentTab.TOOLS -> SettingsScreen(
-                modifier = Modifier.fillMaxSize().padding(inset),
-                skillLibrary = AgentSkillLibrary(database.agentDao())
-            )
-        }
-    }
+    LocalModelPanel(chatViewModel)
 }
 
 
