@@ -244,12 +244,6 @@ fun LocalModelPanel(
         uri?.let(viewModel::importModel)
     }
 
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        updateMessage = if (granted) "Уведомления об обновлениях включены" else "Разрешение на уведомления не выдано"
-    }
-
     DisposableEffect(recognizer, speech) {
         speech.setSpeechRate(1.0f)
         speech.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
