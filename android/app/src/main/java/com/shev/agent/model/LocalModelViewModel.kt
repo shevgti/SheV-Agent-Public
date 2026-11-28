@@ -670,7 +670,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         createdAtEpochMillis = System.currentTimeMillis()
                     )
                 )
-                val answer = BonsaiAgentTeam(backend).answer(conversationContext)
+                val answer = BonsaiAgentTeam(backend).answer(conversationContext, message)
                 check(answer.isNotBlank()) { "Bonsai вернула пустой ответ." }
                 dao.appendConversationMessage(
                     ConversationMessageEntity(

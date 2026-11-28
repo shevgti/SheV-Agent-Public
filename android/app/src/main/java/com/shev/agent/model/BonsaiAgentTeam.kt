@@ -16,8 +16,8 @@ internal class BonsaiAgentTeam(private val backend: BonsaiNativeBackend) {
         Role("Контролёр качества", "Найди ошибки, риски, противоречия и непроверенные утверждения; предложи проверки.")
     )
 
-    fun answer(request: String): String {
-        if (!requiresTeam(request)) return backend.generate(systemPrompt(request), 512).trim()
+    fun answer(request: String, currentMessage: String = request): String {
+        if (!requiresTeam(currentMessage)) return backend.generate(systemPrompt(request), 512).trim()
         val notes = roles.map { role ->
             val prompt = buildString {
                 append("Ты — специалист MegaAgent: ").append(role.name).append(". ")
