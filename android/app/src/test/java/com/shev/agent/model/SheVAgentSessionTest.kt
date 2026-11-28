@@ -5,27 +5,39 @@ import com.google.adk.kt.sessions.SessionKey
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 class SheVAgentSessionTest {
     @Test
-    fun initializesSessionBeforeFirstAgentTurn() = runBlocking {
+    fun eachConversationTurnReceivesAnIndependentSessionId() {
+        val firstTurn = SheVAgentSession.newConversationTurnSessionId()
+        val secondTurn = SheVAgentSession.newConversationTurnSessionId()
+
+        assertNotEquals(firstTurn, secondTurn)
+        assert(firstTurn.startsWith("turn-"))
+        assert(secondTurn.startsWith("turn-"))
+    }
+
+    @Test
+    fun conversationTurnSessionCanBeCreatedAndDeleted() = runBlocking {
         val sessionService = InMemorySessionService()
-
-        SheVAgentSession.initialize(sessionService)
-
-        val session = sessionService.getSession(
-            SessionKey(
-                SheVAgentSession.APP_NAME,
-                SheVAgentSession.USER_ID,
-                SheVAgentSession.SESSION_ID
-            )
+        val sessionKey = SessionKey(
+            SheVAgentSession.APP_NAME,
+            SheVAgentSession.USER_ID,
+            SheVAgentSession.newConversationTurnSessionId()
         )
 
-        assertNotNull(session)
-        assertEquals(SheVAgentSession.SESSION_ID, session?.key?.id)
+        sessionService.createSession(sessionKey)
+        val created = sessionService.getSession(sessionKey)
+        assertNotNull(created)
+        assertEquals(sessionKey.id, created?.key?.id)
+
+        sessionService.deleteSession(sessionKey)
+        assertNull(sessionService.getSession(sessionKey))
     }
+
     @Test
     fun creatorAttemptsAlwaysReceiveIndependentEmptySessions() {
         val firstAttempt = SheVAgentSession.newCreatorSessionId()

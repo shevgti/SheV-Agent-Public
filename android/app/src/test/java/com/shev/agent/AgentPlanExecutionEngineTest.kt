@@ -6,6 +6,9 @@ import com.shev.agent.tools.AgentToolExecutionContext
 import com.shev.agent.tools.AgentToolExecutor
 import com.shev.agent.tools.AgentToolRegistry
 import com.shev.agent.tools.AgentToolResult
+import com.shev.agent.tools.AgentToolEvidenceSource
+import com.shev.agent.tools.AgentToolPostconditionEvidence
+import com.shev.agent.tools.SuspendingAgentToolPostconditionVerifier
 import com.shev.agent.tools.ToolInputField
 import com.shev.agent.tools.ToolInputSchema
 import com.shev.agent.tools.ToolInputType
@@ -307,6 +310,61 @@ class AgentPlanExecutionEngineTest {
         assertEquals("search-1", result.failedStepId)
     }
 
+    @Test fun repeatedIdenticalToolCallIsBlockedWithinOneApprovedPlan() = runBlocking {
+        var calls = 0
+        val registry = registry()
+        val executor = AgentToolExecutor(
+            registry,
+            mapOf("research.lookup" to AgentTool {
+                calls++
+                AgentToolResult(true, "Источник найден")
+            })
+        )
+        val duplicatePlan = plan().copy(
+            steps = listOf(
+                plan().steps.single(),
+                plan().steps.single().copy(id = "search-duplicate", title = "Повторить тот же поиск")
+            )
+        )
+        val result = AgentPlanExecutionEngine(AgentPlanValidator(registry), executor).executeApprovedPlan(
+            duplicatePlan,
+            agentAllowedToolIds = setOf("research.lookup"),
+            context = AgentToolExecutionContext(setOf(AgentCapability.ANALYZE_DATA))
+        )
+        assertEquals(1, calls)
+        assertEquals(AgentPlanExecutionStatus.DUPLICATE_TOOL_CALL, result.status)
+        assertEquals("search-duplicate", result.failedStepId)
+        assertEquals(2, result.steps.size)
+        assertTrue(result.steps.first().success)
+        assertFalse(result.steps.last().success)
+        assertEquals("DUPLICATE_TOOL_CALL", result.steps.last().errorCode)
+    }
+
+    @Test fun sameToolWithDifferentInputIsNotTreatedAsDuplicate() = runBlocking {
+        var calls = 0
+        val registry = registry()
+        val executor = AgentToolExecutor(
+            registry,
+            mapOf("research.lookup" to AgentTool {
+                calls++
+                AgentToolResult(true, "ok")
+            })
+        )
+        val twoQueries = plan().copy(
+            steps = listOf(
+                plan().steps.single(),
+                plan().steps.single().copy(id = "search-2", input = "{\"query\":\"другая тема\"}")
+            )
+        )
+        val result = AgentPlanExecutionEngine(AgentPlanValidator(registry), executor).executeApprovedPlan(
+            twoQueries,
+            agentAllowedToolIds = setOf("research.lookup"),
+            context = AgentToolExecutionContext(setOf(AgentCapability.ANALYZE_DATA))
+        )
+        assertEquals(2, calls)
+        assertEquals(AgentPlanExecutionStatus.EXECUTED_NEEDS_VERIFICATION, result.status)
+    }
+
     @Test fun outputIsBounded() = runBlocking {
         val registry = registry()
         val executor = AgentToolExecutor(
@@ -328,4 +386,73 @@ class AgentPlanExecutionEngineTest {
         assertEquals(AgentPlanExecutionStatus.EXECUTED_NEEDS_VERIFICATION, result.status)
         assertEquals(256 + "\n[результат сокращён]".length, result.steps.single().output.length)
     }
+
+    @Test fun planExecutionCarriesOnlyHostVerifierEvidenceIntoPostconditions() = runBlocking {
+        val registry = registry()
+        val executor = AgentToolExecutor(
+            registry = registry,
+            handlers = mapOf("research.lookup" to AgentTool { AgentToolResult(true, "found") }),
+            postconditionVerifiers = mapOf(
+                "research.lookup" to SuspendingAgentToolPostconditionVerifier { _, _ ->
+                    AgentToolPostconditionEvidence(
+                        verified = true,
+                        reference = "host-readback:search-1",
+                        source = AgentToolEvidenceSource.HOST_READ_BACK
+                    )
+                }
+            )
+        )
+        val result = AgentPlanExecutionEngine(AgentPlanValidator(registry), executor).executeApprovedPlan(
+            plan(),
+            agentAllowedToolIds = setOf("research.lookup"),
+            context = AgentToolExecutionContext(setOf(AgentCapability.ANALYZE_DATA))
+        )
+        assertEquals(AgentPlanExecutionStatus.EXECUTED_NEEDS_VERIFICATION, result.status)
+        assertEquals(1, result.postconditionObservations.size)
+        assertEquals("search-1", result.postconditionObservations.single().stepId)
+        assertEquals("host-readback:search-1", result.postconditionObservations.single().evidenceReference)
+        assertEquals(AgentPostconditionEvidenceSource.HOST_READ_BACK, result.postconditionObservations.single().source)
+        assertTrue(AgentPlanPostconditionVerifier.verify(result, result.postconditionObservations).verified)
+    }
+
+    @Test fun planWithoutHostVerifierHasNoPostconditionEvidence() = runBlocking {
+        val registry = registry()
+        val executor = AgentToolExecutor(
+            registry,
+            mapOf("research.lookup" to AgentTool { AgentToolResult(true, "the model says it worked") })
+        )
+        val result = AgentPlanExecutionEngine(AgentPlanValidator(registry), executor).executeApprovedPlan(
+            plan(),
+            agentAllowedToolIds = setOf("research.lookup"),
+            context = AgentToolExecutionContext(setOf(AgentCapability.ANALYZE_DATA))
+        )
+        assertTrue(result.postconditionObservations.isEmpty())
+        assertFalse(AgentPlanPostconditionVerifier.verify(result, result.postconditionObservations).verified)
+    }
+
+    @Test fun durableStepStartFailurePreventsToolSideEffect() = runBlocking {
+        var calls = 0
+        val registry = registry()
+        val executor = AgentToolExecutor(
+            registry,
+            mapOf("research.lookup" to AgentTool {
+                calls++
+                AgentToolResult(true, "should never run")
+            })
+        )
+        val engine = AgentPlanExecutionEngine(AgentPlanValidator(registry), executor)
+
+        val failure = runCatching {
+            engine.executeApprovedPlan(
+                plan(),
+                agentAllowedToolIds = setOf("research.lookup"),
+                context = AgentToolExecutionContext(setOf(AgentCapability.ANALYZE_DATA)),
+                onStepStarted = { error("durable start write failed") }
+            )
+        }
+
+        assertTrue(failure.isFailure)
+        assertEquals(0, calls)
+    }
+
 }

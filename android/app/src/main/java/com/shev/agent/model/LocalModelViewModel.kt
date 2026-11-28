@@ -104,12 +104,21 @@ data class LocalModelUiState(
     val deviceSummary: String = "Проверяю характеристики устройства…",
     val prompt: String = "",
     val messages: List<String> = emptyList(),
-    val taskExecutionMessage: String? = null
+    val taskExecutionMessage: String? = null,
+    val bonsaiModelInstalled: Boolean = false,
+    val bonsaiRuntimeInstalled: Boolean = false,
+    val bonsaiReady: Boolean = false,
+    val useBonsai: Boolean = false,
+    val bonsaiProgress: Float? = null,
+    val bonsaiStage: String? = null
 )
 
 /** Owns the native runtime for the Activity lifetime, not a recyclable Compose list item. */
 class LocalModelViewModel(application: Application) : AndroidViewModel(application) {
     private val store = ModelStore(application.applicationContext)
+    private val bonsaiInstaller = BonsaiInstallManager(application.applicationContext)
+    private var bonsaiInstallJob: Job? = null
+    private var bonsaiBackend: BonsaiNativeBackend? = null
     private val database = SheVAgentDatabaseProvider.get(application.applicationContext)
     private val dao = database.agentDao()
     private val skillLibrary = AgentSkillLibrary(dao)
@@ -144,17 +153,19 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val openRouterPreferences = application.getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
         val deepSeekPreferences = application.getSharedPreferences("shev_deepseek", Application.MODE_PRIVATE)
         val codexPreferences = application.getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
-        val useCodex = codexPreferences.getBoolean("use_for_primary_chat", false)
-        val useOpenRouter = !useCodex && openRouterPreferences.getBoolean("use_for_primary_chat", false)
-        val useGemini = !useCodex && !useOpenRouter && geminiPreferences.getBoolean("use_for_primary_chat", false)
-        val useOpenAI = !useCodex && !useOpenRouter && !useGemini && openAiPreferences.getBoolean("use_for_primary_chat", false)
-        val useDeepSeek = !useCodex && !useOpenRouter && !useGemini && !useOpenAI &&
+        val useBonsai = application.getSharedPreferences("shev_bonsai", Application.MODE_PRIVATE).getBoolean("use_for_primary_chat", false)
+        val useCodex = !useBonsai && codexPreferences.getBoolean("use_for_primary_chat", false)
+        val useOpenRouter = !useBonsai && !useCodex && openRouterPreferences.getBoolean("use_for_primary_chat", false)
+        val useGemini = !useBonsai && !useCodex && !useOpenRouter && geminiPreferences.getBoolean("use_for_primary_chat", false)
+        val useOpenAI = !useBonsai && !useCodex && !useOpenRouter && !useGemini && openAiPreferences.getBoolean("use_for_primary_chat", false)
+        val useDeepSeek = !useBonsai && !useCodex && !useOpenRouter && !useGemini && !useOpenAI &&
             deepSeekPreferences.getBoolean("use_for_primary_chat", false)
-        val useOmniRoute = !useCodex && !useOpenRouter && !useGemini && !useOpenAI && !useDeepSeek &&
+        val useOmniRoute = !useBonsai && !useCodex && !useOpenRouter && !useGemini && !useOpenAI && !useDeepSeek &&
             gatewayPreferences.getBoolean("use_for_primary_chat", false)
         mutableState.update {
             it.copy(
                 useCodex = useCodex,
+                useBonsai = useBonsai,
                 useOmniRoute = useOmniRoute,
                 useOpenAI = useOpenAI,
                 useDeepSeek = useDeepSeek,
@@ -163,8 +174,13 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             )
         }
         viewModelScope.launch(Dispatchers.IO) {
+            // Install the curated starter playbooks once. Existing user-created or disabled
+            // skills are preserved; only verified built-ins are injected into future prompts.
+            runCatching { skillLibrary.seedBuiltInSkills() }
             val deviceSummary = DeviceDiagnostics.summary(getApplication())
             val available = store.findVerifiedModel() != null
+            val bonsaiModelAvailable = bonsaiInstaller.isModelInstalled()
+            val bonsaiRuntimeAvailable = bonsaiInstaller.isRuntimeInstalled()
             try {
                 dao.markInterruptedConversationMessagesFailed()
                 recoverInterruptedAgentTasks()
@@ -174,6 +190,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 mutableState.update {
                     it.copy(
                         verified = available,
+                        bonsaiModelInstalled = bonsaiModelAvailable,
+                        bonsaiRuntimeInstalled = bonsaiRuntimeAvailable,
                         deviceSummary = deviceSummary,
                         messages = history.map(::formatMessage)
                     )
@@ -340,7 +358,15 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+        private fun disableBonsaiPrimaryIfEnabled(enabled: Boolean) {
+        if (!enabled) return
+        getApplication<Application>().getSharedPreferences("shev_bonsai", Application.MODE_PRIVATE)
+            .edit().putBoolean("use_for_primary_chat", false).apply()
+        mutableState.update { it.copy(useBonsai = false) }
+    }
+
     fun setCodexPrimaryEnabled(enabled: Boolean) {
+        disableBonsaiPrimaryIfEnabled(enabled)
         val preferences = getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
         preferences.edit().putBoolean("use_for_primary_chat", enabled).apply()
         if (enabled) {
@@ -362,6 +388,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun setOmniRoutePrimaryEnabled(enabled: Boolean) {
+        disableBonsaiPrimaryIfEnabled(enabled)
         getApplication<Application>()
             .getSharedPreferences("shev_omniroute", Application.MODE_PRIVATE)
             .edit()
@@ -392,6 +419,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun setOpenAIPrimaryEnabled(enabled: Boolean) {
+        disableBonsaiPrimaryIfEnabled(enabled)
         getApplication<Application>()
             .getSharedPreferences("shev_openai", Application.MODE_PRIVATE)
             .edit()
@@ -422,6 +450,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun setOpenRouterPrimaryEnabled(enabled: Boolean) {
+        disableBonsaiPrimaryIfEnabled(enabled)
         getApplication<Application>().getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
             .edit().putBoolean("use_for_primary_chat", enabled).apply()
         if (enabled) {
@@ -443,6 +472,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun setGeminiPrimaryEnabled(enabled: Boolean) {
+        disableBonsaiPrimaryIfEnabled(enabled)
         getApplication<Application>().getSharedPreferences("shev_gemini", Application.MODE_PRIVATE)
             .edit().putBoolean("use_for_primary_chat", enabled).apply()
         if (enabled) {
@@ -470,6 +500,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun setDeepSeekPrimaryEnabled(enabled: Boolean) {
+        disableBonsaiPrimaryIfEnabled(enabled)
         getApplication<Application>().getSharedPreferences("shev_deepseek", Application.MODE_PRIVATE)
             .edit().putBoolean("use_for_primary_chat", enabled).apply()
         if (enabled) {
@@ -533,8 +564,143 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         downloadJob?.cancel()
     }
 
+    /** Downloads the pinned GGUF and ARM64 runtime. Does not switch the active backend. */
+    fun installBonsai() {
+        if (bonsaiInstallJob?.isActive == true || mutableState.value.busy) return
+        mutableState.update { it.copy(error = null, bonsaiProgress = 0f, bonsaiStage = "Подготовка") }
+        bonsaiInstallJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                bonsaiInstaller.installRuntime { update ->
+                    mutableState.update { it.copy(bonsaiStage = update.stage, bonsaiProgress = update.fraction) }
+                }
+                mutableState.update { it.copy(bonsaiRuntimeInstalled = true, bonsaiStage = "Движок установлен", bonsaiProgress = null) }
+                bonsaiInstaller.installModel { update ->
+                    mutableState.update { it.copy(bonsaiStage = update.stage, bonsaiProgress = update.fraction) }
+                }
+                val activityManager = getApplication<Application>().getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                val memoryInfo = android.app.ActivityManager.MemoryInfo()
+                activityManager.getMemoryInfo(memoryInfo)
+                check(!memoryInfo.lowMemory && memoryInfo.availMem >= 5L * 1024L * 1024L * 1024L) {
+                    "Для безопасной загрузки Bonsai желательно не менее 5 ГБ свободной оперативной памяти."
+                }
+                val backend = BonsaiNativeBackend.load(
+                    bonsaiInstaller.installedRuntimeLibDirectory(),
+                    bonsaiInstaller.installedModelFile(),
+                    contextSize = 2048
+                )
+                val smoke = backend.generate("Ответь одним словом: готов", 16)
+                check(smoke.isNotBlank()) { "Bonsai загрузилась, но не прошла короткий тест генерации." }
+                bonsaiBackend?.close()
+                bonsaiBackend = backend
+                mutableState.update { it.copy(bonsaiModelInstalled = true, bonsaiRuntimeInstalled = true, bonsaiReady = true, bonsaiStage = "Bonsai загружена и прошла короткий тест", bonsaiProgress = null) }
+            } catch (cancelled: CancellationException) {
+                mutableState.update { it.copy(bonsaiProgress = null, bonsaiStage = "Загрузка отменена") }
+                throw cancelled
+            } catch (failure: Exception) {
+                mutableState.update { it.copy(bonsaiProgress = null, bonsaiStage = null, error = failure.message ?: "Не удалось установить Bonsai.") }
+            }
+        }
+    }
+
+    fun cancelBonsaiInstall() {
+        bonsaiInstallJob?.cancel()
+    }
+
+    fun launchBonsai() {
+        if (bonsaiBackend != null || mutableState.value.busy) return
+        viewModelScope.launch(Dispatchers.IO) {
+            mutableState.update { it.copy(busy = true, error = null, bonsaiStage = "Загружаю Bonsai в память…") }
+            try {
+                check(bonsaiInstaller.isModelInstalled() && bonsaiInstaller.isRuntimeInstalled()) {
+                    "Сначала установи GGUF и ARM64 runtime Bonsai."
+                }
+                val activityManager = getApplication<Application>().getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                val memoryInfo = android.app.ActivityManager.MemoryInfo()
+                activityManager.getMemoryInfo(memoryInfo)
+                check(!memoryInfo.lowMemory && memoryInfo.availMem >= 5L * 1024L * 1024L * 1024L) {
+                    "Для безопасной загрузки Bonsai желательно не менее 5 ГБ свободной оперативной памяти. Сейчас свободной памяти меньше."
+                }
+                val backend = BonsaiNativeBackend.load(
+                    bonsaiInstaller.installedRuntimeLibDirectory(),
+                    bonsaiInstaller.installedModelFile(),
+                    contextSize = 2048
+                )
+                val smoke = backend.generate("Ответь одним словом: готов", 16)
+                check(smoke.isNotBlank()) { "Bonsai не прошла короткий тест генерации." }
+                bonsaiBackend?.close()
+                bonsaiBackend = backend
+                mutableState.update { it.copy(bonsaiReady = true, bonsaiStage = "Bonsai запущена и проверена", busy = false) }
+            } catch (failure: Exception) {
+                mutableState.update { it.copy(bonsaiReady = false, bonsaiStage = null, error = failure.message ?: "Не удалось запустить Bonsai.", busy = false) }
+            }
+        }
+    }
+
+    fun selectBonsaiModel() {
+        if (bonsaiBackend == null) {
+            mutableState.update { it.copy(error = "Сначала запусти и проверь Bonsai.") }
+            return
+        }
+        listOf("shev_gemini", "shev_openai", "shev_openrouter", "shev_omniroute", "shev_codex", "shev_deepseek").forEach { name ->
+            getApplication<Application>().getSharedPreferences(name, Application.MODE_PRIVATE)
+                .edit().putBoolean("use_for_primary_chat", false).apply()
+        }
+        getApplication<Application>().getSharedPreferences("shev_bonsai", Application.MODE_PRIVATE)
+            .edit().putBoolean("use_for_primary_chat", true).apply()
+        mutableState.update { it.copy(useBonsai = true, useCodex = false, useGemini = false, useOpenAI = false, useDeepSeek = false, useOpenRouter = false, useOmniRoute = false) }
+    }
+
+    private fun sendBonsaiReply(message: String) {
+        val backend = bonsaiBackend
+        if (backend == null) {
+            mutableState.update { it.copy(error = "Bonsai не загружена в память. Нажми «Запустить Bonsai» в настройках.") }
+            return
+        }
+        mutableState.update { it.copy(prompt = "", busy = true, error = null, messages = it.messages + "Вы: $message") }
+        val conversationContext = mutableState.value.messages.takeLast(12).joinToString("\n")
+        responseJob = viewModelScope.launch(Dispatchers.IO) {
+            val userId = UUID.randomUUID().toString()
+            try {
+                dao.appendConversationMessage(
+                    ConversationMessageEntity(
+                        id = userId,
+                        role = ConversationContextBuilder.ROLE_USER,
+                        content = LocalMessageCipher.encrypt(message),
+                        status = ConversationContextBuilder.STATUS_PENDING,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+                val answer = BonsaiAgentTeam(backend).answer(conversationContext, message)
+                check(answer.isNotBlank()) { "Bonsai вернула пустой ответ." }
+                dao.appendConversationMessage(
+                    ConversationMessageEntity(
+                        id = UUID.randomUUID().toString(),
+                        role = ConversationContextBuilder.ROLE_ASSISTANT,
+                        content = LocalMessageCipher.encrypt(answer),
+                        status = ConversationContextBuilder.STATUS_COMPLETE,
+                        createdAtEpochMillis = System.currentTimeMillis()
+                    )
+                )
+                dao.updateConversationMessageStatus(userId, ConversationContextBuilder.STATUS_COMPLETE)
+                mutableState.update { it.copy(messages = it.messages + "SheV: $answer") }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                runCatching { dao.updateConversationMessageStatus(userId, ConversationContextBuilder.STATUS_FAILED) }
+                mutableState.update { it.copy(error = failure.message ?: "Ошибка генерации Bonsai.") }
+            } finally {
+                mutableState.update { it.copy(busy = false) }
+            }
+        }
+    }
+
+
+
     /** Select the on-device Gemma backend and disable mutually exclusive cloud providers. */
     fun selectLocalModel() {
+        getApplication<Application>().getSharedPreferences("shev_bonsai", Application.MODE_PRIVATE)
+            .edit().putBoolean("use_for_primary_chat", false).apply()
+        mutableState.update { it.copy(useBonsai = false) }
         listOf("shev_gemini", "shev_openai", "shev_openrouter", "shev_omniroute", "shev_codex", "shev_deepseek").forEach { name ->
             getApplication<Application>().getSharedPreferences(name, Application.MODE_PRIVATE)
                 .edit().putBoolean("use_for_primary_chat", false).apply()
@@ -748,6 +914,10 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     fun send() {
         val message = mutableState.value.prompt.trim()
         if (message.isEmpty() || mutableState.value.busy) return
+        if (mutableState.value.useBonsai) {
+            sendBonsaiReply(message)
+            return
+        }
 
         val preferences = getApplication<Application>().getSharedPreferences(
             "shev_omniroute",
@@ -1992,11 +2162,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         try {
                             AgentToolResult(
                                 true,
-                                LiveWeatherClient.current(
-                                    city,
-                                    getApplication<Application>().getSharedPreferences("shev_weather", Application.MODE_PRIVATE)
-                                        .getString("yandex_api_key", "").orEmpty()
-                                )
+                                LiveWeatherClient.current(city)
                             )
                         } catch (cancelled: CancellationException) {
                             throw cancelled
@@ -2307,6 +2473,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     override fun onCleared() {
+        bonsaiBackend?.close()
+        bonsaiBackend = null
         val active = runtime
         runtime = null
         toolExecutor = null

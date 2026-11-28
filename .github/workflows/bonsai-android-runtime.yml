@@ -1,0 +1,132 @@
+name: Bonsai Android runtime
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [megaagent/mega-core-foundation]
+    paths:
+      - ".github/workflows/bonsai-android-runtime.yml"
+      - "android/app/src/main/cpp/**"
+
+permissions:
+  contents: write
+
+jobs:
+  build-arm64-runtime:
+    name: Build PrismML llama.cpp for Android ARM64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out MegaAgent
+        uses: actions/checkout@v4
+
+      - name: Configure preinstalled Android SDK
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+          echo "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/16.0/bin" >> "$GITHUB_PATH"
+          echo "${ANDROID_HOME:-/usr/local/lib/android/sdk}/platform-tools" >> "$GITHUB_PATH"
+
+      - name: Install pinned NDK
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" --install "ndk;27.2.12479018"
+
+      - name: Install native build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build zip
+
+      - name: Check out pinned PrismML runtime
+        run: |
+          git init prism-llama
+          git -C prism-llama remote add origin https://github.com/PrismML-Eng/llama.cpp.git
+          git -C prism-llama fetch --depth 1 origin 43f31f400c66dd44ce52a044119db77c271fed06
+          git -C prism-llama checkout --detach FETCH_HEAD
+          test "$(git -C prism-llama rev-parse HEAD)" = "43f31f400c66dd44ce52a044119db77c271fed06"
+
+      - name: Configure portable Android ARM64 shared runtime
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
+          test -d "$ANDROID_NDK_HOME"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
+          cmake -S prism-llama -B build-bonsai-android -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-28 \
+            -DBUILD_SHARED_LIBS=ON \
+            -DGGML_CPU_KLEIDIAI=ON \
+            -DGGML_NATIVE=OFF \
+            -DGGML_OPENMP=OFF \
+            -DGGML_LLAMAFILE=OFF \
+            -DLLAMA_OPENSSL=OFF \
+            -DLLAMA_BUILD_TESTS=OFF \
+            -DLLAMA_BUILD_EXAMPLES=OFF \
+            -DLLAMA_BUILD_SERVER=OFF \
+            -DLLAMA_BUILD_COMMON=OFF \
+            -DLLAMA_BUILD_TOOLS=OFF \
+            -DLLAMA_BUILD_APP=OFF \
+            -DLLAMA_BUILD_MTMD=OFF
+
+      - name: Build and install native runtime
+        run: |
+          cmake --build build-bonsai-android --config Release --parallel 2
+          cmake --install build-bonsai-android --prefix bonsai-runtime --config Release
+          test -d bonsai-runtime/lib
+          LLAMA_SO="$(find build-bonsai-android -name libllama.so -type f -print -quit)"
+          test -n "$LLAMA_SO"
+          cmake -S android/app/src/main/cpp -B build-bonsai-jni -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-28 \
+            -DLLAMA_SOURCE_DIR="$PWD/prism-llama" \
+            -DLLAMA_LIBRARY="$PWD/$LLAMA_SO" \
+            -DCMAKE_INSTALL_PREFIX="$PWD/bonsai-runtime"
+          cmake --build build-bonsai-jni --parallel 2
+          cmake --install build-bonsai-jni
+          test -f bonsai-runtime/lib/libbonsai_jni.so
+          install -m 0644 "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" bonsai-runtime/lib/libc++_shared.so
+          test -f bonsai-runtime/lib/libc++_shared.so
+          find bonsai-runtime -type f -name '*.so' -print
+
+      - name: Package runtime and provenance
+        run: |
+          cat > bonsai-runtime/BUILD-METADATA.txt <<'EOF'
+          Runtime: PrismML llama.cpp
+          Repository: https://github.com/PrismML-Eng/llama.cpp
+          Commit: 43f31f400c66dd44ce52a044119db77c271fed06
+          ABI: arm64-v8a
+          Android API: 28
+          NDK: 27.2.12479018
+          C++ runtime: libc++_shared.so included in lib/
+          Build: Release, shared libraries, KleidiAI enabled, OpenMP disabled
+          Model target: Ternary Bonsai 2 9B GGUF
+          This package is a native runtime component, not an APK and not a standalone installer.
+          EOF
+          (cd bonsai-runtime && zip -qr ../bonsai-llama-android-arm64.zip lib BUILD-METADATA.txt)
+          sha256sum bonsai-llama-android-arm64.zip > bonsai-llama-android-arm64.zip.sha256
+
+      - name: Upload native runtime bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: bonsai-llama-android-arm64
+          path: |
+            bonsai-llama-android-arm64.zip
+            bonsai-llama-android-arm64.zip.sha256
+            bonsai-runtime/BUILD-METADATA.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish durable runtime release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: bonsai-android-arm64-latest
+          name: Bonsai Android ARM64 runtime
+          prerelease: true
+          make_latest: false
+          overwrite_files: true
+          files: |
+            bonsai-llama-android-arm64.zip
+            bonsai-llama-android-arm64.zip.sha256
