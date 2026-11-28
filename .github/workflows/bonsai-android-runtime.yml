@@ -6,7 +6,6 @@ on:
     branches: [megaagent/mega-core-foundation]
     paths:
       - ".github/workflows/bonsai-android-runtime.yml"
-      - "docs/MEGAAGENT_BONSAI_ANDROID_INSTALL.md"
       - "android/app/src/main/cpp/**"
 
 permissions:

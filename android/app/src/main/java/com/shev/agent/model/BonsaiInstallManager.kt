@@ -21,6 +21,7 @@ class BonsaiInstallManager(context: Context) {
     private val modelMarker = File(root, "model.sha256")
     private val runtimeDir = File(root, "runtime")
     private val runtimeZip = File(root, "runtime.zip.part")
+    private val runtimeSha = File(root, "runtime.zip.sha256.part")
 
     data class Progress(val stage: String, val downloaded: Long, val total: Long?) {
         val fraction: Float? get() = total?.takeIf { it > 0L }?.let {
@@ -66,9 +67,12 @@ class BonsaiInstallManager(context: Context) {
         requireFreeSpace(RUNTIME_REQUIRED_SPACE_BYTES)
         val base = "https://github.com/shevgti/SheV-Agent-Public/releases/download/$RUNTIME_TAG"
         download("$base/$RUNTIME_ZIP", runtimeZip, MAX_RUNTIME_ZIP_BYTES, "Движок", onProgress)
-        if (sha256(runtimeZip) != RUNTIME_SHA256) {
+        download("$base/$RUNTIME_SHA_FILE", runtimeSha, 4096L, "Проверка движка", onProgress)
+        val expected = runtimeSha.readText().trim().substringBefore(' ').lowercase()
+        if (!expected.matches(Regex("[0-9a-f]{64}")) || sha256(runtimeZip) != expected) {
             runtimeZip.delete()
-            error("SHA-256 архива движка не совпал с закреплённой сборкой; архив удалён.")
+            runtimeSha.delete()
+            error("SHA-256 архива движка не совпал с опубликованной контрольной суммой; архив удалён.")
         }
         val staging = File(root, "runtime.installing")
         staging.deleteRecursively()
@@ -107,6 +111,7 @@ class BonsaiInstallManager(context: Context) {
             throw failure
         }
         runtimeZip.delete()
+        runtimeSha.delete()
         runtimeDir
     }
 
