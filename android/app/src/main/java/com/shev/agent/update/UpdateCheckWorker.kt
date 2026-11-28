@@ -48,7 +48,6 @@ internal class UpdateCheckWorker(context: Context, params: WorkerParameters) : C
 
             ensureNotificationChannel(applicationContext)
             val installIntent = Intent(applicationContext, MainActivity::class.java).apply {
-                action = MainActivity.ACTION_INSTALL_DOWNLOADED_UPDATE
                 flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             }
             val pending = PendingIntent.getActivity(
@@ -59,11 +58,11 @@ internal class UpdateCheckWorker(context: Context, params: WorkerParameters) : C
             )
             val notification = NotificationCompat.Builder(applicationContext, CHANNEL)
                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
-                .setContentTitle("Обновление SheV Agent скачано")
-                .setContentText("Версия ${update.versionName} готова к установке. Нажми, чтобы продолжить.")
+                .setContentTitle("Обновление приложения скачано")
+                .setContentText("Версия ${update.versionName} готова к установке.")
                 .setStyle(
                     NotificationCompat.BigTextStyle().bigText(
-                        "SheV Agent автоматически скачал версию ${update.versionName} и проверил её контрольную сумму. Нажми, чтобы открыть системную установку Android."
+                        "Приложение скачало версию ${update.versionName} и проверило её контрольную сумму."
                     )
                 )
                 .setContentIntent(pending)
@@ -92,10 +91,10 @@ internal class UpdateCheckWorker(context: Context, params: WorkerParameters) : C
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             val channel = NotificationChannel(
                 CHANNEL,
-                "Обновления SheV Agent",
+                "Обновления приложения",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Уведомления о скачанных и готовых к установке обновлениях"
+                description = "Уведомления о скачанных обновлениях"
                 enableVibration(true)
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
             }
