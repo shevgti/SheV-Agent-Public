@@ -105,7 +105,7 @@ jobs:
           Model target: Ternary Bonsai 2 9B GGUF
           This package is a native runtime component, not an APK and not a standalone installer.
           EOF
-          (cd bonsai-runtime && zip -qr ../bonsai-llama-android-arm64.zip .)
+          (cd bonsai-runtime && zip -qr ../bonsai-llama-android-arm64.zip lib BUILD-METADATA.txt)
           sha256sum bonsai-llama-android-arm64.zip > bonsai-llama-android-arm64.zip.sha256
 
       - name: Upload native runtime bundle

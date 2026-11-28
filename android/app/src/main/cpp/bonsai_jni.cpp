@@ -59,6 +59,16 @@ Java_com_shev_agent_model_BonsaiJni_nativeGenerate(JNIEnv * env, jclass, jlong r
         throw_java(env, "Не удалось токенизировать запрос Bonsai.");
         return nullptr;
     }
+    const int generation_budget = std::clamp(
+        static_cast<int>(max_tokens), 1,
+        std::max(1, static_cast<int>(handle->context_size / 2)));
+    const int max_prompt_tokens = std::max(
+        1, static_cast<int>(handle->context_size) - generation_budget - 1);
+    if (token_count > max_prompt_tokens) {
+        const int drop = token_count - max_prompt_tokens;
+        std::move(tokens.begin() + 1 + drop, tokens.begin() + token_count, tokens.begin() + 1);
+        token_count = max_prompt_tokens;
+    }
 
     auto context_params = llama_context_default_params();
     context_params.n_ctx = handle->context_size;

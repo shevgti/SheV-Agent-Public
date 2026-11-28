@@ -95,6 +95,11 @@ class BonsaiInstallManager(context: Context) {
                     val entry = zip.nextEntry ?: break
                     val relative = entry.name.replace('\\', '/')
                     require(!relative.startsWith("/") && relative.split('/').none { it == ".." }) { "Архив содержит небезопасный путь." }
+                    if (relative == "." || relative == "./") {
+                        require(entry.isDirectory) { "Архив содержит недопустимый корневой файл." }
+                        zip.closeEntry()
+                        continue
+                    }
                     val output = File(staging, relative).canonicalFile
                     require(output.path.startsWith(staging.canonicalPath + File.separator)) { "Архив выходит за каталог установки." }
                     if (entry.isDirectory) output.mkdirs() else {
