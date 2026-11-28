@@ -7,7 +7,7 @@
 - Initial model artifact: `Ternary-Bonsai-2-9B-Q2_0.gguf` (about 2.56 GB).
 - Initial scope is text inference. The separate vision projector (`mmproj`, about 0.62 GB) is intentionally not downloaded until image input is implemented.
 - Keep the existing Gemma/LiteRT backend intact. Bonsai is a separate GGUF backend.
-- Five specialist roles must share one loaded model/runtime; never load five model copies.
+- Five specialist roles (researcher, planner, engineer, executor, reviewer) share one loaded model/runtime; never load five model copies. Bonsai chat now routes handler-backed tool calls through the same schema validation, host executor, capability grants and policy as the ADK runtime. Each role has a restricted capability allowlist. Verified skills are retrieved from the local library and injected as task context; the starter catalog contains 11 curated playbooks. High-risk actions remain blocked unless a separate explicit-approval flow is provided.
 
 ## Why the runtime is a separate component
 
@@ -17,7 +17,7 @@ The supported installation has three independently verifiable pieces:
 
 1. **Native runtime** — ARM64 Android shared libraries built from the PrismML fork. The fork is required for the Prism-specific PQ2_0/PTQ1_0 encodings; the first integration targets its Q2_0 artifact.
 2. **Model data** — the pinned Hugging Face GGUF model artifact, downloaded into app-private storage with resumable transfer, a verified content digest, and atomic promotion.
-3. **App bridge** — a JNI/Kotlin backend that loads the GGUF using the native runtime, applies a conservative context size (start at 2048/4096, not the model-card maximum), streams generated tokens, and releases native memory on unload.
+3. **App bridge** — a JNI/Kotlin backend that loads the GGUF using the native runtime, applies a conservative 2048-token context initially, serializes generation calls across agents, and releases native memory on unload. Token streaming is not yet implemented in the Bonsai JNI bridge.
 
 Do not mark the model as installed until all three checks pass. The native runtime is built and packaged separately from model weights so the APK does not contain a multi-gigabyte model.
 
@@ -51,8 +51,12 @@ The in-app installer downloads the model from an immutable Hugging Face revision
 - [ ] JNI bridge loads the model and returns a one-token / short-prompt smoke-test response.
 - [ ] Streaming generation, cancellation, unload, and reload are tested.
 - [ ] Existing LiteRT/Gemma download, verification, and inference tests remain green.
-- [ ] All five specialist agents use the same backend/model instance sequentially or under a single controlled scheduler.
-- [ ] Device test on the target POCO confirms load success, memory headroom, thermal behavior, and sustained generation speed.
+- [x] All five specialist roles share the same backend/model instance sequentially.
+- [x] Bonsai chat can request handler-backed tools through the shared registry/executor and CapabilityPolicy; each role has a restricted capability allowlist.
+- [x] Verified local skill context is retrieved for the task; 11 curated built-in playbooks are seeded into the local library.
+- [ ] Add independent tests for Bonsai JSON tool-call parsing and role-level allowlists.
+- [ ] Implement token streaming and an explicit approval UI for high-risk tool actions.
+- [ ] Device test on the target POCO confirms load success, memory headroom, thermal behavior, sustained generation speed, tool invocation and subagent synthesis.
 
 ## Upstream references
 
