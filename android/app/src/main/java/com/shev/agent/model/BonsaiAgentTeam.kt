@@ -62,7 +62,7 @@ internal class BonsaiAgentTeam(
             notes.forEach { (name, note) -> append("\n## ").append(name).append("\n").append(note).append("\n") }
             append("\nСобери единый ответ. Укажи только фактически подтверждённое; явно назови ограничения и незавершённые действия.")
         }
-        return backend.generate(synthesis.take(2_400), 180).trim()
+        return backend.generate(synthesis.take(1_700), 180).trim()
     }
 
     private suspend fun runSpecialist(role: Role, request: String, skills: String): String {
@@ -86,7 +86,7 @@ internal class BonsaiAgentTeam(
             append("Не вызывай инструмент с capability, которой нет у него в каталоге.\n")
             append("Задача пользователя: ").append(request)
         }
-        val raw = backend.generate(prompt.take(2_200), 120).trim()
+        val raw = backend.generate(prompt.take(1_700), 120).trim()
         val parsed = parseToolCall(raw, available, role.capabilities)
         if (parsed == null) {
             val note = parseNote(raw)
@@ -100,7 +100,7 @@ internal class BonsaiAgentTeam(
             append("Фактический результат host executor:\n").append(toolResult).append("\n")
             append("Сформулируй краткий вывод по результату. Если инструмент отказал или потребовал подтверждение, не утверждай, что действие выполнено.")
         }
-        return backend.generate(followUp.take(1_800), 100).trim()
+        return backend.generate(followUp.take(1_400), 100).trim()
     }
 
     private fun parseToolCall(
