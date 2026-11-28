@@ -79,7 +79,6 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = android.graphics.Color.rgb(16, 19, 24)
         window.navigationBarColor = android.graphics.Color.rgb(16, 19, 24)
         window.decorView.systemUiVisibility = 0
-        // Create the high-importance update channel before requesting notification permission.
         // One Room database stores encrypted conversation history and declarative agent drafts.
         val database = SheVAgentDatabaseProvider.get(applicationContext)
         val chatViewModel = ViewModelProvider(this)[LocalModelViewModel::class.java]
@@ -109,7 +108,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Ask for update notifications first on the first app launch after install.
+     * Ask for notification permission on the first app launch when Android requires it.
      * Android owns the system dialog and the user makes the final choice.
      */
     private fun requestFirstLaunchPermissions() {
@@ -570,7 +569,7 @@ private fun SettingsScreen(
     ) {
         Text("Настройки", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "Обновление приложения и дополнительные подключения.",
+            "Дополнительные подключения, инструменты и библиотека навыков.",
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Card {
