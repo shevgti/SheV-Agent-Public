@@ -80,6 +80,16 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     val state by viewModel.state.collectAsState()
     val liveWidgets by viewModel.liveWidgets.collectAsState()
     val context = LocalContext.current
+    val workspacePrefs = remember(context) { context.getSharedPreferences("megaagent_device_bridge", android.content.Context.MODE_PRIVATE) }
+    var workspaceUri by remember { mutableStateOf(workspacePrefs.getString("workspace_tree_uri", null)) }
+    val workspacePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
+            workspacePrefs.edit().putString("workspace_tree_uri", uri.toString()).apply()
+            workspaceUri = uri.toString()
+        }
+    }
     var listening by remember { mutableStateOf(false) }
     var voiceConversation by remember { mutableStateOf(false) }
     var voiceStatus by remember { mutableStateOf("Нажми на микрофон, чтобы начать голосовой диалог") }
@@ -753,7 +763,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("SheV", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text("MegaAgent", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Text(
                     when {
                         voiceConversation && listening -> "Слушаю тебя"
@@ -777,6 +787,9 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     enabled = !downloadingUpdate,
                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF16834A), contentColor = Color.White)
                 ) { Text("Обновить") }
+            }
+            IconButton(onClick = { workspacePicker.launch(workspaceUri?.let(android.net.Uri::parse)) }) {
+                Text("📁", style = MaterialTheme.typography.titleLarge)
             }
             IconButton(onClick = { showSettings = true }) {
                 Text("⚙", style = MaterialTheme.typography.titleLarge)
