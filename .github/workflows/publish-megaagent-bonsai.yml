@@ -64,7 +64,7 @@ jobs:
           for release in releases:
               if release.get("draft") or release.get("prerelease"):
                   continue
-              match = re.search(r"(?im)^versionCode:\\s*(\\d+)\\s*$", release.get("body") or "")
+              match = re.search(r"(?im)^versionCode:\s*(\d+)\s*$", release.get("body") or "")
               if match:
                   codes.append(int(match.group(1)))
           if not codes:
@@ -73,7 +73,7 @@ jobs:
           next_code = max(previous, baseline) + 2
           tag = f"v{version}-build.{next_code}"
           with open(os.environ["GITHUB_ENV"], "a") as env:
-              env.write(f"APP_VERSION={version}\\nAPP_VERSION_CODE={next_code}\\nPREVIOUS_VERSION_CODE={previous}\\nRELEASE_TAG={tag}\\n")
+              env.write(f"APP_VERSION={version}\nAPP_VERSION_CODE={next_code}\nPREVIOUS_VERSION_CODE={previous}\nRELEASE_TAG={tag}\n")
           print(f"Publishing {tag}, versionCode={next_code}")
           PY
 
@@ -104,7 +104,7 @@ jobs:
           cp android/app/build/outputs/apk/debug/app-debug.apk release-package/MegaAgent-Bonsai-Android.apk
           cd release-package
           sha256sum MegaAgent-Bonsai-Android.apk > MegaAgent-Bonsai-Android.apk.sha256
-          printf 'versionName=%s\\nversionCode=%s\\ncommit=%s\\nmodel=Ternary Bonsai 2 9B (in-app download)\\n' "$APP_VERSION" "$APP_VERSION_CODE" "$(git -C .. rev-parse HEAD)" > build-info.txt
+          printf 'versionName=%s\nversionCode=%s\ncommit=%s\nmodel=Ternary Bonsai 2 9B (in-app download)\n' "$APP_VERSION" "$APP_VERSION_CODE" "$(git -C .. rev-parse HEAD)" > build-info.txt
 
       - name: Publish MegaAgent preview release
         uses: softprops/action-gh-release@v2
