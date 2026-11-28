@@ -91,8 +91,8 @@ class MegaAgentAccessibilityService : AccessibilityService() {
         fun isEnabled(): Boolean = active.get() != null
         fun snapshot(maxNodes: Int = 120): List<String> = active.get()?.visibleUiSnapshot(maxNodes).orEmpty()
         fun tap(x: Float, y: Float): Boolean = active.get()?.tap(x, y) ?: false
-        fun back(): Boolean = active.get()?.global(GLOBAL_ACTION_BACK) ?: false
-        fun home(): Boolean = active.get()?.global(GLOBAL_ACTION_HOME) ?: false
-        fun recents(): Boolean = active.get()?.global(GLOBAL_ACTION_RECENTS) ?: false
+        fun back(): Boolean = active.get()?.global(AccessibilityService.GLOBAL_ACTION_BACK) ?: false
+        fun home(): Boolean = active.get()?.global(AccessibilityService.GLOBAL_ACTION_HOME) ?: false
+        fun recents(): Boolean = active.get()?.global(AccessibilityService.GLOBAL_ACTION_RECENTS) ?: false
     }
 }
