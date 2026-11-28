@@ -28,9 +28,9 @@ Workflow: `.github/workflows/bonsai-android-runtime.yml`.
 It builds the PrismML llama.cpp source at immutable commit
 `43f31f400c66dd44ce52a044119db77c271fed06` with Android NDK 27.2.12479018,
 `arm64-v8a`, Android API 28, shared libraries, KleidiAI enabled, and OpenMP disabled.
-The workflow emits a runtime ZIP and SHA-256 file as a GitHub Actions artifact.
+The workflow emits a runtime ZIP and SHA-256 file as an Actions artifact and publishes the same files to the durable prerelease tag `bonsai-android-arm64-latest` for in-app installation.
 
-The workflow artifact is a build output, not yet an in-app installer. The app bridge and runtime-bundle installer must be completed before exposing a working "Install Bonsai" action.
+The in-app installer downloads the model from an immutable Hugging Face revision, verifies its SHA-256, downloads the runtime release asset and verifies its detached checksum, then extracts it with path-traversal protection into app-private storage. This installs the components only; it does not claim that inference is ready.
 
 ## Required app installation UX
 

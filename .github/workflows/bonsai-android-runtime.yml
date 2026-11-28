@@ -92,3 +92,15 @@ jobs:
             bonsai-runtime/BUILD-METADATA.txt
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish durable runtime release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: bonsai-android-arm64-latest
+          name: Bonsai Android ARM64 runtime
+          prerelease: true
+          make_latest: false
+          overwrite_files: true
+          files: |
+            bonsai-llama-android-arm64.zip
+            bonsai-llama-android-arm64.zip.sha256

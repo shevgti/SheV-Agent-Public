@@ -104,12 +104,18 @@ data class LocalModelUiState(
     val deviceSummary: String = "Проверяю характеристики устройства…",
     val prompt: String = "",
     val messages: List<String> = emptyList(),
-    val taskExecutionMessage: String? = null
+    val taskExecutionMessage: String? = null,
+    val bonsaiModelInstalled: Boolean = false,
+    val bonsaiRuntimeInstalled: Boolean = false,
+    val bonsaiProgress: Float? = null,
+    val bonsaiStage: String? = null
 )
 
 /** Owns the native runtime for the Activity lifetime, not a recyclable Compose list item. */
 class LocalModelViewModel(application: Application) : AndroidViewModel(application) {
     private val store = ModelStore(application.applicationContext)
+    private val bonsaiInstaller = BonsaiInstallManager(application.applicationContext)
+    private var bonsaiInstallJob: Job? = null
     private val database = SheVAgentDatabaseProvider.get(application.applicationContext)
     private val dao = database.agentDao()
     private val skillLibrary = AgentSkillLibrary(dao)
@@ -168,6 +174,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
             runCatching { skillLibrary.seedBuiltInSkills() }
             val deviceSummary = DeviceDiagnostics.summary(getApplication())
             val available = store.findVerifiedModel() != null
+            val bonsaiModelAvailable = bonsaiInstaller.isModelInstalled()
+            val bonsaiRuntimeAvailable = bonsaiInstaller.isRuntimeInstalled()
             try {
                 dao.markInterruptedConversationMessagesFailed()
                 recoverInterruptedAgentTasks()
@@ -177,6 +185,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 mutableState.update {
                     it.copy(
                         verified = available,
+                        bonsaiModelInstalled = bonsaiModelAvailable,
+                        bonsaiRuntimeInstalled = bonsaiRuntimeAvailable,
                         deviceSummary = deviceSummary,
                         messages = history.map(::formatMessage)
                     )
@@ -535,6 +545,34 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     fun cancelDownload() {
         downloadJob?.cancel()
     }
+
+    /** Downloads the pinned GGUF and ARM64 runtime. Does not switch the active backend. */
+    fun installBonsai() {
+        if (bonsaiInstallJob?.isActive == true || mutableState.value.busy) return
+        mutableState.update { it.copy(error = null, bonsaiProgress = 0f, bonsaiStage = "Подготовка") }
+        bonsaiInstallJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                bonsaiInstaller.installRuntime { update ->
+                    mutableState.update { it.copy(bonsaiStage = update.stage, bonsaiProgress = update.fraction) }
+                }
+                mutableState.update { it.copy(bonsaiRuntimeInstalled = true, bonsaiStage = "Движок установлен", bonsaiProgress = null) }
+                bonsaiInstaller.installModel { update ->
+                    mutableState.update { it.copy(bonsaiStage = update.stage, bonsaiProgress = update.fraction) }
+                }
+                mutableState.update { it.copy(bonsaiModelInstalled = true, bonsaiRuntimeInstalled = true, bonsaiStage = "Компоненты проверены; JNI/backend ещё требуется", bonsaiProgress = null) }
+            } catch (cancelled: CancellationException) {
+                mutableState.update { it.copy(bonsaiProgress = null, bonsaiStage = "Загрузка отменена") }
+                throw cancelled
+            } catch (failure: Exception) {
+                mutableState.update { it.copy(bonsaiProgress = null, bonsaiStage = null, error = failure.message ?: "Не удалось установить Bonsai.") }
+            }
+        }
+    }
+
+    fun cancelBonsaiInstall() {
+        bonsaiInstallJob?.cancel()
+    }
+
 
     /** Select the on-device Gemma backend and disable mutually exclusive cloud providers. */
     fun selectLocalModel() {
