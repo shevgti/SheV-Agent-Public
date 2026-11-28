@@ -91,7 +91,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var showVoicePicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     val agentTeamPrefs = remember(context) { context.getSharedPreferences("shev_agent_team", android.content.Context.MODE_PRIVATE) }
-    var enabledAgentRoles by remember { mutableStateOf(agentTeamPrefs.getStringSet("enabled_roles", null)?.toSet() ?: setOf("shev_researcher", "shev_planner", "shev_engineer", "shev_reviewer", "shev_executor")) }
+    var enabledAgentRoles by remember { mutableStateOf((agentTeamPrefs.getStringSet("enabled_roles", null)?.toSet() ?: emptySet()) + setOf("shev_researcher", "shev_planner", "shev_engineer", "shev_reviewer", "shev_executor")) }
     var enabledAgentSkills by remember { mutableStateOf(agentTeamPrefs.getStringSet("enabled_skills", null)?.toSet() ?: SheVAgentModelFactory.DEFAULT_SKILLS) }
     var showGatewaySettings by remember { mutableStateOf(false) }
     var showOpenAISettings by remember { mutableStateOf(false) }
