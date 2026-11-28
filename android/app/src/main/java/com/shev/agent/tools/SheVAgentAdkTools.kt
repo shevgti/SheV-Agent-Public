@@ -268,6 +268,49 @@ class SheVAgentAdkTools(
         )
     }
 
+    @Tool(
+        name = "list_workspace_files",
+        description = "Lists files and folders inside the exact SAF workspace folder selected by the user. Read-only; does not browse outside that folder."
+    )
+    fun listWorkspaceFiles(
+        @Param("Optional substring to filter names; use an empty string for all entries.") query: String
+    ): Map<String, String> {
+        val execution = execute(
+            AgentToolRequest(
+                toolId = LIST_WORKSPACE_FILES_ID,
+                capability = AgentCapability.READ_LOCAL_DATA,
+                input = Gson().toJson(mapOf("query" to query))
+            )
+        )
+        val result = execution.result
+        return if (execution.status == AgentToolExecutionStatus.COMPLETED && result?.success == true) {
+            mapOf("status" to "ok", "entries" to result.output)
+        } else mapOf("status" to "unavailable", "reason" to execution.status.name,
+            "message" to (result?.errorCode ?: "Не удалось прочитать рабочую папку."))
+    }
+
+    @Tool(
+        name = "read_workspace_file",
+        description = "Reads a UTF-8 text file only when its URI is inside the user-selected SAF workspace folder. Maximum 512 KiB. Does not modify files."
+    )
+    fun readWorkspaceFile(
+        @Param("Document URI returned by list_workspace_files.") documentUri: String
+    ): Map<String, String> {
+        val execution = execute(
+            AgentToolRequest(
+                toolId = READ_WORKSPACE_FILE_ID,
+                capability = AgentCapability.READ_LOCAL_DATA,
+                input = Gson().toJson(mapOf("documentUri" to documentUri)),
+                resourceTarget = documentUri
+            )
+        )
+        val result = execution.result
+        return if (execution.status == AgentToolExecutionStatus.COMPLETED && result?.success == true) {
+            mapOf("status" to "ok", "content" to result.output)
+        } else mapOf("status" to "unavailable", "reason" to execution.status.name,
+            "message" to (result?.errorCode ?: "Не удалось прочитать файл."))
+    }
+
     companion object {
         const val TOOL_ID = "agent.inspect_tools"
         const val CURRENT_TIME_TOOL_ID = "agent.current_local_time"
@@ -275,5 +318,7 @@ class SheVAgentAdkTools(
         const val WEATHER_TOOL_ID = "agent.current_weather"
         const val WEB_SEARCH_TOOL_ID = "agent.web_search"
         const val SAVE_SKILL_DRAFT_TOOL_ID = "agent.save_skill_draft"
+        const val LIST_WORKSPACE_FILES_ID = "device.list_workspace_files"
+        const val READ_WORKSPACE_FILE_ID = "device.read_workspace_file"
     }
 }
