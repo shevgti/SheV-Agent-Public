@@ -570,18 +570,6 @@ fun LocalModelPanel(
                             if (showGatewaySettings) OmniRoutePanel(viewModel)
                         }
                     }
-                    TextButton(
-                        onClick = {
-                            if (Build.VERSION.SDK_INT >= 33 &&
-                                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-                            ) {
-                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            } else {
-                                updateMessage = "Уведомления об обновлениях уже разрешены"
-                            }
-                        }
-                    ) { Text("Включить уведомления об обновлениях") }
-                    updateMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
                     Button(
                         onClick = { showSettings = false },
