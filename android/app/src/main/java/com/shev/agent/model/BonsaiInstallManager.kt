@@ -132,7 +132,7 @@ class BonsaiInstallManager(context: Context) {
                 if (offset > 0L) setRequestProperty("Range", "bytes=$offset-")
             }
             val status = connection.responseCode
-            if (status == HttpURLConnection.HTTP_REQUESTED_RANGE_NOT_SATISFIABLE) {
+            if (status == 416) {
                 partial.delete()
                 error("$stage: сервер отклонил смещение продолжения; повтори загрузку.")
             }
