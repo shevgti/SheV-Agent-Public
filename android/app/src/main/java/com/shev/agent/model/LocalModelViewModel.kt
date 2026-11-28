@@ -564,6 +564,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 bonsaiInstaller.installModel { update ->
                     mutableState.update { it.copy(bonsaiStage = update.stage, bonsaiProgress = update.fraction) }
                 }
+                val activityManager = getApplication<Application>().getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                val memoryInfo = android.app.ActivityManager.MemoryInfo()
+                activityManager.getMemoryInfo(memoryInfo)
+                check(!memoryInfo.lowMemory && memoryInfo.availMem >= 5L * 1024L * 1024L * 1024L) {
+                    "Для безопасной загрузки Bonsai желательно не менее 5 ГБ свободной оперативной памяти."
+                }
                 val backend = BonsaiNativeBackend.load(
                     bonsaiInstaller.installedRuntimeLibDirectory(),
                     bonsaiInstaller.installedModelFile(),
