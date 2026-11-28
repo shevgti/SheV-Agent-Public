@@ -46,6 +46,7 @@ import com.shev.agent.tools.AgentToolExecutionContext
 import com.shev.agent.tools.AgentToolExecutor
 import com.shev.agent.tools.AgentToolRegistry
 import com.shev.agent.tools.AgentToolResult
+import com.shev.agent.tools.AgentToolRequest
 import com.shev.agent.tools.ToolInputField
 import com.shev.agent.tools.ToolInputSchema
 import com.shev.agent.tools.ToolInputType
@@ -670,7 +671,38 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         createdAtEpochMillis = System.currentTimeMillis()
                     )
                 )
-                val answer = BonsaiAgentTeam(backend).answer(conversationContext, message)
+                // Bonsai uses the same host registry, schemas, grants and CapabilityPolicy as
+                // the ADK runtime. Only handler-backed tools are advertised to local subagents.
+                if (toolExecutor == null || agentToolRegistry == null || agentExecutionContext == null) {
+                    createAgentToolHost()
+                }
+                val executor = checkNotNull(toolExecutor) { "Реестр инструментов не готов." }
+                val context = checkNotNull(agentExecutionContext) { "Контекст разрешений не готов." }
+                val descriptors = executor.availableTools()
+                val skills = skillLibrary.buildContext(message)
+                val team = BonsaiAgentTeam(backend, descriptors) { descriptor, capability, input ->
+                    val result = executor.executeSuspending(
+                        AgentToolRequest(
+                            toolId = descriptor.id,
+                            capability = capability,
+                            input = input
+                        ),
+                        context
+                    )
+                    buildString {
+                        append("status=").append(result.status.name)
+                        result.result?.let { toolResult ->
+                            append("; success=").append(toolResult.success)
+                            if (toolResult.output.isNotBlank()) append("; output=").append(toolResult.output.take(8_000))
+                            toolResult.errorCode?.let { append("; error=").append(it) }
+                        }
+                        result.postconditionEvidence?.let { evidence ->
+                            append("; verified=").append(evidence.verified)
+                            append("; evidence=").append(evidence.reference)
+                        }
+                    }
+                }
+                val answer = team.answer(conversationContext, message, skills)
                 check(answer.isNotBlank()) { "Bonsai вернула пустой ответ." }
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
