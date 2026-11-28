@@ -1015,7 +1015,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint,
-                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(getApplication())
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(
+                        getApplication(),
+                        if (mutableState.value.useBonsai) "Ternary Bonsai 2 9B · GGUF Q2_0"
+                        else mutableState.value.backendName ?: "не определена"
+                    )
                 )
                 // Retrieve only explicitly verified reusable skills. Drafts and unreviewed
                 // model-generated instructions are never injected into the agent prompt.
@@ -1112,7 +1116,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint,
-                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(getApplication())
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(
+                        getApplication(),
+                        if (mutableState.value.useBonsai) "Ternary Bonsai 2 9B · GGUF Q2_0"
+                        else mutableState.value.backendName ?: "не определена"
+                    )
                 )
 
                 dao.appendConversationMessage(
@@ -1237,7 +1245,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         currentMessage = message + liveWidgetContext(),
                         rollingSummary = (summaryRead as? ConversationSummaryRead.Ready)?.plaintext,
                         summaryThroughMessageId = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId,
-                        environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(getApplication())
+                        environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(
+                        getApplication(),
+                        if (mutableState.value.useBonsai) "Ternary Bonsai 2 9B · GGUF Q2_0"
+                        else mutableState.value.backendName ?: "не определена"
+                    )
                     )
                 } else message
 
@@ -1421,7 +1433,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = (summaryRead as? ConversationSummaryRead.Ready)?.plaintext,
                     summaryThroughMessageId = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId,
-                        environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(getApplication())
+                        environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(
+                        getApplication(),
+                        if (mutableState.value.useBonsai) "Ternary Bonsai 2 9B · GGUF Q2_0"
+                        else mutableState.value.backendName ?: "не определена"
+                    )
                 )
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
@@ -1699,7 +1715,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint,
-                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(getApplication())
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(
+                        getApplication(),
+                        if (mutableState.value.useBonsai) "Ternary Bonsai 2 9B · GGUF Q2_0"
+                        else mutableState.value.backendName ?: "не определена"
+                    )
                 )
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
@@ -1773,7 +1793,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint,
-                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(getApplication())
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(
+                        getApplication(),
+                        if (mutableState.value.useBonsai) "Ternary Bonsai 2 9B · GGUF Q2_0"
+                        else mutableState.value.backendName ?: "не определена"
+                    )
                 )
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
@@ -1846,7 +1870,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint,
-                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(getApplication())
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(
+                        getApplication(),
+                        if (mutableState.value.useBonsai) "Ternary Bonsai 2 9B · GGUF Q2_0"
+                        else mutableState.value.backendName ?: "не определена"
+                    )
                 )
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
@@ -1931,7 +1959,11 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
                     summaryThroughMessageId = summaryCheckpoint,
-                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(getApplication())
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(
+                        getApplication(),
+                        if (mutableState.value.useBonsai) "Ternary Bonsai 2 9B · GGUF Q2_0"
+                        else mutableState.value.backendName ?: "не определена"
+                    )
                 )
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
