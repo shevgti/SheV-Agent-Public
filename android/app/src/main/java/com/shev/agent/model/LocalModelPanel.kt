@@ -41,6 +41,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -76,7 +78,12 @@ import kotlinx.coroutines.Job
 import java.util.Locale
 
 @Composable
-fun LocalModelPanel(viewModel: LocalModelViewModel) {
+fun LocalModelPanel(
+    viewModel: LocalModelViewModel,
+    onOpenCreator: () -> Unit = {},
+    onOpenTasks: () -> Unit = {},
+    onOpenTools: () -> Unit = {}
+) {
     val state by viewModel.state.collectAsState()
     val liveWidgets by viewModel.liveWidgets.collectAsState()
     val context = LocalContext.current
@@ -100,6 +107,7 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
     var lastSpokenMessageIndex by remember { mutableStateOf(-1) }
     var showVoicePicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showAppMenu by remember { mutableStateOf(false) }
     val agentTeamPrefs = remember(context) { context.getSharedPreferences("shev_agent_team", android.content.Context.MODE_PRIVATE) }
     var enabledAgentRoles by remember { mutableStateOf(agentTeamPrefs.getStringSet("enabled_roles", null)?.toSet() ?: setOf("shev_researcher", "shev_planner", "shev_engineer", "shev_reviewer", "shev_executor")) }
     var enabledAgentSkills by remember { mutableStateOf(agentTeamPrefs.getStringSet("enabled_skills", null)?.toSet() ?: SheVAgentModelFactory.DEFAULT_SKILLS) }
@@ -787,6 +795,16 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                     enabled = !downloadingUpdate,
                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF16834A), contentColor = Color.White)
                 ) { Text("Обновить") }
+            }
+            Box {
+                IconButton(onClick = { showAppMenu = true }) {
+                    Text("☰", style = MaterialTheme.typography.titleLarge)
+                }
+                DropdownMenu(expanded = showAppMenu, onDismissRequest = { showAppMenu = false }) {
+                    DropdownMenuItem(text = { Text("Создатель агентов") }, onClick = { showAppMenu = false; onOpenCreator() })
+                    DropdownMenuItem(text = { Text("Поручения") }, onClick = { showAppMenu = false; onOpenTasks() })
+                    DropdownMenuItem(text = { Text("Инструменты и навыки") }, onClick = { showAppMenu = false; onOpenTools() })
+                }
             }
             IconButton(onClick = { workspacePicker.launch(workspaceUri?.let { android.net.Uri.parse(it) }) }) {
                 Text("📁", style = MaterialTheme.typography.titleLarge)
