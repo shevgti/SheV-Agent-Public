@@ -1014,7 +1014,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     chronologicalHistory = history,
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
-                    summaryThroughMessageId = summaryCheckpoint
+                    summaryThroughMessageId = summaryCheckpoint,
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(getApplication())
                 )
                 // Retrieve only explicitly verified reusable skills. Drafts and unreviewed
                 // model-generated instructions are never injected into the agent prompt.
@@ -1110,7 +1111,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     chronologicalHistory = history,
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
-                    summaryThroughMessageId = summaryCheckpoint
+                    summaryThroughMessageId = summaryCheckpoint,
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(getApplication())
                 )
 
                 dao.appendConversationMessage(
@@ -1234,7 +1236,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         chronologicalHistory = history,
                         currentMessage = message + liveWidgetContext(),
                         rollingSummary = (summaryRead as? ConversationSummaryRead.Ready)?.plaintext,
-                        summaryThroughMessageId = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
+                        summaryThroughMessageId = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId,
+                        environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(getApplication())
                     )
                 } else message
 
@@ -1417,7 +1420,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     chronologicalHistory = history,
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = (summaryRead as? ConversationSummaryRead.Ready)?.plaintext,
-                    summaryThroughMessageId = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId
+                    summaryThroughMessageId = (summaryRead as? ConversationSummaryRead.Ready)?.throughMessageId,
+                        environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(getApplication())
                 )
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
@@ -1694,7 +1698,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     chronologicalHistory = history,
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
-                    summaryThroughMessageId = summaryCheckpoint
+                    summaryThroughMessageId = summaryCheckpoint,
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(getApplication())
                 )
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
@@ -1767,7 +1772,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     chronologicalHistory = history,
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
-                    summaryThroughMessageId = summaryCheckpoint
+                    summaryThroughMessageId = summaryCheckpoint,
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(getApplication())
                 )
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
@@ -1839,7 +1845,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     chronologicalHistory = history,
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
-                    summaryThroughMessageId = summaryCheckpoint
+                    summaryThroughMessageId = summaryCheckpoint,
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(getApplication())
                 )
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
@@ -1923,7 +1930,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     chronologicalHistory = history,
                     currentMessage = message + liveWidgetContext(),
                     rollingSummary = rollingSummary,
-                    summaryThroughMessageId = summaryCheckpoint
+                    summaryThroughMessageId = summaryCheckpoint,
+                    environmentContext = com.shev.agent.device.MegaAgentDeviceContext.describe(getApplication())
                 )
                 dao.appendConversationMessage(
                     ConversationMessageEntity(
