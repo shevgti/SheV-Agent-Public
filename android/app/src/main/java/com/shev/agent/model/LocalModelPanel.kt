@@ -476,14 +476,32 @@ fun LocalModelPanel(viewModel: LocalModelViewModel) {
                             Text("Ternary Bonsai 2 9B · отдельный движок", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text(
                                 when {
-                                    state.bonsaiReady -> "Bonsai загружена в память и прошла тест генерации."
-                                    state.bonsaiModelInstalled && state.bonsaiRuntimeInstalled -> "GGUF и ARM64 runtime установлены."
-                                    state.bonsaiRuntimeInstalled -> "Движок установлен; модель ещё не загружена."
-                                    else -> "Локальная модель 9B · GGUF около 2,56 ГБ и отдельный ARM64 runtime."
+                                    state.bonsaiReady -> "Модель активна и прошла тест генерации."
+                                    state.bonsaiModelInstalled -> "Модель установлена и проверена по SHA-256."
+                                    state.bonsaiRuntimeInstalled -> "ARM64-движок установлен; файл модели ещё не найден."
+                                    else -> "Модель ещё не установлена. Загрузка включает GGUF-файл и отдельный ARM64-движок."
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            androidx.compose.material3.Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant
+                            ) {
+                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("Модель: Ternary Bonsai 2 · 9B", fontWeight = FontWeight.SemiBold)
+                                    Text("Файл: Ternary-Bonsai-2-9B-Q2_0.gguf")
+                                    Text("Формат: GGUF · квантование Q2_0 · размер загрузки около 2,56 ГБ")
+                                    Text(
+                                        if (state.bonsaiModelInstalled) "Фактическая проверка: SHA-256 совпал с закреплённой версией."
+                                        else "Статус файла: пока не подтверждён.",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    Text("Репозиторий: prism-ml/Ternary-Bonsai-2-9B-gguf", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
                             if (state.bonsaiProgress != null) {
                                 LinearProgressIndicator(progress = { state.bonsaiProgress ?: 0f }, modifier = Modifier.fillMaxWidth())
                                 Text(state.bonsaiStage ?: "Установка Bonsai")
