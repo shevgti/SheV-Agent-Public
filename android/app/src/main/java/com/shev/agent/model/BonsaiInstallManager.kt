@@ -1,6 +1,7 @@
 package com.shev.agent.model
 
 import android.content.Context
+import android.os.StatFs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -44,6 +45,7 @@ class BonsaiInstallManager(context: Context) {
 
     suspend fun installModel(onProgress: (Progress) -> Unit = {}): File = withContext(Dispatchers.IO) {
         root.mkdirs()
+        requireFreeSpace(MODEL_MAX_BYTES + STORAGE_RESERVE_BYTES)
         if (isModelInstalled()) return@withContext model
         download(MODEL_URL, modelPart, MAX_MODEL_BYTES, "Модель", onProgress)
         if (modelPart.length() !in MIN_MODEL_BYTES..MAX_MODEL_BYTES) {
@@ -61,6 +63,7 @@ class BonsaiInstallManager(context: Context) {
 
     suspend fun installRuntime(onProgress: (Progress) -> Unit = {}): File = withContext(Dispatchers.IO) {
         root.mkdirs()
+        requireFreeSpace(RUNTIME_REQUIRED_SPACE_BYTES)
         if (isRuntimeInstalled()) return@withContext runtimeDir
         val base = "https://github.com/shevgti/SheV-Agent-Public/releases/download/$RUNTIME_TAG"
         download("$base/$RUNTIME_ZIP", runtimeZip, MAX_RUNTIME_ZIP_BYTES, "Движок", onProgress)
@@ -167,6 +170,13 @@ class BonsaiInstallManager(context: Context) {
         } finally { connection?.disconnect() }
     }
 
+    private fun requireFreeSpace(requiredBytes: Long) {
+        val available = StatFs(root.absolutePath).availableBytes
+        require(available >= requiredBytes) {
+            "Для установки Bonsai нужно ещё \${requiredBytes / 1_000_000_000L} ГБ свободного места."
+        }
+    }
+
     private fun promote(source: File, target: File) {
         val backup = File(target.parentFile, target.name + ".old")
         if (backup.exists()) backup.delete()
@@ -203,5 +213,7 @@ class BonsaiInstallManager(context: Context) {
         const val RUNTIME_ZIP = "bonsai-llama-android-arm64.zip"
         const val RUNTIME_SHA_FILE = "bonsai-llama-android-arm64.zip.sha256"
         const val MAX_RUNTIME_ZIP_BYTES = 500_000_000L
+        const val RUNTIME_REQUIRED_SPACE_BYTES = 1_000_000_000L
+        const val STORAGE_RESERVE_BYTES = 512_000_000L
     }
 }
