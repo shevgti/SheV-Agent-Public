@@ -40,9 +40,9 @@ jobs:
           test "$(git -C prism-llama rev-parse HEAD)" = "43f31f400c66dd44ce52a044119db77c271fed06"
 
       - name: Configure portable Android ARM64 shared runtime
-        env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
         run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
+          test -d "$ANDROID_NDK_HOME"
           cmake -S prism-llama -B build-bonsai-android -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
