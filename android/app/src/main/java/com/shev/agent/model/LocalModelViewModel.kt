@@ -155,12 +155,12 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val codexPreferences = application.getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
         val useBonsai = application.getSharedPreferences("shev_bonsai", Application.MODE_PRIVATE).getBoolean("use_for_primary_chat", false)
         val useCodex = !useBonsai && codexPreferences.getBoolean("use_for_primary_chat", false)
-        val useOpenRouter = !useCodex && openRouterPreferences.getBoolean("use_for_primary_chat", false)
-        val useGemini = !useCodex && !useOpenRouter && geminiPreferences.getBoolean("use_for_primary_chat", false)
-        val useOpenAI = !useCodex && !useOpenRouter && !useGemini && openAiPreferences.getBoolean("use_for_primary_chat", false)
-        val useDeepSeek = !useCodex && !useOpenRouter && !useGemini && !useOpenAI &&
+        val useOpenRouter = !useBonsai && !useCodex && openRouterPreferences.getBoolean("use_for_primary_chat", false)
+        val useGemini = !useBonsai && !useCodex && !useOpenRouter && geminiPreferences.getBoolean("use_for_primary_chat", false)
+        val useOpenAI = !useBonsai && !useCodex && !useOpenRouter && !useGemini && openAiPreferences.getBoolean("use_for_primary_chat", false)
+        val useDeepSeek = !useBonsai && !useCodex && !useOpenRouter && !useGemini && !useOpenAI &&
             deepSeekPreferences.getBoolean("use_for_primary_chat", false)
-        val useOmniRoute = !useCodex && !useOpenRouter && !useGemini && !useOpenAI && !useDeepSeek &&
+        val useOmniRoute = !useBonsai && !useCodex && !useOpenRouter && !useGemini && !useOpenAI && !useDeepSeek &&
             gatewayPreferences.getBoolean("use_for_primary_chat", false)
         mutableState.update {
             it.copy(
@@ -358,7 +358,15 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+        private fun disableBonsaiPrimaryIfEnabled(enabled: Boolean) {
+        if (!enabled) return
+        getApplication<Application>().getSharedPreferences("shev_bonsai", Application.MODE_PRIVATE)
+            .edit().putBoolean("use_for_primary_chat", false).apply()
+        mutableState.update { it.copy(useBonsai = false) }
+    }
+
     fun setCodexPrimaryEnabled(enabled: Boolean) {
+        disableBonsaiPrimaryIfEnabled(enabled)
         val preferences = getApplication<Application>().getSharedPreferences("shev_codex", Application.MODE_PRIVATE)
         preferences.edit().putBoolean("use_for_primary_chat", enabled).apply()
         if (enabled) {
@@ -380,6 +388,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun setOmniRoutePrimaryEnabled(enabled: Boolean) {
+        disableBonsaiPrimaryIfEnabled(enabled)
         getApplication<Application>()
             .getSharedPreferences("shev_omniroute", Application.MODE_PRIVATE)
             .edit()
@@ -410,6 +419,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun setOpenAIPrimaryEnabled(enabled: Boolean) {
+        disableBonsaiPrimaryIfEnabled(enabled)
         getApplication<Application>()
             .getSharedPreferences("shev_openai", Application.MODE_PRIVATE)
             .edit()
@@ -440,6 +450,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun setOpenRouterPrimaryEnabled(enabled: Boolean) {
+        disableBonsaiPrimaryIfEnabled(enabled)
         getApplication<Application>().getSharedPreferences("shev_openrouter", Application.MODE_PRIVATE)
             .edit().putBoolean("use_for_primary_chat", enabled).apply()
         if (enabled) {
@@ -461,6 +472,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun setGeminiPrimaryEnabled(enabled: Boolean) {
+        disableBonsaiPrimaryIfEnabled(enabled)
         getApplication<Application>().getSharedPreferences("shev_gemini", Application.MODE_PRIVATE)
             .edit().putBoolean("use_for_primary_chat", enabled).apply()
         if (enabled) {
@@ -488,6 +500,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun setDeepSeekPrimaryEnabled(enabled: Boolean) {
+        disableBonsaiPrimaryIfEnabled(enabled)
         getApplication<Application>().getSharedPreferences("shev_deepseek", Application.MODE_PRIVATE)
             .edit().putBoolean("use_for_primary_chat", enabled).apply()
         if (enabled) {
