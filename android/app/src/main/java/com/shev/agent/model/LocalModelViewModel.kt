@@ -644,7 +644,6 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                         createdAtEpochMillis = System.currentTimeMillis()
                     )
                 )
-                val prompt = "Ты — локальный ИИ-помощник MegaAgent. Отвечай по-русски, точно и по делу. Не выдумывай выполненные действия или доступ к инструментам. Запрос пользователя: $message"
                 val answer = BonsaiAgentTeam(backend).answer(message)
                 check(answer.isNotBlank()) { "Bonsai вернула пустой ответ." }
                 dao.appendConversationMessage(
@@ -795,12 +794,6 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 mutableState.update { it.copy(busy = false) }
             }
         }
-    }
-
-    override fun onCleared() {
-        bonsaiBackend?.close()
-        bonsaiBackend = null
-        super.onCleared()
     }
 
     fun moveLiveWidget(id: String, x: Float, y: Float) {
@@ -2454,6 +2447,8 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     override fun onCleared() {
+        bonsaiBackend?.close()
+        bonsaiBackend = null
         val active = runtime
         runtime = null
         toolExecutor = null
