@@ -431,6 +431,7 @@ fun LocalModelPanel(
                     DropdownMenuItem(text = { Text("Проверить права телефона") }, onClick = {
                         showAppMenu = false
                         viewModel.setPrompt("Проверь права доступа к моему телефону и покажи, какие разрешения включены.")
+                        viewModel.send()
                     })
                     DropdownMenuItem(text = { Text("Специальные возможности") }, onClick = {
                         showAppMenu = false
