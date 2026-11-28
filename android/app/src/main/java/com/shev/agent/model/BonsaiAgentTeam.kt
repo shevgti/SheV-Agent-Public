@@ -41,8 +41,8 @@ internal class BonsaiAgentTeam(
         verifiedSkillContext: String = ""
     ): String {
         // Conservative character budgets keep prompts below the native 2,048-token context window.
-        val boundedRequest = request.takeLast(2_000)
-        val boundedSkills = verifiedSkillContext.take(900)
+        val boundedRequest = request.takeLast(1_000)
+        val boundedSkills = verifiedSkillContext.take(350)
         val activeRoles = if (requiresTeam(currentMessage) && !isSimpleDeviceRequest(currentMessage)) roles else listOf(
             Role("Координатор", "Ответь на запрос напрямую; используй инструмент, если без него нельзя достоверно ответить.", setOf(
                 AgentCapability.ANALYZE_DATA, AgentCapability.READ_LOCAL_DATA,
@@ -62,31 +62,31 @@ internal class BonsaiAgentTeam(
             notes.forEach { (name, note) -> append("\n## ").append(name).append("\n").append(note).append("\n") }
             append("\nСобери единый ответ. Укажи только фактически подтверждённое; явно назови ограничения и незавершённые действия.")
         }
-        return backend.generate(synthesis.take(5_000), 420).trim()
+        return backend.generate(synthesis.take(2_400), 180).trim()
     }
 
     private suspend fun runSpecialist(role: Role, request: String, skills: String): String {
         val available = toolDescriptors.filter { descriptor ->
             descriptor.capabilities.any { it in role.capabilities }
         }
-        val catalog = available.joinToString("\n") { descriptor ->
+        val catalog = available.take(5).joinToString("\n") { descriptor ->
             val caps = descriptor.capabilities.filter { it in role.capabilities }
                 .joinToString(",") { it.name }
-            "${descriptor.id} | capability: $caps | ${descriptor.description} | input: ${descriptor.inputSchema?.describe() ?: "schema unavailable"}"
-        }.ifBlank { "Нет доступных инструментов для этой роли." }
+            "${descriptor.id} | $caps | ${descriptor.description.take(70)}"
+        }.ifBlank { "Нет доступных инструментов для этой роли." }.take(500)
 
         val prompt = buildString {
             append("Ты — отдельный субагент MegaAgent: ").append(role.name).append(".\n")
             append(role.instruction).append("\n")
             append("Работай по-русски. Не выдумывай результаты и не заявляй о выполнении того, чего не было.\n")
-            if (skills.isNotBlank()) append("ПРОВЕРЕННЫЕ НАВЫКИ:\n").append(skills).append("\n")
+            if (skills.isNotBlank()) append("ПРОВЕРЕННЫЕ НАВЫКИ:\n").append(skills.take(350)).append("\n")
             append("РАЗРЕШЁННЫЙ КАТАЛОГ ИНСТРУМЕНТОВ:\n").append(catalog).append("\n")
             append("Если нужен инструмент, верни строго JSON: {\"tool_call\":{\"id\":\"точный id\",\"capability\":\"точное имя capability\",\"input\":{}} ,\"note\":\"краткая причина\"}. ")
             append("Если инструмент не нужен, верни строго JSON: {\"note\":\"твой вывод\"}. ")
             append("Не вызывай инструмент с capability, которой нет у него в каталоге.\n")
             append("Задача пользователя: ").append(request)
         }
-        val raw = backend.generate(prompt.take(4_800), 240).trim()
+        val raw = backend.generate(prompt.take(2_200), 120).trim()
         val parsed = parseToolCall(raw, available, role.capabilities)
         if (parsed == null) {
             val note = parseNote(raw)
@@ -100,7 +100,7 @@ internal class BonsaiAgentTeam(
             append("Фактический результат host executor:\n").append(toolResult).append("\n")
             append("Сформулируй краткий вывод по результату. Если инструмент отказал или потребовал подтверждение, не утверждай, что действие выполнено.")
         }
-        return backend.generate(followUp.take(3_200), 180).trim()
+        return backend.generate(followUp.take(1_800), 100).trim()
     }
 
     private fun parseToolCall(
