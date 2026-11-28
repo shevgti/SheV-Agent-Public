@@ -6,6 +6,7 @@ on:
     branches: [megaagent/mega-core-foundation]
     paths:
       - ".github/workflows/publish-megaagent-bonsai.yml"
+      - "android/**"
 
 permissions:
   contents: write

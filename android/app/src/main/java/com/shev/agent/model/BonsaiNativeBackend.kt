@@ -29,7 +29,7 @@ internal class BonsaiNativeBackend private constructor(private var handle: Long)
             require(modelFile.isFile) { "Файл Bonsai GGUF не найден." }
             require(contextSize in 512..8192) { "Недопустимый размер контекста." }
             if (!librariesLoaded) {
-                listOf("libggml-base.so", "libggml-cpu.so", "libggml.so", "libllama.so", "libbonsai_jni.so").forEach { name ->
+                listOf("libc++_shared.so", "libggml-base.so", "libggml-cpu.so", "libggml.so", "libllama.so", "libbonsai_jni.so").forEach { name ->
                     val library = File(runtimeLibDirectory, name)
                     require(library.isFile) { "Не найдена библиотека $name." }
                     System.load(library.absolutePath)

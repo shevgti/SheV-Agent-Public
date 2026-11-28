@@ -49,6 +49,7 @@ jobs:
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
           test -d "$ANDROID_NDK_HOME"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
           cmake -S prism-llama -B build-bonsai-android -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
@@ -86,6 +87,8 @@ jobs:
           cmake --build build-bonsai-jni --parallel 2
           cmake --install build-bonsai-jni
           test -f bonsai-runtime/lib/libbonsai_jni.so
+          install -m 0644 "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" bonsai-runtime/lib/libc++_shared.so
+          test -f bonsai-runtime/lib/libc++_shared.so
           find bonsai-runtime -type f -name '*.so' -print
 
       - name: Package runtime and provenance
@@ -97,6 +100,7 @@ jobs:
           ABI: arm64-v8a
           Android API: 28
           NDK: 27.2.12479018
+          C++ runtime: libc++_shared.so included in lib/
           Build: Release, shared libraries, KleidiAI enabled, OpenMP disabled
           Model target: Ternary Bonsai 2 9B GGUF
           This package is a native runtime component, not an APK and not a standalone installer.

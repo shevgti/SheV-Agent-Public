@@ -40,6 +40,7 @@ class BonsaiInstallManager(context: Context) {
     suspend fun isRuntimeInstalled() = withContext(Dispatchers.IO) {
         File(runtimeDir, "lib/libllama.so").isFile &&
             File(runtimeDir, "lib/libbonsai_jni.so").isFile &&
+            File(runtimeDir, "lib/libc++_shared.so").isFile &&
             File(runtimeDir, "BUILD-METADATA.txt").isFile
     }
 
