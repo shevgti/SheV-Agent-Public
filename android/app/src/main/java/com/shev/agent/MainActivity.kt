@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.lifecycle.ViewModelProvider
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -219,7 +221,43 @@ private fun SheVAgentApp(
     database: SheVAgentDatabase,
     chatViewModel: LocalModelViewModel
 ) {
-    LocalModelPanel(chatViewModel)
+    var destination by rememberSaveable { mutableStateOf("chat") }
+    BackHandler(enabled = destination != "chat") { destination = "chat" }
+    if (destination == "chat") {
+        LocalModelPanel(
+            chatViewModel,
+            onOpenCreator = { destination = "creator" },
+            onOpenTasks = { destination = "tasks" },
+            onOpenTools = { destination = "tools" }
+        )
+    } else {
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                TextButton(onClick = { destination = "chat" }) { Text("← Чат MegaAgent") }
+                Text(
+                    when (destination) {
+                        "creator" -> "Создатель агентов"
+                        "tasks" -> "Поручения"
+                        else -> "Инструменты и навыки"
+                    },
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+            Box(Modifier.fillMaxSize().weight(1f)) {
+                when (destination) {
+                    "creator" -> AgentCreatorScreen(database.agentDao(), chatViewModel)
+                    "tasks" -> AgentTasksScreen(chatViewModel)
+                    else -> SettingsScreen(
+                        modifier = Modifier.fillMaxSize(),
+                        skillLibrary = AgentSkillLibrary(database.agentDao())
+                    )
+                }
+            }
+        }
+    }
 }
 
 
