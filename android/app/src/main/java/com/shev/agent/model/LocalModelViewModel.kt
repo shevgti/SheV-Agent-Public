@@ -2099,6 +2099,28 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 )
             )
+            register(
+                AgentToolDescriptor(
+                    id = SheVAgentAdkTools.LIST_WORKSPACE_FILES_ID,
+                    title = "Просмотр рабочей папки",
+                    description = "Перечисляет элементы только в выбранной пользователем SAF-папке",
+                    capabilities = setOf(AgentCapability.READ_LOCAL_DATA),
+                    inputSchema = ToolInputSchema(
+                        listOf(ToolInputField("query", ToolInputType.STRING, required = false, maxLength = 200))
+                    )
+                )
+            )
+            register(
+                AgentToolDescriptor(
+                    id = SheVAgentAdkTools.READ_WORKSPACE_FILE_ID,
+                    title = "Чтение файла рабочей папки",
+                    description = "Читает текстовый файл только внутри выбранной SAF-папки",
+                    capabilities = setOf(AgentCapability.READ_LOCAL_DATA),
+                    inputSchema = ToolInputSchema(
+                        listOf(ToolInputField("documentUri", ToolInputType.STRING, required = true, maxLength = 4_096))
+                    )
+                )
+            )
         }
         val planValidator = AgentPlanValidator(registry)
         val allowedPlanToolIds = registry.list().mapTo(linkedSetOf()) { it.id } - setOf(
@@ -2187,7 +2209,27 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
                 SheVAgentAdkTools.TOOL_ID to AgentTool {
                     AgentToolResult(true, registry.list().joinToString("\n") { tool -> "${tool.id} | ${tool.title} | ${tool.capabilities.joinToString { it.name }} | ${tool.description} | input: ${tool.inputSchema?.describe() ?: "schema unavailable"}" })
                 },
-                SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to currentTimeHandler
+                SheVAgentAdkTools.CURRENT_TIME_TOOL_ID to currentTimeHandler,
+                SheVAgentAdkTools.LIST_WORKSPACE_FILES_ID to AgentTool { input ->
+                    val query = runCatching { JsonParser.parseString(input).asJsonObject.get("query")?.asString.orEmpty() }.getOrDefault("")
+                    try {
+                        val entries = com.shev.agent.device.MegaAgentWorkspace.list(getApplication<Application>())
+                            .filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
+                        AgentToolResult(true, if (entries.isEmpty()) "В выбранной папке нет совпадений." else
+                            entries.joinToString("\n") { "${if (it.isDirectory) "[ПАПКА]" else "[ФАЙЛ]"} ${it.name} | ${it.mimeType} | ${it.uri}" })
+                    } catch (failure: Exception) {
+                        AgentToolResult(false, failure.message ?: "Не удалось просмотреть папку.", "WORKSPACE_LIST_FAILED")
+                    }
+                },
+                SheVAgentAdkTools.READ_WORKSPACE_FILE_ID to AgentTool { input ->
+                    val uri = runCatching { JsonParser.parseString(input).asJsonObject.get("documentUri")?.asString }.getOrNull()
+                    if (uri.isNullOrBlank()) AgentToolResult(false, "Не указан URI файла.", "DOCUMENT_URI_REQUIRED")
+                    else try {
+                        AgentToolResult(true, com.shev.agent.device.MegaAgentWorkspace.read(getApplication<Application>(), uri))
+                    } catch (failure: Exception) {
+                        AgentToolResult(false, failure.message ?: "Не удалось прочитать файл.", "WORKSPACE_READ_FAILED")
+                    }
+                }
             ),
             suspendingHandlers = mapOf(
                 SheVAgentAdkTools.CREATE_TASK_DRAFT_ID to taskDraftHandler,
@@ -2233,6 +2275,7 @@ class LocalModelViewModel(application: Application) : AndroidViewModel(applicati
         val executionContext = AgentToolExecutionContext(
             grantedCapabilities = setOf(
                 AgentCapability.ANALYZE_DATA,
+                AgentCapability.READ_LOCAL_DATA,
                 AgentCapability.CREATE_DRAFT,
                 AgentCapability.READ_REMOTE_DATA
             ),
