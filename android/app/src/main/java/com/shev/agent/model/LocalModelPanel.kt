@@ -68,7 +68,6 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.DialogProperties
-import com.shev.agent.BuildConfig
 import com.shev.agent.ui.LiveWidgetsOverlay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
@@ -119,13 +118,6 @@ fun LocalModelPanel(
             .getString("yandex_api_key", "").orEmpty())
     }
     var weatherKeySaved by remember { mutableStateOf(false) }
-    var updateInfo by remember { mutableStateOf<AppUpdate?>(null) }
-    var updateMessage by remember { mutableStateOf<String?>(null) }
-    var checkingUpdate by remember { mutableStateOf(false) }
-    var downloadingUpdate by remember { mutableStateOf(false) }
-    var updateDownloaded by remember { mutableStateOf(0L) }
-    var updateTotal by remember { mutableStateOf(0L) }
-    var showUpdateDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var piperPlaybackJob by remember { mutableStateOf<Job?>(null) }
     val currentVoiceMode by rememberUpdatedState(voiceConversation)
@@ -345,35 +337,6 @@ fun LocalModelPanel(
                     modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Приложение", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Установленная версия: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", style = MaterialTheme.typography.bodyMedium)
-                            if (updateInfo != null) {
-                                Text("Доступна версия: ${updateInfo!!.versionName} (${updateInfo!!.versionCode})", color = Color(0xFF16834A), fontWeight = FontWeight.SemiBold)
-                                Button(onClick = { showUpdateDialog = true }, enabled = !downloadingUpdate, modifier = Modifier.fillMaxWidth()) { Text("Скачать и установить") }
-                            } else {
-                                Text("Обновление: ${if (checkingUpdate) "проверяю…" else "последняя версия или нет опубликованного релиза"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            OutlinedButton(
-                                enabled = !checkingUpdate && !downloadingUpdate,
-                                onClick = {
-                                    scope.launch {
-                                        checkingUpdate = true
-                                        updateMessage = null
-                                        try {
-                                            updateInfo = AppUpdater.check(BuildConfig.VERSION_CODE)
-                                            if (updateInfo != null) showUpdateDialog = true
-                                            updateMessage = if (updateInfo == null) "Новых обновлений нет" else "Доступна версия ${updateInfo!!.versionName}"
-                                        } catch (error: Exception) {
-                                            updateMessage = "Не удалось проверить: ${error.message ?: "ошибка сети"}"
-                                        } finally { checkingUpdate = false }
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text(if (checkingUpdate) "Проверяю обновления…" else "Проверить обновления") }
-                        }
-                    }
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Яндекс.Погода", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -608,24 +571,6 @@ fun LocalModelPanel(
                         }
                     }
                     TextButton(
-                        enabled = !checkingUpdate && !downloadingUpdate,
-                        onClick = {
-                            scope.launch {
-                                checkingUpdate = true
-                                updateMessage = null
-                                try {
-                                    updateInfo = AppUpdater.check(BuildConfig.VERSION_CODE)
-                                    if (updateInfo != null) showUpdateDialog = true
-                                    updateMessage = if (updateInfo == null) "Установлена последняя версия" else null
-                                } catch (error: Exception) {
-                                    updateMessage = "Ошибка проверки: ${error.message ?: "нет соединения"}"
-                                } finally {
-                                    checkingUpdate = false
-                                }
-                            }
-                        }
-                    ) { Text(if (checkingUpdate) "Проверяю…" else "Проверить обновления") }
-                    TextButton(
                         onClick = {
                             if (Build.VERSION.SDK_INT >= 33 &&
                                 ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -668,68 +613,6 @@ fun LocalModelPanel(
         )
     }
 
-    if (showUpdateDialog && updateInfo != null) {
-        val update = updateInfo!!
-        AlertDialog(
-            onDismissRequest = { if (!downloadingUpdate) showUpdateDialog = false },
-            title = { Text("Доступно обновление ${update.versionName} · сборка ${update.versionCode}") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(update.notes.lineSequence().firstOrNull { it.isNotBlank() } ?: "Новая версия SheV Agent готова.")
-                    Text("Текущая версия: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
-                    if (downloadingUpdate) {
-                        if (updateTotal > 0L) {
-                            LinearProgressIndicator(
-                                progress = { (updateDownloaded.toFloat() / updateTotal.toFloat()).coerceIn(0f, 1f) },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            val percent = (updateDownloaded * 100L / updateTotal).toInt().coerceIn(0, 100)
-                            val downloadedMb = updateDownloaded.toDouble() / 1_000_000.0
-                            val totalMb = updateTotal.toDouble() / 1_000_000.0
-                            Text("Загружено ${percent}% · ${String.format(Locale.getDefault(), "%.1f", downloadedMb)} МБ из ${String.format(Locale.getDefault(), "%.1f", totalMb)} МБ")
-                        } else {
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                            Text("Загружено ${String.format(Locale.getDefault(), "%.1f", updateDownloaded.toDouble() / 1_000_000.0)} МБ")
-                        }
-                    }
-                    updateMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                }
-            },
-            confirmButton = {
-                Button(
-                    enabled = !downloadingUpdate,
-                    onClick = {
-                        scope.launch {
-                            downloadingUpdate = true
-                            updateDownloaded = 0L
-                            updateTotal = update.expectedSizeBytes
-                            updateMessage = null
-                            try {
-                                val started = AppUpdater.downloadAndInstall(context, update) { done, total ->
-                                    updateDownloaded = done
-                                    updateTotal = total
-                                }
-                                if (started) showUpdateDialog = false
-                                else updateMessage = "Разреши SheV Agent устанавливать приложения в настройках Android и повтори."
-                            } catch (error: Exception) {
-                                updateMessage = "Ошибка обновления: ${error.message ?: "не удалось скачать APK"}"
-                            } finally {
-                                downloadingUpdate = false
-                            }
-                        }
-                    }
-                ) {
-                    val progressLabel = if (updateTotal > 0L) {
-                        "Загрузка ${(updateDownloaded * 100L / updateTotal).toInt().coerceIn(0, 100)}%"
-                    } else "Загрузка…"
-                    Text(if (downloadingUpdate) progressLabel else "Скачать и установить")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showUpdateDialog = false }, enabled = !downloadingUpdate) { Text("Позже") }
-            }
-        )
-    }
 
     Column(
         modifier = Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 16.dp),
