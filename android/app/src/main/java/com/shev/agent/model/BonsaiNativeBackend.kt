@@ -9,7 +9,7 @@ internal class BonsaiNativeBackend private constructor(private var handle: Long)
     fun generate(prompt: String, maxTokens: Int = 256): String {
         check(handle != 0L) { "Bonsai backend is closed." }
         require(prompt.isNotBlank())
-        val chatPrompt = "<|im_start|>user\\n$prompt<|im_end|>\\n<|im_start|>assistant\\n"
+        val chatPrompt = "<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
         return BonsaiJni.nativeGenerate(handle, chatPrompt, maxTokens.coerceIn(1, 2048))
     }
 
